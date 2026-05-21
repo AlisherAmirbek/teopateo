@@ -17,7 +17,9 @@ struct CheckInView: View {
             }
 
             focus
-            Button("Save check-in") {}
+            Button("Save check-in") {
+                store.saveCheckIn(focusNote: note, slipNote: slipNote)
+            }
                 .buttonStyle(FilledButtonStyle())
         }
     }

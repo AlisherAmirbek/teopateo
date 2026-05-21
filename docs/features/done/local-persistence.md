@@ -6,7 +6,7 @@ Create a mature local-first persistence layer so the app can reliably save the u
 
 ## Recommended Approach
 
-Use SQLite through a Swift database layer such as GRDB.
+Use SQLite through GRDB.
 
 The app should keep `TeoPateoStore` as the UI-facing state layer, but move durable reads and writes behind repositories. Views should not know about database tables or SQL.
 
@@ -32,6 +32,7 @@ This gives the MVP a real data foundation with migrations, indexes, queryable hi
 ## Initial Tables
 
 - `quit_plans`
+- `trigger_rules`
 - `daily_check_ins`
 - `craving_events`
 - `craving_event_triggers`

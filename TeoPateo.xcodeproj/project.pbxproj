@@ -17,6 +17,9 @@
 		8E7B73D0D7AD4667BE4E5B52 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF8D76413EEE429DAA5F16A9 /* ContentView.swift */; };
 		93584B49DCF24780864A59D8 /* mascot.png in Resources */ = {isa = PBXBuildFile; fileRef = CB3881272A564E68B98C37B7 /* mascot.png */; };
 		9E38C8425EDA4A23A1967A7E /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = 4967EA1ED267428797CDDB75 /* icon.png */; };
+		A1B2C3D4E5F60718293A0203 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A0202 /* GRDB */; };
+		A1B2C3D4E5F60718293A0002 /* LocalPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0001 /* LocalPersistenceTests.swift */; };
+		A1B2C3D4E5F60718293A0104 /* SQLiteTeoPateoRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */; };
 		A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89C40CE62B9B4943A6112508 /* Assets.xcassets */; };
 		B81FD725E89B4B53B10C3A94 /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1341071134E44F28C5467B4 /* PlanView.swift */; };
 		D9020C9D4E1A48B7B289B9E6 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4B3FAC78D454260B212B499 /* Theme.swift */; };
@@ -26,17 +29,30 @@
 		F9891355D10F4C558F89A561 /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D88DBF5EA21B43379A7BA673 /* InsightsView.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		A1B2C3D4E5F60718293A000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 669341A4D85148CB8E39E2C5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F24BE80E72654506A21C460B;
+			remoteInfo = TeoPateo;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		227C6F62A4D048C1A5AAC4AF /* TodayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayView.swift; sourceTree = "<group>"; };
 		4967EA1ED267428797CDDB75 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = icon.png; sourceTree = "<group>"; };
 		6B5D70F821554C54B52E1DA9 /* TeoPateo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TeoPateo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F498D8646264BD399B88954 /* CravingModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CravingModeView.swift; sourceTree = "<group>"; };
 		7491E2822FBF57910099630B /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
-		7491E2832FBF57910099630B /* CORE_IDEA.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = CORE_IDEA.md; sourceTree = "<group>"; };
+		7491E2832FBF57910099630B /* CORE_IDEA.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = docs/CORE_IDEA.md; sourceTree = "<group>"; };
 		7CC6B25E8DD94BC8A2ABC8B2 /* TeoPateoModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeoPateoModels.swift; sourceTree = "<group>"; };
 		89C40CE62B9B4943A6112508 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8FD5998364E7424DB06BA3C5 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		9DAF0AC62A9C49B089274AB5 /* CoachView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0001 /* LocalPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPersistenceTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0003 /* TeoPateoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TeoPateoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteTeoPateoRepository.swift; sourceTree = "<group>"; };
 		A1341071134E44F28C5467B4 /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
 		A9A0901E1C624D8CB77A502E /* CheckInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInView.swift; sourceTree = "<group>"; };
 		B1CB205C3D214C019BD2E015 /* TeoPateoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeoPateoStore.swift; sourceTree = "<group>"; };
@@ -52,6 +68,14 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F60718293A0203 /* GRDB in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60718293A0004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -62,6 +86,7 @@
 			isa = PBXGroup;
 			children = (
 				6B5D70F821554C54B52E1DA9 /* TeoPateo.app */,
+				A1B2C3D4E5F60718293A0003 /* TeoPateoTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,6 +120,7 @@
 				7491E2822FBF57910099630B /* AGENTS.md */,
 				7491E2832FBF57910099630B /* CORE_IDEA.md */,
 				F5DE3F601DC14422BAC2D42F /* TeoPateo */,
+				A1B2C3D4E5F60718293A0007 /* TeoPateoTests */,
 				0B12EE6541FC45919712D55F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -103,6 +129,7 @@
 			isa = PBXGroup;
 			children = (
 				B1CB205C3D214C019BD2E015 /* TeoPateoStore.swift */,
+				A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -114,6 +141,14 @@
 				4967EA1ED267428797CDDB75 /* icon.png */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60718293A0007 /* TeoPateoTests */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F60718293A0001 /* LocalPersistenceTests.swift */,
+			);
+			path = TeoPateoTests;
 			sourceTree = "<group>";
 		};
 		F5DE3F601DC14422BAC2D42F /* TeoPateo */ = {
@@ -146,9 +181,30 @@
 			dependencies = (
 			);
 			name = TeoPateo;
+			packageProductDependencies = (
+				A1B2C3D4E5F60718293A0202 /* GRDB */,
+			);
 			productName = TeoPateo;
 			productReference = 6B5D70F821554C54B52E1DA9 /* TeoPateo.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A1B2C3D4E5F60718293A0008 /* TeoPateoTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F60718293A000B /* Build configuration list for PBXNativeTarget "TeoPateoTests" */;
+			buildPhases = (
+				A1B2C3D4E5F60718293A0005 /* Sources */,
+				A1B2C3D4E5F60718293A0004 /* Frameworks */,
+				A1B2C3D4E5F60718293A0006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A1B2C3D4E5F60718293A000D /* PBXTargetDependency */,
+			);
+			name = TeoPateoTests;
+			productName = TeoPateoTests;
+			productReference = A1B2C3D4E5F60718293A0003 /* TeoPateoTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -160,6 +216,10 @@
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					A1B2C3D4E5F60718293A0008 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = F24BE80E72654506A21C460B;
+					};
 					F24BE80E72654506A21C460B = {
 						CreatedOnToolsVersion = 26.5;
 					};
@@ -175,10 +235,14 @@
 			);
 			mainGroup = 88D6D8C7D5DD4C09A95E0613;
 			productRefGroup = 0B12EE6541FC45919712D55F /* Products */;
+			packageReferences = (
+				A1B2C3D4E5F60718293A0201 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				F24BE80E72654506A21C460B /* TeoPateo */,
+				A1B2C3D4E5F60718293A0008 /* TeoPateoTests */,
 			);
 		};
 /* End PBXProject section */
@@ -193,6 +257,13 @@
 				A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */,
 				93584B49DCF24780864A59D8 /* mascot.png in Resources */,
 				9E38C8425EDA4A23A1967A7E /* icon.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60718293A0006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -214,13 +285,94 @@
 				F9891355D10F4C558F89A561 /* InsightsView.swift in Sources */,
 				81B510CD695649539952D703 /* CoachView.swift in Sources */,
 				ECE9921C7C56492F9D87D763 /* TeoPateoModels.swift in Sources */,
+				A1B2C3D4E5F60718293A0104 /* SQLiteTeoPateoRepository.swift in Sources */,
 				8E77AD628A294124A8F14B9A /* TeoPateoStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60718293A0005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D4E5F60718293A0002 /* LocalPersistenceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A1B2C3D4E5F60718293A000D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F24BE80E72654506A21C460B /* TeoPateo */;
+			targetProxy = A1B2C3D4E5F60718293A000C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1B2C3D4E5F60718293A0201 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.10.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A1B2C3D4E5F60718293A0202 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F60718293A0201 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
+
 /* Begin XCBuildConfiguration section */
+		A1B2C3D4E5F60718293A0009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.teopateo.TeoPateoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TeoPateo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TeoPateo";
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F60718293A000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.teopateo.TeoPateoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TeoPateo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TeoPateo";
+			};
+			name = Release;
+		};
 		5A2EF128139647BEAAB48BE5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -402,6 +554,15 @@
 			buildConfigurations = (
 				AFAD9CF0BD9C49878AD3CADC /* Debug */,
 				5A2EF128139647BEAAB48BE5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D4E5F60718293A000B /* Build configuration list for PBXNativeTarget "TeoPateoTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F60718293A0009 /* Debug */,
+				A1B2C3D4E5F60718293A000A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

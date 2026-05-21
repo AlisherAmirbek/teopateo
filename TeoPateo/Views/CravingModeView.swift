@@ -6,6 +6,7 @@ struct CravingModeView: View {
     @State private var secondsRemaining = 600
     @State private var isRunning = false
     @State private var timer: Timer?
+    @State private var startedAt = Date()
 
     private let triggers = ["Coffee", "Work stress", "After meal", "Boredom", "Alcohol", "Social"]
 
@@ -126,6 +127,11 @@ struct CravingModeView: View {
 
     private var survivedButton: some View {
         Button("I got through it") {
+            store.completeCraving(
+                startedAt: startedAt,
+                durationSeconds: max(0, 600 - secondsRemaining),
+                completedWithoutSmoking: true
+            )
             resetTimer()
             dismiss()
         }
@@ -170,6 +176,7 @@ struct CravingModeView: View {
         timer?.invalidate()
         isRunning = false
         secondsRemaining = 600
+        startedAt = Date()
     }
 }
 

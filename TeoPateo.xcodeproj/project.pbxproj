@@ -236,7 +236,7 @@
 			mainGroup = 88D6D8C7D5DD4C09A95E0613;
 			productRefGroup = 0B12EE6541FC45919712D55F /* Products */;
 			packageReferences = (
-				A1B2C3D4E5F60718293A0201 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				A1B2C3D4E5F60718293A0201 /* XCLocalSwiftPackageReference "GRDB" */,
 			);
 			projectDirPath = "";
 			projectRoot = "";
@@ -308,21 +308,17 @@
 		};
 /* End PBXTargetDependency section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		A1B2C3D4E5F60718293A0201 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/groue/GRDB.swift.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 7.10.0;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		A1B2C3D4E5F60718293A0201 /* XCLocalSwiftPackageReference "GRDB" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/GRDB;
 		};
-/* End XCRemoteSwiftPackageReference section */
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		A1B2C3D4E5F60718293A0202 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A1B2C3D4E5F60718293A0201 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			package = A1B2C3D4E5F60718293A0201 /* XCLocalSwiftPackageReference "GRDB" */;
 			productName = GRDB;
 		};
 /* End XCSwiftPackageProductDependency section */

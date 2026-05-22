@@ -12,6 +12,81 @@ struct ProgressMetric: Identifiable, Equatable {
     }
 }
 
+struct CalculatedInsights: Equatable {
+    let smokeFreeDays: Int
+    let smokeFreeSummary: String
+    let cravingsLogged: Int
+    let cravingsHandled: Int
+    let cigarettesAvoided: Int
+    let moneySaved: Double
+    let moneySavedSummary: String
+    let riskWindows: [RiskWindowInsight]
+    let topTriggers: [TriggerInsight]
+    let heatMapDays: [CravingHeatDay]
+    let planAdjustment: PlanAdjustmentInsight
+
+    var nextRiskSummary: String {
+        riskWindows.first?.startLabel ?? "Log cravings"
+    }
+}
+
+struct RiskWindowInsight: Identifiable, Equatable {
+    let startHour: Int
+    let cravingCount: Int
+    let share: Double
+
+    var id: Int { startHour }
+
+    var title: String {
+        "\(Self.hourLabel(startHour))-\(Self.hourLabel((startHour + 1) % 24))"
+    }
+
+    var startLabel: String {
+        Self.hourLabel(startHour)
+    }
+
+    var shareSummary: String {
+        Self.percentLabel(share)
+    }
+
+    private static func hourLabel(_ hour: Int) -> String {
+        let normalizedHour = (hour + 24) % 24
+        let displayHour = normalizedHour % 12 == 0 ? 12 : normalizedHour % 12
+        let suffix = normalizedHour < 12 ? "AM" : "PM"
+        return "\(displayHour):00 \(suffix)"
+    }
+
+    private static func percentLabel(_ share: Double) -> String {
+        "\(Int((share * 100).rounded()))%"
+    }
+}
+
+struct TriggerInsight: Identifiable, Equatable {
+    let name: String
+    let count: Int
+    let share: Double
+
+    var id: String { name }
+
+    var shareSummary: String {
+        "\(Int((share * 100).rounded()))%"
+    }
+}
+
+struct CravingHeatDay: Identifiable, Equatable {
+    let date: Date
+    let count: Int
+    let level: Int
+
+    var id: Date { date }
+}
+
+struct PlanAdjustmentInsight: Equatable {
+    let title: String
+    let detail: String
+    let actionTitle: String
+}
+
 struct TriggerRule: Identifiable, Codable, Equatable {
     let id: UUID
     let trigger: String

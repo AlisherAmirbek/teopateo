@@ -7,16 +7,18 @@ struct TodayView: View {
         ZStack {
             QuitTheme.background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                header
-                mascot
-                copy
-                rescueButton
-                facts
-                Spacer()
+            ScrollView {
+                VStack(spacing: 0) {
+                    header
+                    mascot
+                    copy
+                    rescueButton
+                    facts
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 18)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 18)
         }
     }
 
@@ -82,9 +84,13 @@ struct TodayView: View {
     }
 
     private var facts: some View {
-        VStack(spacing: 0) {
-            factRow("Smoke-free", "4 days")
-            factRow("Next risk", "9:00 PM")
+        let insights = store.calculatedInsights
+
+        return VStack(spacing: 0) {
+            factRow("Smoke-free", insights.smokeFreeSummary)
+            factRow("Cravings handled", "\(insights.cravingsHandled)")
+            factRow("Saved", insights.moneySavedSummary)
+            factRow("Next risk", insights.nextRiskSummary)
         }
         .padding(.top, 22)
     }

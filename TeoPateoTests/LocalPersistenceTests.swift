@@ -175,6 +175,87 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertTrue(cravings[0].completedWithoutSmoking)
     }
 
+    func testStoreCalculatesInsightsFromPersistedHistory() throws {
+        let repository = try makeRepository()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = makeDate(year: 2026, month: 5, day: 22, hour: 18, calendar: calendar)
+
+        try repository.saveDailyCheckIn(makeCheckIn(
+            id: 90,
+            date: makeDate(year: 2026, month: 5, day: 18, calendar: calendar),
+            smokedToday: true
+        ))
+        try repository.saveDailyCheckIn(makeCheckIn(
+            id: 91,
+            date: makeDate(year: 2026, month: 5, day: 19, calendar: calendar),
+            smokedToday: false
+        ))
+        try repository.saveDailyCheckIn(makeCheckIn(
+            id: 92,
+            date: makeDate(year: 2026, month: 5, day: 20, calendar: calendar),
+            smokedToday: false
+        ))
+        try repository.saveDailyCheckIn(makeCheckIn(
+            id: 93,
+            date: makeDate(year: 2026, month: 5, day: 21, calendar: calendar),
+            smokedToday: false
+        ))
+        try repository.saveDailyCheckIn(makeCheckIn(
+            id: 94,
+            date: makeDate(year: 2026, month: 5, day: 22, calendar: calendar),
+            smokedToday: false
+        ))
+
+        try repository.saveCravingEvent(makeCraving(
+            id: 100,
+            startedAt: makeDate(year: 2026, month: 5, day: 20, hour: 21, calendar: calendar),
+            triggers: ["Coffee", "Work stress"],
+            completedWithoutSmoking: true
+        ))
+        try repository.saveCravingEvent(makeCraving(
+            id: 101,
+            startedAt: makeDate(year: 2026, month: 5, day: 21, hour: 21, calendar: calendar),
+            triggers: ["Coffee"],
+            completedWithoutSmoking: true
+        ))
+        try repository.saveCravingEvent(makeCraving(
+            id: 102,
+            startedAt: makeDate(year: 2026, month: 5, day: 22, hour: 18, calendar: calendar),
+            triggers: ["Social"],
+            completedWithoutSmoking: false
+        ))
+        try repository.saveCravingEvent(makeCraving(
+            id: 103,
+            startedAt: makeDate(year: 2026, month: 5, day: 22, hour: 21, calendar: calendar),
+            triggers: ["Work stress"],
+            completedWithoutSmoking: true
+        ))
+
+        let store = TeoPateoStore(
+            repository: repository,
+            now: { now },
+            calendar: calendar
+        )
+
+        let insights = store.calculatedInsights
+
+        XCTAssertEqual(insights.smokeFreeDays, 4)
+        XCTAssertEqual(insights.smokeFreeSummary, "4 days")
+        XCTAssertEqual(insights.cravingsLogged, 4)
+        XCTAssertEqual(insights.cravingsHandled, 3)
+        XCTAssertEqual(insights.cigarettesAvoided, 7)
+        XCTAssertEqual(insights.moneySaved, 3.5, accuracy: 0.001)
+        XCTAssertEqual(insights.riskWindows.first?.startHour, 21)
+        XCTAssertEqual(insights.riskWindows.first?.cravingCount, 3)
+        XCTAssertEqual(insights.riskWindows.first?.shareSummary, "75%")
+        XCTAssertEqual(insights.topTriggers.first?.name, "Coffee")
+        XCTAssertEqual(insights.topTriggers.first?.count, 2)
+        XCTAssertEqual(insights.topTriggers.first?.shareSummary, "50%")
+        XCTAssertEqual(insights.heatMapDays.last?.count, 2)
+        XCTAssertEqual(insights.heatMapDays.last?.level, 2)
+    }
+
     private func makeRepository() throws -> SQLiteTeoPateoRepository {
         try SQLiteTeoPateoRepository(databaseURL: databaseURL)
     }
@@ -202,6 +283,60 @@ final class LocalPersistenceTests: XCTestCase {
             createdAt: fixedDate(1),
             updatedAt: fixedDate(2)
         )
+    }
+
+    private func makeCheckIn(
+        id: Int,
+        date: Date,
+        smokedToday: Bool
+    ) -> DailyCheckIn {
+        DailyCheckIn(
+            id: fixedUUID(id),
+            date: date,
+            mood: 7,
+            stress: 5,
+            confidence: 8,
+            smokedToday: smokedToday,
+            focusNote: "Use the rescue plan.",
+            slipNote: smokedToday ? "Smoked after a trigger." : "",
+            createdAt: fixedDate(id),
+            updatedAt: fixedDate(id + 1)
+        )
+    }
+
+    private func makeCraving(
+        id: Int,
+        startedAt: Date,
+        triggers: [String],
+        completedWithoutSmoking: Bool
+    ) -> CravingEvent {
+        CravingEvent(
+            id: fixedUUID(id),
+            startedAt: startedAt,
+            completedAt: startedAt.addingTimeInterval(600),
+            durationSeconds: 600,
+            selectedTriggers: triggers,
+            completedWithoutSmoking: completedWithoutSmoking,
+            createdAt: fixedDate(id),
+            updatedAt: fixedDate(id + 1)
+        )
+    }
+
+    private func makeDate(
+        year: Int,
+        month: Int,
+        day: Int,
+        hour: Int = 12,
+        calendar: Calendar
+    ) -> Date {
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        return calendar.date(from: components)!
     }
 
     private func fixedDate(_ seconds: Int) -> Date {

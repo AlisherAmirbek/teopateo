@@ -10,9 +10,15 @@ struct TodayView: View {
             ScrollView {
                 VStack(spacing: 0) {
                     header
+                    StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
+                        .padding(.top, 8)
+                    if !store.isOnboardingCompleted {
+                        onboardingPrompt
+                    }
                     mascot
                     copy
                     rescueButton
+                    riskCard
                     facts
                 }
                 .padding(.horizontal, 24)
@@ -20,6 +26,35 @@ struct TodayView: View {
                 .padding(.bottom, 24)
             }
         }
+    }
+
+    private var onboardingPrompt: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "list.clipboard")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .frame(width: 34, height: 34)
+                    .background(QuitTheme.peach.opacity(0.74))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Finish your quit plan")
+                        .font(.rounded(.headline, weight: .bold))
+                        .foregroundColor(QuitTheme.ink)
+                    Text("Set your triggers, reason, and first rescue actions.")
+                        .font(.rounded(.caption))
+                        .foregroundColor(QuitTheme.muted)
+                }
+            }
+
+            Button("Continue setup") {
+                store.presentOnboarding()
+            }
+            .buttonStyle(QuietButtonStyle())
+        }
+        .quietCard()
+        .padding(.top, 14)
     }
 
     private var header: some View {
@@ -81,6 +116,40 @@ struct TodayView: View {
             .clipShape(Capsule())
         }
         .padding(.top, 28)
+    }
+
+    private var riskCard: some View {
+        let risk = store.calculatedInsights.todayRisk
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Today risk")
+                    .font(.rounded(.headline, weight: .bold))
+                Spacer()
+                Text(risk.level.rawValue)
+                    .font(.rounded(.caption, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .background(risk.level == .high ? QuitTheme.cocoa : QuitTheme.sage)
+                    .cornerRadius(12)
+            }
+
+            Text(risk.summary)
+                .font(.rounded(.subheadline))
+                .foregroundColor(QuitTheme.muted)
+
+            Button(risk.actionTitle) {
+                if risk.actionTitle == "Start rescue" {
+                    store.isCravingModePresented = true
+                } else {
+                    store.selectedTab = .plan
+                }
+            }
+            .buttonStyle(QuietButtonStyle())
+        }
+        .quietCard()
+        .padding(.top, 18)
     }
 
     private var facts: some View {

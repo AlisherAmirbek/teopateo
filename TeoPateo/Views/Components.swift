@@ -69,3 +69,20 @@ struct RootScreen<Content: View>: View {
         }
     }
 }
+
+struct StatusBanner: View {
+    let status: SaveStatus
+    let persistenceError: String?
+
+    var body: some View {
+        if let message = persistenceError ?? status.message {
+            Text(message)
+                .font(.rounded(.caption, weight: .bold))
+                .foregroundColor(status.isFailure || persistenceError != nil ? QuitTheme.cocoa : QuitTheme.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background((status.isFailure || persistenceError != nil ? QuitTheme.peach : QuitTheme.sage).opacity(0.5))
+                .cornerRadius(12)
+        }
+    }
+}

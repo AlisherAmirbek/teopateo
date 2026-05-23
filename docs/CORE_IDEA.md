@@ -17,6 +17,33 @@ Reference sources:
 - Smokefree cravings and triggers
 - Smokefree quit plan
 
+## Business Model
+
+Use a subscription model built around ongoing quit support instead of a fixed-duration program.
+
+The free product should help the user understand the app, create a basic quit plan, track simple progress, and find trustworthy external support. The paid package should contain the strongest relapse-prevention tools, including full craving mode.
+
+### Free Tier
+
+- Basic onboarding.
+- Basic quit plan.
+- Daily check-in.
+- Basic progress dashboard.
+- Quitline and professional support prompts.
+- High-level medication education.
+
+### Paid Package
+
+- Full craving emergency mode.
+- Adaptive trigger and slip recovery flows.
+- Personalized risky-window reminders.
+- Pattern insights based on real craving and check-in history.
+- AI coach for cravings, planning, reflection, and relapse prevention.
+- Support-circle actions and preset messages.
+- Motivation vault and richer quit history.
+
+The subscription promise should be a continuing quit journey, not a pass/fail challenge. If the user smokes, the paid experience should adapt the plan and keep the journey alive rather than making the user feel like they wasted money.
+
 ## Main Features
 
 ### Personalized Onboarding
@@ -48,7 +75,7 @@ Help the user turn their quit intention into a practical plan:
 
 ### Craving Emergency Mode
 
-Provide a one-tap "I want to smoke" button for the exact high-risk moment. The flow should include:
+Provide a one-tap "I want to smoke" button for the exact high-risk moment. This is the core paid feature because it is the app's strongest intervention surface. The flow should include:
 
 - A short timer
 - Breathing exercise
@@ -99,7 +126,6 @@ Show progress without making the app feel childish:
 - Smoke-free days
 - Cigarettes avoided
 - Money saved
-- Time saved
 - Health milestones
 - Personal goals
 
@@ -247,7 +273,7 @@ The MVP should be narrow and strong:
 
 - Onboarding
 - Quit plan
-- Craving emergency mode
+- Paid craving emergency mode
 - Daily check-in
 - Progress dashboard
 - Trigger logging

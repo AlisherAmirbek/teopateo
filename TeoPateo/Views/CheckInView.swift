@@ -2,12 +2,21 @@ import SwiftUI
 
 struct CheckInView: View {
     @EnvironmentObject private var store: TeoPateoStore
-    @State private var note = "Delay the first craving by 10 minutes and text Maya if it hits after work."
-    @State private var slipNote = "I left work stressed and bought cigarettes before dinner."
+    @State private var note = ""
+    @State private var slipNote = ""
+    @State private var slipContext = ""
+    @State private var recoveryAction = "Pause before the next cigarette and use the rescue plan."
+
+    private let triggers = ["Coffee", "Work stress", "After meal", "Boredom", "Alcohol", "Social"]
 
     var body: some View {
         RootScreen {
             ScreenHeader(eyebrow: "Daily check-in", title: "Record today without judging it.")
+            StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
+
+            if let today = store.todayCheckIn {
+                existingCheckIn(today)
+            }
 
             sliders
             smokedToday
@@ -18,10 +27,26 @@ struct CheckInView: View {
 
             focus
             Button("Save check-in") {
-                store.saveCheckIn(focusNote: note, slipNote: slipNote)
+                save()
             }
-                .buttonStyle(FilledButtonStyle())
+            .buttonStyle(FilledButtonStyle())
+            .disabled(store.smokedToday == nil)
+            .opacity(store.smokedToday == nil ? 0.45 : 1)
         }
+    }
+
+    private func existingCheckIn(_ checkIn: DailyCheckIn) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Today already has a check-in")
+                .font(.rounded(.headline, weight: .bold))
+            Text("Saving again updates today's record instead of creating a duplicate.")
+                .font(.rounded(.subheadline))
+                .foregroundColor(QuitTheme.muted)
+            Text(checkIn.smokedToday == true ? "Recorded smoking today" : "Recorded no smoke today")
+                .font(.rounded(.caption, weight: .bold))
+                .foregroundColor(QuitTheme.cocoa)
+        }
+        .quietCard()
     }
 
     private var sliders: some View {
@@ -38,14 +63,12 @@ struct CheckInView: View {
             Text("Did you smoke today?")
                 .font(.rounded(.headline, weight: .bold))
             HStack(spacing: 10) {
-                Button("No smoke") {
+                smokeChoice("No smoke", selected: store.smokedToday == false) {
                     store.smokedToday = false
                 }
-                .buttonStyle(QuietButtonStyle())
-                Button("I smoked") {
+                smokeChoice("I smoked", selected: store.smokedToday == true) {
                     store.smokedToday = true
                 }
-                .buttonStyle(QuietButtonStyle())
             }
         }
         .quietCard()
@@ -55,14 +78,26 @@ struct CheckInView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Slip recovery")
                 .font(.rounded(.headline, weight: .bold))
-            Text("This stays part of the same quit attempt. Capture what happened and adjust the plan.")
+            Text("This stays part of the same quit attempt. Capture what happened and choose the next action.")
                 .font(.rounded(.subheadline))
                 .foregroundColor(QuitTheme.muted)
+
+            Stepper("Cigarettes smoked: \(store.cigarettesSmoked)", value: $store.cigarettesSmoked, in: 1...80)
+                .font(.rounded(.subheadline))
+
+            Text("Trigger")
+                .font(.rounded(.subheadline, weight: .bold))
+            FlexibleTags(items: triggers, selected: $store.selectedSlipTriggers)
+
+            TextField("Context, such as commute or after dinner", text: $slipContext)
+                .textFieldStyle(.roundedBorder)
             TextEditor(text: $slipNote)
-                .frame(height: 96)
+                .frame(height: 90)
                 .padding(8)
                 .background(QuitTheme.background)
                 .cornerRadius(12)
+            TextField("Recovery action", text: $recoveryAction)
+                .textFieldStyle(.roundedBorder)
         }
         .quietCard()
     }
@@ -75,6 +110,18 @@ struct CheckInView: View {
                 .frame(height: 104)
                 .padding(8)
                 .background(QuitTheme.paper)
+                .cornerRadius(12)
+        }
+    }
+
+    private func smokeChoice(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.rounded(.headline, weight: .bold))
+                .foregroundColor(selected ? .white : QuitTheme.cocoa)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(selected ? QuitTheme.cocoa : QuitTheme.peach.opacity(0.85))
                 .cornerRadius(12)
         }
     }
@@ -92,5 +139,22 @@ struct CheckInView: View {
             Slider(value: value, in: 1...10, step: 1)
                 .accentColor(QuitTheme.cocoa)
         }
+    }
+
+    private func save() {
+        let saved = store.saveCheckIn(focusNote: note, slipNote: slipNote)
+        guard saved, store.smokedToday == true else {
+            return
+        }
+
+        store.saveSlipEvent(
+            cigarettesSmoked: store.cigarettesSmoked,
+            triggers: store.selectedSlipTriggers,
+            mood: store.mood,
+            stress: store.stress,
+            context: slipContext,
+            note: slipNote,
+            recoveryAction: recoveryAction
+        )
     }
 }

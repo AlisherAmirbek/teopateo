@@ -6,14 +6,25 @@ protocol TeoPateoRepository {
     func tableNames() throws -> Set<String>
     func loadSnapshot() throws -> PersistedTeoPateoSnapshot
 
+    func fetchAppSettings() throws -> AppSettings?
+    func saveAppSettings(_ settings: AppSettings) throws
+
     func fetchQuitPlan() throws -> QuitPlan?
     func saveQuitPlan(_ plan: QuitPlan) throws
 
     func saveDailyCheckIn(_ checkIn: DailyCheckIn) throws
     func recentCheckIns(limit: Int) throws -> [DailyCheckIn]
+    func deleteDailyCheckIn(_ id: UUID) throws
 
     func saveCravingEvent(_ event: CravingEvent) throws
     func recentCravingEvents(limit: Int) throws -> [CravingEvent]
+    func deleteCravingEvent(_ id: UUID) throws
+
+    func saveSlipEvent(_ event: SlipEvent) throws
+    func recentSlipEvents(limit: Int) throws -> [SlipEvent]
+
+    func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws
+    func fetchReplacementActivities() throws -> [ReplacementActivity]
 
     func replaceSupportContacts(_ contacts: [SupportContact]) throws
     func fetchSupportContacts() throws -> [SupportContact]
@@ -85,13 +96,56 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
 
     func loadSnapshot() throws -> PersistedTeoPateoSnapshot {
         PersistedTeoPateoSnapshot(
+            appSettings: try fetchAppSettings(),
             quitPlan: try fetchQuitPlan(),
             dailyCheckIns: try recentCheckIns(limit: 10_000),
             cravingEvents: try recentCravingEvents(limit: 10_000),
+            slipEvents: try recentSlipEvents(limit: 10_000),
+            replacementActivities: try fetchReplacementActivities(),
             supportContacts: try fetchSupportContacts(),
             userReasons: try fetchUserReasons(),
             coachMessages: try fetchCoachMessages()
         )
+    }
+
+    func fetchAppSettings() throws -> AppSettings? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT onboarding_completed, updated_at
+                FROM app_settings
+                WHERE id = 0;
+                """
+            )
+
+            guard let row else {
+                return nil
+            }
+
+            return AppSettings(
+                onboardingCompleted: bool(row, "onboarding_completed"),
+                updatedAt: date(row, "updated_at")
+            )
+        }
+    }
+
+    func saveAppSettings(_ settings: AppSettings) throws {
+        try dbQueue.write { db in
+            try db.execute(literal: """
+                INSERT INTO app_settings (
+                    id, onboarding_completed, updated_at
+                )
+                VALUES (
+                    0,
+                    \(settings.onboardingCompleted ? 1 : 0),
+                    \(settings.updatedAt.timeIntervalSince1970)
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    onboarding_completed = excluded.onboarding_completed,
+                    updated_at = excluded.updated_at;
+                """)
+        }
     }
 
     func fetchQuitPlan() throws -> QuitPlan? {
@@ -99,7 +153,11 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
             let rows = try Row.fetchAll(
                 db,
                 sql: """
-                SELECT id, quit_date, quit_mode, medication_note, created_at, updated_at
+                SELECT id, quit_date, quit_mode, medication_note,
+                       baseline_cigarettes_per_day, cost_per_pack, cigarettes_per_pack,
+                       taper_target_cigarettes_per_day, taper_reduction_step,
+                       taper_reduction_interval_days, attempt_started_at,
+                       created_at, updated_at
                 FROM quit_plans
                 ORDER BY updated_at DESC
                 LIMIT 1;
@@ -117,6 +175,13 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 quitMode: row["quit_mode"],
                 triggerRules: try fetchTriggerRules(db: db, quitPlanID: id),
                 medicationNote: row["medication_note"],
+                baselineCigarettesPerDay: row["baseline_cigarettes_per_day"],
+                costPerPack: row["cost_per_pack"],
+                cigarettesPerPack: row["cigarettes_per_pack"],
+                taperTargetCigarettesPerDay: row["taper_target_cigarettes_per_day"],
+                taperReductionStep: row["taper_reduction_step"],
+                taperReductionIntervalDays: row["taper_reduction_interval_days"],
+                attemptStartedAt: date(row, "attempt_started_at"),
                 createdAt: date(row, "created_at"),
                 updatedAt: date(row, "updated_at")
             )
@@ -127,13 +192,24 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         try dbQueue.write { db in
             try db.execute(literal: """
                 INSERT INTO quit_plans (
-                    id, quit_date, quit_mode, medication_note, created_at, updated_at
+                    id, quit_date, quit_mode, medication_note,
+                    baseline_cigarettes_per_day, cost_per_pack, cigarettes_per_pack,
+                    taper_target_cigarettes_per_day, taper_reduction_step,
+                    taper_reduction_interval_days, attempt_started_at,
+                    created_at, updated_at
                 )
                 VALUES (
                     \(plan.id.uuidString),
                     \(plan.quitDate.timeIntervalSince1970),
                     \(plan.quitMode),
                     \(plan.medicationNote),
+                    \(plan.baselineCigarettesPerDay),
+                    \(plan.costPerPack),
+                    \(plan.cigarettesPerPack),
+                    \(plan.taperTargetCigarettesPerDay),
+                    \(plan.taperReductionStep),
+                    \(plan.taperReductionIntervalDays),
+                    \(plan.attemptStartedAt.timeIntervalSince1970),
                     \(plan.createdAt.timeIntervalSince1970),
                     \(plan.updatedAt.timeIntervalSince1970)
                 )
@@ -141,6 +217,13 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     quit_date = excluded.quit_date,
                     quit_mode = excluded.quit_mode,
                     medication_note = excluded.medication_note,
+                    baseline_cigarettes_per_day = excluded.baseline_cigarettes_per_day,
+                    cost_per_pack = excluded.cost_per_pack,
+                    cigarettes_per_pack = excluded.cigarettes_per_pack,
+                    taper_target_cigarettes_per_day = excluded.taper_target_cigarettes_per_day,
+                    taper_reduction_step = excluded.taper_reduction_step,
+                    taper_reduction_interval_days = excluded.taper_reduction_interval_days,
+                    attempt_started_at = excluded.attempt_started_at,
                     updated_at = excluded.updated_at;
                 """)
 
@@ -150,9 +233,11 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
             )
 
             for (position, rule) in plan.triggerRules.enumerated() {
+                let supportContactID = rule.supportContactID?.uuidString
                 try db.execute(literal: """
                     INSERT INTO trigger_rules (
-                        id, quit_plan_id, trigger, action, is_enabled, position
+                        id, quit_plan_id, trigger, action, is_enabled,
+                        support_contact_id, position
                     )
                     VALUES (
                         \(rule.id.uuidString),
@@ -160,6 +245,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                         \(rule.trigger),
                         \(rule.action),
                         \(rule.isEnabled ? 1 : 0),
+                        \(supportContactID),
                         \(position)
                     );
                     """)
@@ -172,7 +258,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         try dbQueue.write { db in
             try db.execute(literal: """
                 INSERT INTO daily_check_ins (
-                    id, date, mood, stress, confidence, smoked_today,
+                    id, date, mood, stress, confidence, smoked_today, cigarettes_smoked,
                     focus_note, slip_note, created_at, updated_at
                 )
                 VALUES (
@@ -182,6 +268,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     \(checkIn.stress),
                     \(checkIn.confidence),
                     \(smokedToday),
+                    \(checkIn.cigarettesSmoked),
                     \(checkIn.focusNote),
                     \(checkIn.slipNote),
                     \(checkIn.createdAt.timeIntervalSince1970),
@@ -193,6 +280,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     stress = excluded.stress,
                     confidence = excluded.confidence,
                     smoked_today = excluded.smoked_today,
+                    cigarettes_smoked = excluded.cigarettes_smoked,
                     focus_note = excluded.focus_note,
                     slip_note = excluded.slip_note,
                     updated_at = excluded.updated_at;
@@ -205,7 +293,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
             let rows = try Row.fetchAll(
                 db,
                 sql: """
-                SELECT id, date, mood, stress, confidence, smoked_today,
+                SELECT id, date, mood, stress, confidence, smoked_today, cigarettes_smoked,
                        focus_note, slip_note, created_at, updated_at
                 FROM daily_check_ins
                 ORDER BY date DESC, created_at DESC
@@ -222,6 +310,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     stress: row["stress"],
                     confidence: row["confidence"],
                     smokedToday: optionalBool(row, "smoked_today"),
+                    cigarettesSmoked: row["cigarettes_smoked"],
                     focusNote: row["focus_note"],
                     slipNote: row["slip_note"],
                     createdAt: date(row, "created_at"),
@@ -231,13 +320,24 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         }
     }
 
+    func deleteDailyCheckIn(_ id: UUID) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM daily_check_ins WHERE id = ?;", arguments: [id.uuidString])
+        }
+    }
+
     func saveCravingEvent(_ event: CravingEvent) throws {
         let completedAt = event.completedAt.map(\.timeIntervalSince1970)
+        let dismissedAt = event.dismissedAt.map(\.timeIntervalSince1970)
+        let helpedActivityID = event.helpedActivityID?.uuidString
+        let supportContactID = event.supportContactID?.uuidString
         try dbQueue.write { db in
             try db.execute(literal: """
                 INSERT INTO craving_events (
                     id, started_at, completed_at, duration_seconds,
-                    completed_without_smoking, created_at, updated_at
+                    completed_without_smoking, outcome, initial_intensity,
+                    final_intensity, helped_activity_id, support_contact_id,
+                    reflection_note, dismissed_at, created_at, updated_at
                 )
                 VALUES (
                     \(event.id.uuidString),
@@ -245,6 +345,13 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     \(completedAt),
                     \(event.durationSeconds),
                     \(event.completedWithoutSmoking ? 1 : 0),
+                    \(event.outcome.rawValue),
+                    \(event.initialIntensity),
+                    \(event.finalIntensity),
+                    \(helpedActivityID),
+                    \(supportContactID),
+                    \(event.reflectionNote),
+                    \(dismissedAt),
                     \(event.createdAt.timeIntervalSince1970),
                     \(event.updatedAt.timeIntervalSince1970)
                 )
@@ -253,6 +360,13 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     completed_at = excluded.completed_at,
                     duration_seconds = excluded.duration_seconds,
                     completed_without_smoking = excluded.completed_without_smoking,
+                    outcome = excluded.outcome,
+                    initial_intensity = excluded.initial_intensity,
+                    final_intensity = excluded.final_intensity,
+                    helped_activity_id = excluded.helped_activity_id,
+                    support_contact_id = excluded.support_contact_id,
+                    reflection_note = excluded.reflection_note,
+                    dismissed_at = excluded.dismissed_at,
                     updated_at = excluded.updated_at;
                 """)
 
@@ -282,7 +396,9 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 db,
                 sql: """
                 SELECT id, started_at, completed_at, duration_seconds,
-                       completed_without_smoking, created_at, updated_at
+                       completed_without_smoking, outcome, initial_intensity,
+                       final_intensity, helped_activity_id, support_contact_id,
+                       reflection_note, dismissed_at, created_at, updated_at
                 FROM craving_events
                 ORDER BY started_at DESC, created_at DESC
                 LIMIT ?;
@@ -298,7 +414,156 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     completedAt: optionalDate(row, "completed_at"),
                     durationSeconds: row["duration_seconds"],
                     selectedTriggers: try fetchCravingTriggers(db: db, eventID: id),
-                    completedWithoutSmoking: bool(row, "completed_without_smoking"),
+                    outcome: CravingOutcome(rawValue: row["outcome"]) ?? (bool(row, "completed_without_smoking") ? .completedWithoutSmoking : .smokedAfterCraving),
+                    initialIntensity: row["initial_intensity"],
+                    finalIntensity: row["final_intensity"],
+                    helpedActivityID: try optionalUUID(row, "helped_activity_id"),
+                    supportContactID: try optionalUUID(row, "support_contact_id"),
+                    reflectionNote: row["reflection_note"],
+                    dismissedAt: optionalDate(row, "dismissed_at"),
+                    createdAt: date(row, "created_at"),
+                    updatedAt: date(row, "updated_at")
+                )
+            }
+        }
+    }
+
+    func deleteCravingEvent(_ id: UUID) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM craving_events WHERE id = ?;", arguments: [id.uuidString])
+        }
+    }
+
+    func saveSlipEvent(_ event: SlipEvent) throws {
+        try dbQueue.write { db in
+            try db.execute(literal: """
+                INSERT INTO slip_events (
+                    id, occurred_at, cigarettes_smoked, mood, stress,
+                    context, note, recovery_action, created_at, updated_at
+                )
+                VALUES (
+                    \(event.id.uuidString),
+                    \(event.occurredAt.timeIntervalSince1970),
+                    \(event.cigarettesSmoked),
+                    \(event.mood),
+                    \(event.stress),
+                    \(event.context),
+                    \(event.note),
+                    \(event.recoveryAction),
+                    \(event.createdAt.timeIntervalSince1970),
+                    \(event.updatedAt.timeIntervalSince1970)
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    occurred_at = excluded.occurred_at,
+                    cigarettes_smoked = excluded.cigarettes_smoked,
+                    mood = excluded.mood,
+                    stress = excluded.stress,
+                    context = excluded.context,
+                    note = excluded.note,
+                    recovery_action = excluded.recovery_action,
+                    updated_at = excluded.updated_at;
+                """)
+
+            try db.execute(
+                sql: "DELETE FROM slip_event_triggers WHERE slip_event_id = ?;",
+                arguments: [event.id.uuidString]
+            )
+
+            for (position, trigger) in event.selectedTriggers.enumerated() {
+                try db.execute(literal: """
+                    INSERT INTO slip_event_triggers (
+                        slip_event_id, trigger, position
+                    )
+                    VALUES (
+                        \(event.id.uuidString),
+                        \(trigger),
+                        \(position)
+                    );
+                    """)
+            }
+        }
+    }
+
+    func recentSlipEvents(limit: Int) throws -> [SlipEvent] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, occurred_at, cigarettes_smoked, mood, stress,
+                       context, note, recovery_action, created_at, updated_at
+                FROM slip_events
+                ORDER BY occurred_at DESC, created_at DESC
+                LIMIT ?;
+                """,
+                arguments: [limit]
+            )
+
+            return try rows.map { row in
+                let id = try uuid(row, "id")
+                return SlipEvent(
+                    id: id,
+                    occurredAt: date(row, "occurred_at"),
+                    cigarettesSmoked: row["cigarettes_smoked"],
+                    selectedTriggers: try fetchSlipTriggers(db: db, eventID: id),
+                    mood: row["mood"],
+                    stress: row["stress"],
+                    context: row["context"],
+                    note: row["note"],
+                    recoveryAction: row["recovery_action"],
+                    createdAt: date(row, "created_at"),
+                    updatedAt: date(row, "updated_at")
+                )
+            }
+        }
+    }
+
+    func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM replacement_activities;")
+            for (position, activity) in activities.enumerated() {
+                try db.execute(literal: """
+                    INSERT INTO replacement_activities (
+                        id, title, instruction, category, duration_seconds,
+                        linked_trigger, is_enabled, position, created_at, updated_at
+                    )
+                    VALUES (
+                        \(activity.id.uuidString),
+                        \(activity.title),
+                        \(activity.instruction),
+                        \(activity.category.rawValue),
+                        \(activity.durationSeconds),
+                        \(activity.linkedTrigger),
+                        \(activity.isEnabled ? 1 : 0),
+                        \(position),
+                        \(activity.createdAt.timeIntervalSince1970),
+                        \(activity.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+        }
+    }
+
+    func fetchReplacementActivities() throws -> [ReplacementActivity] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, title, instruction, category, duration_seconds,
+                       linked_trigger, is_enabled, created_at, updated_at
+                FROM replacement_activities
+                ORDER BY position ASC, created_at ASC;
+                """
+            )
+
+            return try rows.map { row in
+                ReplacementActivity(
+                    id: try uuid(row, "id"),
+                    title: row["title"],
+                    instruction: row["instruction"],
+                    category: ReplacementActivityCategory(rawValue: row["category"]) ?? .distraction,
+                    durationSeconds: row["duration_seconds"],
+                    linkedTrigger: row["linked_trigger"],
+                    isEnabled: bool(row, "is_enabled"),
                     createdAt: date(row, "created_at"),
                     updatedAt: date(row, "updated_at")
                 )
@@ -312,12 +577,16 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
             for contact in contacts {
                 try db.execute(literal: """
                     INSERT INTO support_contacts (
-                        id, name, detail, created_at, updated_at
+                        id, name, detail, phone_number, preferred_role,
+                        default_message, created_at, updated_at
                     )
                     VALUES (
                         \(contact.id.uuidString),
                         \(contact.name),
                         \(contact.detail),
+                        \(contact.phoneNumber),
+                        \(contact.preferredRole.rawValue),
+                        \(contact.defaultMessage),
                         \(contact.createdAt.timeIntervalSince1970),
                         \(contact.updatedAt.timeIntervalSince1970)
                     );
@@ -331,7 +600,8 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
             let rows = try Row.fetchAll(
                 db,
                 sql: """
-                SELECT id, name, detail, created_at, updated_at
+                SELECT id, name, detail, phone_number, preferred_role,
+                       default_message, created_at, updated_at
                 FROM support_contacts
                 ORDER BY created_at ASC, name ASC;
                 """
@@ -342,6 +612,9 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     id: try uuid(row, "id"),
                     name: row["name"],
                     detail: row["detail"],
+                    phoneNumber: row["phone_number"],
+                    preferredRole: SupportRole(rawValue: row["preferred_role"]) ?? .cravingAlert,
+                    defaultMessage: row["default_message"],
                     createdAt: date(row, "created_at"),
                     updatedAt: date(row, "updated_at")
                 )
@@ -352,14 +625,18 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
     func replaceUserReasons(_ reasons: [UserReason]) throws {
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM user_reasons;")
-            for reason in reasons {
+            for (position, reason) in reasons.enumerated() {
                 try db.execute(literal: """
                     INSERT INTO user_reasons (
-                        id, text, created_at, updated_at
+                        id, text, sort_order, is_primary, category,
+                        created_at, updated_at
                     )
                     VALUES (
                         \(reason.id.uuidString),
                         \(reason.text),
+                        \(reason.sortOrder == 0 ? position : reason.sortOrder),
+                        \(reason.isPrimary ? 1 : 0),
+                        \(reason.category),
                         \(reason.createdAt.timeIntervalSince1970),
                         \(reason.updatedAt.timeIntervalSince1970)
                     );
@@ -373,9 +650,9 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
             let rows = try Row.fetchAll(
                 db,
                 sql: """
-                SELECT id, text, created_at, updated_at
+                SELECT id, text, sort_order, is_primary, category, created_at, updated_at
                 FROM user_reasons
-                ORDER BY created_at ASC;
+                ORDER BY sort_order ASC, created_at ASC;
                 """
             )
 
@@ -383,6 +660,9 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 UserReason(
                     id: try uuid(row, "id"),
                     text: row["text"],
+                    sortOrder: row["sort_order"],
+                    isPrimary: bool(row, "is_primary"),
+                    category: row["category"],
                     createdAt: date(row, "created_at"),
                     updatedAt: date(row, "updated_at")
                 )
@@ -521,6 +801,104 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 """)
         }
 
+        migrator.registerMigration("v2") { db in
+            try db.execute(sql: """
+                ALTER TABLE quit_plans ADD COLUMN baseline_cigarettes_per_day REAL NOT NULL DEFAULT 10;
+                ALTER TABLE quit_plans ADD COLUMN cost_per_pack REAL NOT NULL DEFAULT 10;
+                ALTER TABLE quit_plans ADD COLUMN cigarettes_per_pack INTEGER NOT NULL DEFAULT 20;
+                ALTER TABLE quit_plans ADD COLUMN taper_target_cigarettes_per_day REAL NOT NULL DEFAULT 0;
+                ALTER TABLE quit_plans ADD COLUMN taper_reduction_step REAL NOT NULL DEFAULT 2;
+                ALTER TABLE quit_plans ADD COLUMN taper_reduction_interval_days INTEGER NOT NULL DEFAULT 3;
+                ALTER TABLE quit_plans ADD COLUMN attempt_started_at REAL NOT NULL DEFAULT 0;
+                UPDATE quit_plans SET attempt_started_at = quit_date WHERE attempt_started_at = 0;
+
+                ALTER TABLE trigger_rules ADD COLUMN support_contact_id TEXT;
+
+                ALTER TABLE daily_check_ins ADD COLUMN cigarettes_smoked INTEGER NOT NULL DEFAULT 0;
+
+                ALTER TABLE craving_events ADD COLUMN outcome TEXT NOT NULL DEFAULT 'completed_without_smoking';
+                ALTER TABLE craving_events ADD COLUMN initial_intensity REAL;
+                ALTER TABLE craving_events ADD COLUMN final_intensity REAL;
+                ALTER TABLE craving_events ADD COLUMN helped_activity_id TEXT;
+                ALTER TABLE craving_events ADD COLUMN support_contact_id TEXT;
+                ALTER TABLE craving_events ADD COLUMN reflection_note TEXT NOT NULL DEFAULT '';
+                ALTER TABLE craving_events ADD COLUMN dismissed_at REAL;
+                UPDATE craving_events
+                SET outcome = CASE
+                    WHEN completed_without_smoking = 1 THEN 'completed_without_smoking'
+                    ELSE 'smoked_after_craving'
+                END;
+
+                ALTER TABLE support_contacts ADD COLUMN phone_number TEXT NOT NULL DEFAULT '';
+                ALTER TABLE support_contacts ADD COLUMN preferred_role TEXT NOT NULL DEFAULT 'craving_alert';
+                ALTER TABLE support_contacts ADD COLUMN default_message TEXT NOT NULL DEFAULT '';
+
+                ALTER TABLE user_reasons ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE user_reasons ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE user_reasons ADD COLUMN category TEXT NOT NULL DEFAULT 'personal';
+
+                CREATE TABLE IF NOT EXISTS slip_events (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    occurred_at REAL NOT NULL,
+                    cigarettes_smoked INTEGER NOT NULL,
+                    mood REAL,
+                    stress REAL,
+                    context TEXT NOT NULL,
+                    note TEXT NOT NULL,
+                    recovery_action TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS slip_event_triggers (
+                    slip_event_id TEXT NOT NULL,
+                    trigger TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    PRIMARY KEY(slip_event_id, trigger),
+                    FOREIGN KEY(slip_event_id) REFERENCES slip_events(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS replacement_activities (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    title TEXT NOT NULL,
+                    instruction TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    duration_seconds INTEGER NOT NULL,
+                    linked_trigger TEXT NOT NULL,
+                    is_enabled INTEGER NOT NULL,
+                    position INTEGER NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS slip_events_occurred_at_index
+                    ON slip_events(occurred_at);
+                CREATE INDEX IF NOT EXISTS slip_event_triggers_trigger_index
+                    ON slip_event_triggers(trigger);
+                CREATE INDEX IF NOT EXISTS replacement_activities_enabled_index
+                    ON replacement_activities(is_enabled);
+
+                PRAGMA user_version = 2;
+                """)
+        }
+
+        migrator.registerMigration("v3") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 0),
+                    onboarding_completed INTEGER NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL
+                );
+
+                INSERT OR IGNORE INTO app_settings (
+                    id, onboarding_completed, updated_at
+                )
+                VALUES (0, 0, 0);
+
+                PRAGMA user_version = 3;
+                """)
+        }
+
         return migrator
     }
 
@@ -528,7 +906,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         let rows = try Row.fetchAll(
             db,
             sql: """
-            SELECT id, trigger, action, is_enabled
+            SELECT id, trigger, action, is_enabled, support_contact_id
             FROM trigger_rules
             WHERE quit_plan_id = ?
             ORDER BY position ASC;
@@ -541,7 +919,8 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 id: try uuid(row, "id"),
                 trigger: row["trigger"],
                 action: row["action"],
-                isEnabled: bool(row, "is_enabled")
+                isEnabled: bool(row, "is_enabled"),
+                supportContactID: try optionalUUID(row, "support_contact_id")
             )
         }
     }
@@ -559,8 +938,32 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         )
     }
 
+    private func fetchSlipTriggers(db: Database, eventID: UUID) throws -> [String] {
+        try String.fetchAll(
+            db,
+            sql: """
+            SELECT trigger
+            FROM slip_event_triggers
+            WHERE slip_event_id = ?
+            ORDER BY position ASC;
+            """,
+            arguments: [eventID.uuidString]
+        )
+    }
+
     private func uuid(_ row: Row, _ column: String) throws -> UUID {
         let value: String = row[column]
+        guard let uuid = UUID(uuidString: value) else {
+            throw TeoPateoRepositoryError.invalidUUID(value)
+        }
+        return uuid
+    }
+
+    private func optionalUUID(_ row: Row, _ column: String) throws -> UUID? {
+        let value: String? = row[column]
+        guard let value, !value.isEmpty else {
+            return nil
+        }
         guard let uuid = UUID(uuidString: value) else {
             throw TeoPateoRepositoryError.invalidUUID(value)
         }

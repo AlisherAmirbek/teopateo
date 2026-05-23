@@ -22,6 +22,7 @@
 		A1B2C3D4E5F60718293A0104 /* SQLiteTeoPateoRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */; };
 		A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89C40CE62B9B4943A6112508 /* Assets.xcassets */; };
 		B81FD725E89B4B53B10C3A94 /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1341071134E44F28C5467B4 /* PlanView.swift */; };
+		D4A7B8850C9D4A5B97F24A11 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A7B8840C9D4A5B97F24A11 /* OnboardingView.swift */; };
 		D9020C9D4E1A48B7B289B9E6 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4B3FAC78D454260B212B499 /* Theme.swift */; };
 		ECE9921C7C56492F9D87D763 /* TeoPateoModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CC6B25E8DD94BC8A2ABC8B2 /* TeoPateoModels.swift */; };
 		F0EF8AC76B4B4CC1A19F564F /* TeoPateoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7459CD623144D7485026A3B /* TeoPateoApp.swift */; };
@@ -59,6 +60,7 @@
 		C4B3FAC78D454260B212B499 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		C7459CD623144D7485026A3B /* TeoPateoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeoPateoApp.swift; sourceTree = "<group>"; };
 		CB3881272A564E68B98C37B7 /* mascot.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = mascot.png; sourceTree = "<group>"; };
+		D4A7B8840C9D4A5B97F24A11 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		D88DBF5EA21B43379A7BA673 /* InsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsightsView.swift; sourceTree = "<group>"; };
 		FF8D76413EEE429DAA5F16A9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -96,6 +98,7 @@
 			children = (
 				C4B3FAC78D454260B212B499 /* Theme.swift */,
 				8FD5998364E7424DB06BA3C5 /* Components.swift */,
+				D4A7B8840C9D4A5B97F24A11 /* OnboardingView.swift */,
 				227C6F62A4D048C1A5AAC4AF /* TodayView.swift */,
 				6F498D8646264BD399B88954 /* CravingModeView.swift */,
 				A1341071134E44F28C5467B4 /* PlanView.swift */,
@@ -278,6 +281,7 @@
 				8E7B73D0D7AD4667BE4E5B52 /* ContentView.swift in Sources */,
 				D9020C9D4E1A48B7B289B9E6 /* Theme.swift in Sources */,
 				73C47D4C11C24B1AAD4A0962 /* Components.swift in Sources */,
+				D4A7B8850C9D4A5B97F24A11 /* OnboardingView.swift in Sources */,
 				3487CBEE3E1D411EB6C55F08 /* TodayView.swift in Sources */,
 				27B943F18D124162A96094B5 /* CravingModeView.swift in Sources */,
 				B81FD725E89B4B53B10C3A94 /* PlanView.swift in Sources */,

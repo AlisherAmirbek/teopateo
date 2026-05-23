@@ -36,6 +36,10 @@ struct ContentView: View {
                 .tag(AppTab.coach)
         }
         .accentColor(QuitTheme.cocoa)
+        .fullScreenCover(isPresented: $store.isOnboardingPresented) {
+            OnboardingView()
+                .environmentObject(store)
+        }
         .fullScreenCover(isPresented: $store.isCravingModePresented) {
             CravingModeView()
                 .environmentObject(store)

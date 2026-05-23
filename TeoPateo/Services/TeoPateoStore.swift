@@ -3,6 +3,7 @@ import Foundation
 final class TeoPateoStore: ObservableObject {
     @Published var selectedTab: AppTab = .today
     @Published var isCravingModePresented = false
+    @Published var isOnboardingPresented = false
     @Published var quitMode = "Taper" {
         didSet {
             updateQuitMode()
@@ -12,21 +13,27 @@ final class TeoPateoStore: ObservableObject {
     @Published var stress = 7.0
     @Published var confidence = 5.0
     @Published var smokedToday: Bool?
-    @Published var selectedTriggers: Set<String> = ["Coffee", "Work stress"]
+    @Published var cigarettesSmoked = 1
+    @Published var selectedTriggers: Set<String> = []
+    @Published var selectedSlipTriggers: Set<String> = []
     @Published private(set) var triggerRules: [TriggerRule] = []
     @Published private(set) var supportContacts: [SupportContact] = []
     @Published private(set) var userReasons: [UserReason] = []
     @Published private(set) var dailyCheckIns: [DailyCheckIn] = []
     @Published private(set) var cravingEvents: [CravingEvent] = []
+    @Published private(set) var slipEvents: [SlipEvent] = []
+    @Published private(set) var replacementActivities: [ReplacementActivity] = []
     @Published private(set) var coachMessages: [CoachMessage] = []
+    @Published private(set) var isOnboardingCompleted = false
     @Published private(set) var persistenceError: String?
+    @Published private(set) var lastSaveStatus: SaveStatus = .idle
+    @Published private(set) var supportMessageDraft = ""
 
     private let repository: TeoPateoRepository
     private let now: () -> Date
     private let calendar: Calendar
     private var quitPlan = TeoPateoStore.defaultQuitPlan()
     private var isHydrating = false
-    private static let estimatedCostPerCigarette = 0.50
 
     convenience init() {
         do {
@@ -34,6 +41,7 @@ final class TeoPateoStore: ObservableObject {
         } catch {
             self.init(repository: InMemoryTeoPateoRepository())
             persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Local storage is unavailable. Changes may not persist.")
         }
     }
 
@@ -48,6 +56,14 @@ final class TeoPateoStore: ObservableObject {
         hydrateFromPersistence()
     }
 
+    var currentQuitPlan: QuitPlan {
+        quitPlan
+    }
+
+    var todayCheckIn: DailyCheckIn? {
+        latestCheckIn(on: now())
+    }
+
     var metrics: [ProgressMetric] {
         let insights = calculatedInsights
         return [
@@ -59,12 +75,46 @@ final class TeoPateoStore: ObservableObject {
 
     var calculatedInsights: CalculatedInsights {
         Self.calculateInsights(
+            quitPlan: quitPlan,
             dailyCheckIns: dailyCheckIns,
             cravingEvents: cravingEvents,
+            slipEvents: slipEvents,
             triggerRules: triggerRules,
             now: now(),
             calendar: calendar
         )
+    }
+
+    var progressSummary: ProgressSummary {
+        let insights = calculatedInsights
+        return ProgressSummary(
+            smokeFreeDays: insights.smokeFreeDays,
+            cigarettesAvoided: insights.cigarettesAvoided,
+            moneySaved: insights.moneySaved,
+            cravingsHandled: insights.cravingsHandled,
+            milestones: earnedMilestones(
+                smokeFreeDays: insights.smokeFreeDays,
+                cravingsHandled: insights.cravingsHandled,
+                slipCount: slipEvents.count,
+                moneySaved: insights.moneySaved
+            )
+        )
+    }
+
+    var historyGroups: [HistoryDayGroup] {
+        let entries = historyEntries()
+        let grouped = Dictionary(grouping: entries) { entry in
+            calendar.startOfDay(for: entry.date)
+        }
+
+        return grouped
+            .map { day, entries in
+                HistoryDayGroup(
+                    day: day,
+                    entries: entries.sorted { $0.date > $1.date }
+                )
+            }
+            .sorted { $0.day > $1.day }
     }
 
     @discardableResult
@@ -73,16 +123,24 @@ final class TeoPateoStore: ObservableObject {
         focusNote: String,
         slipNote: String
     ) -> Bool {
+        guard smokedToday != nil else {
+            lastSaveStatus = .failed("Choose whether you smoked today before saving.")
+            return false
+        }
+
         let now = now()
+        let existing = latestCheckIn(on: date)
         let checkIn = DailyCheckIn(
+            id: existing?.id ?? UUID(),
             date: date,
             mood: mood,
             stress: stress,
             confidence: confidence,
             smokedToday: smokedToday,
+            cigarettesSmoked: smokedToday == true ? max(cigarettesSmoked, 1) : 0,
             focusNote: focusNote,
             slipNote: smokedToday == true ? slipNote : "",
-            createdAt: now,
+            createdAt: existing?.createdAt ?? now,
             updatedAt: now
         )
 
@@ -90,9 +148,11 @@ final class TeoPateoStore: ObservableObject {
             try repository.saveDailyCheckIn(checkIn)
             dailyCheckIns = try repository.recentCheckIns(limit: 10_000)
             persistenceError = nil
+            lastSaveStatus = .saved(existing == nil ? "Check-in saved." : "Today check-in updated.")
             return true
         } catch {
             persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Check-in could not be saved.")
             return false
         }
     }
@@ -104,26 +164,166 @@ final class TeoPateoStore: ObservableObject {
         durationSeconds: Int,
         completedWithoutSmoking: Bool
     ) -> Bool {
-        let now = now()
-        let event = CravingEvent(
+        if completedWithoutSmoking {
+            return completeCravingWithoutSmoking(
+                startedAt: startedAt,
+                completedAt: completedAt,
+                durationSeconds: durationSeconds
+            )
+        }
+
+        return completeCravingWithSlip(
             startedAt: startedAt,
             completedAt: completedAt,
             durationSeconds: durationSeconds,
-            selectedTriggers: selectedTriggers.sorted(),
-            completedWithoutSmoking: completedWithoutSmoking,
+            cigarettesSmoked: 1,
+            slipNote: "Smoked during a craving.",
+            recoveryAction: "Return to the next planned 10-minute pause."
+        )
+    }
+
+    @discardableResult
+    func completeCravingWithoutSmoking(
+        startedAt: Date,
+        completedAt: Date = Date(),
+        durationSeconds: Int,
+        initialIntensity: Double? = nil,
+        finalIntensity: Double? = nil,
+        helpedActivityID: UUID? = nil,
+        supportContactID: UUID? = nil,
+        reflectionNote: String = ""
+    ) -> Bool {
+        let event = makeCravingEvent(
+            startedAt: startedAt,
+            completedAt: completedAt,
+            durationSeconds: durationSeconds,
+            outcome: .completedWithoutSmoking,
+            initialIntensity: initialIntensity,
+            finalIntensity: finalIntensity,
+            helpedActivityID: helpedActivityID,
+            supportContactID: supportContactID,
+            reflectionNote: reflectionNote,
+            dismissedAt: nil
+        )
+
+        return persistCravingEvent(event, successMessage: "Craving saved as handled.")
+    }
+
+    @discardableResult
+    func completeCravingWithSlip(
+        startedAt: Date,
+        completedAt: Date = Date(),
+        durationSeconds: Int,
+        initialIntensity: Double? = nil,
+        finalIntensity: Double? = nil,
+        helpedActivityID: UUID? = nil,
+        supportContactID: UUID? = nil,
+        cigarettesSmoked: Int,
+        slipNote: String,
+        recoveryAction: String
+    ) -> Bool {
+        let event = makeCravingEvent(
+            startedAt: startedAt,
+            completedAt: completedAt,
+            durationSeconds: durationSeconds,
+            outcome: .smokedAfterCraving,
+            initialIntensity: initialIntensity,
+            finalIntensity: finalIntensity,
+            helpedActivityID: helpedActivityID,
+            supportContactID: supportContactID,
+            reflectionNote: slipNote,
+            dismissedAt: nil
+        )
+
+        guard persistCravingEvent(event, successMessage: "Craving and slip saved.") else {
+            return false
+        }
+
+        return saveSlipEvent(
+            occurredAt: completedAt,
+            cigarettesSmoked: cigarettesSmoked,
+            triggers: selectedTriggers,
+            mood: mood,
+            stress: stress,
+            context: "Craving mode",
+            note: slipNote,
+            recoveryAction: recoveryAction
+        )
+    }
+
+    @discardableResult
+    func dismissCravingSession(
+        startedAt: Date,
+        dismissedAt: Date = Date(),
+        durationSeconds: Int,
+        initialIntensity: Double? = nil
+    ) -> Bool {
+        let event = makeCravingEvent(
+            startedAt: startedAt,
+            completedAt: nil,
+            durationSeconds: durationSeconds,
+            outcome: .dismissedWithoutOutcome,
+            initialIntensity: initialIntensity,
+            finalIntensity: nil,
+            helpedActivityID: nil,
+            supportContactID: nil,
+            reflectionNote: "",
+            dismissedAt: dismissedAt
+        )
+
+        return persistCravingEvent(event, successMessage: "Craving saved for later review.")
+    }
+
+    @discardableResult
+    func saveSlipEvent(
+        occurredAt: Date = Date(),
+        cigarettesSmoked: Int,
+        triggers: Set<String>,
+        mood: Double? = nil,
+        stress: Double? = nil,
+        context: String,
+        note: String,
+        recoveryAction: String
+    ) -> Bool {
+        let now = now()
+        let event = SlipEvent(
+            occurredAt: occurredAt,
+            cigarettesSmoked: max(cigarettesSmoked, 1),
+            selectedTriggers: triggers.sorted(),
+            mood: mood,
+            stress: stress,
+            context: context,
+            note: note,
+            recoveryAction: recoveryAction,
             createdAt: now,
             updatedAt: now
         )
 
         do {
-            try repository.saveCravingEvent(event)
-            cravingEvents = try repository.recentCravingEvents(limit: 10_000)
+            try repository.saveSlipEvent(event)
+            slipEvents = try repository.recentSlipEvents(limit: 10_000)
             persistenceError = nil
+            lastSaveStatus = .saved("Slip saved as plan data.")
             return true
         } catch {
             persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Slip could not be saved.")
             return false
         }
+    }
+
+    func startCravingSession() {
+        selectedTriggers = []
+        supportMessageDraft = ""
+        lastSaveStatus = .idle
+    }
+
+    func draftSupportMessage(for contact: SupportContact? = nil) {
+        guard let contact = contact ?? supportContactForCraving() else {
+            supportMessageDraft = "Add a support contact in your plan first."
+            return
+        }
+        supportMessageDraft = supportMessageTemplate(for: contact)
     }
 
     func sendCoachMessage(_ text: String) {
@@ -140,6 +340,348 @@ final class TeoPateoStore: ObservableObject {
         persistCoachMessages()
     }
 
+    func updateQuitDate(_ date: Date) {
+        quitPlan.quitDate = date
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: "Quit date updated.")
+    }
+
+    func updateProgressBaseline(
+        cigarettesPerDay: Double,
+        costPerPack: Double,
+        cigarettesPerPack: Int
+    ) {
+        quitPlan.baselineCigarettesPerDay = max(cigarettesPerDay, 0)
+        quitPlan.costPerPack = max(costPerPack, 0)
+        quitPlan.cigarettesPerPack = max(cigarettesPerPack, 1)
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: "Progress baseline updated.")
+    }
+
+    @discardableResult
+    func completeOnboarding(_ input: OnboardingPlanInput) -> Bool {
+        let now = now()
+        let normalizedMode = input.quitMode == "Cold turkey" ? "Cold turkey" : "Taper"
+        let selectedTriggers = Self.normalizedOnboardingTriggers(input.selectedTriggers)
+        let nextTriggerRules = selectedTriggers.map { trigger in
+            TriggerRule(
+                trigger: trigger,
+                action: Self.onboardingAction(for: trigger)
+            )
+        }
+        let primaryReason = input.primaryReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !primaryReason.isEmpty else {
+            lastSaveStatus = .failed("Add one reason before creating the plan.")
+            return false
+        }
+        let nextReasons = [
+            UserReason(
+                text: primaryReason,
+                sortOrder: 0,
+                isPrimary: true,
+                createdAt: now,
+                updatedAt: now
+            )
+        ]
+        let nextActivities = Self.onboardingReplacementActivities(
+            for: selectedTriggers,
+            now: now
+        )
+
+        var nextPlan = quitPlan
+        nextPlan.quitDate = input.quitDate
+        nextPlan.quitMode = normalizedMode
+        nextPlan.triggerRules = nextTriggerRules
+        nextPlan.medicationNote = Self.medicationNote(
+            isInterestedInMedicationSupport: input.isInterestedInMedicationSupport
+        )
+        nextPlan.baselineCigarettesPerDay = max(input.cigarettesPerDay, 0)
+        nextPlan.costPerPack = max(input.costPerPack, 0)
+        nextPlan.cigarettesPerPack = 20
+        nextPlan.taperTargetCigarettesPerDay = normalizedMode == "Taper"
+            ? max(input.cigarettesPerDay - 2, 0)
+            : 0
+        nextPlan.taperReductionStep = 2
+        nextPlan.taperReductionIntervalDays = 3
+        nextPlan.attemptStartedAt = input.quitDate
+        nextPlan.updatedAt = now
+
+        let nextSettings = AppSettings(onboardingCompleted: true, updatedAt: now)
+
+        do {
+            try repository.saveQuitPlan(nextPlan)
+            try repository.replaceSupportContacts([])
+            try repository.replaceUserReasons(nextReasons)
+            try repository.replaceReplacementActivities(nextActivities)
+            try repository.saveAppSettings(nextSettings)
+
+            isHydrating = true
+            quitPlan = nextPlan
+            quitMode = normalizedMode
+            triggerRules = nextTriggerRules
+            supportContacts = []
+            userReasons = nextReasons
+            replacementActivities = nextActivities
+            self.selectedTriggers = Set(selectedTriggers)
+            isOnboardingCompleted = true
+            isOnboardingPresented = false
+            selectedTab = .today
+            isHydrating = false
+
+            persistenceError = nil
+            lastSaveStatus = .saved("Your quit plan is ready.")
+            return true
+        } catch {
+            isHydrating = false
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Onboarding could not be saved.")
+            return false
+        }
+    }
+
+    func presentOnboarding() {
+        isOnboardingPresented = true
+    }
+
+    func dismissOnboardingForNow() {
+        isOnboardingPresented = false
+        selectedTab = .today
+    }
+
+    func addTriggerRule(trigger: String, action: String) {
+        let trimmedTrigger = trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedAction = action.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTrigger.isEmpty, !trimmedAction.isEmpty else {
+            lastSaveStatus = .failed("Trigger and action are required.")
+            return
+        }
+        triggerRules.append(TriggerRule(trigger: trimmedTrigger, action: trimmedAction))
+        quitPlan.triggerRules = triggerRules
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: "Trigger rule added.")
+    }
+
+    func addSupportContact(
+        name: String,
+        detail: String,
+        phoneNumber: String = "",
+        preferredRole: SupportRole = .cravingAlert,
+        defaultMessage: String = ""
+    ) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            lastSaveStatus = .failed("Support contact needs a name.")
+            return
+        }
+        supportContacts.append(
+            SupportContact(
+                name: trimmedName,
+                detail: detail,
+                phoneNumber: phoneNumber,
+                preferredRole: preferredRole,
+                defaultMessage: defaultMessage
+            )
+        )
+        persistSupportContacts(successMessage: "Support contact saved.")
+    }
+
+    func addUserReason(_ text: String, isPrimary: Bool = false) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            lastSaveStatus = .failed("Reason cannot be empty.")
+            return
+        }
+
+        if isPrimary {
+            userReasons = userReasons.map { reason in
+                var updated = reason
+                updated.isPrimary = false
+                updated.updatedAt = now()
+                return updated
+            }
+        }
+
+        userReasons.append(
+            UserReason(
+                text: trimmed,
+                sortOrder: userReasons.count,
+                isPrimary: isPrimary || userReasons.isEmpty,
+                createdAt: now(),
+                updatedAt: now()
+            )
+        )
+        persistUserReasons(successMessage: "Reason saved.")
+    }
+
+    func setPrimaryUserReason(_ id: UUID) {
+        userReasons = userReasons.map { reason in
+            var updated = reason
+            updated.isPrimary = reason.id == id
+            updated.updatedAt = now()
+            return updated
+        }
+        persistUserReasons(successMessage: "Primary reason updated.")
+    }
+
+    func deleteUserReason(_ id: UUID) {
+        guard userReasons.contains(where: { $0.id == id }) else {
+            return
+        }
+
+        userReasons.removeAll { $0.id == id }
+
+        var nextReasons = userReasons.enumerated().map { index, reason in
+            var updated = reason
+            updated.sortOrder = index
+            updated.updatedAt = now()
+            return updated
+        }
+
+        if !nextReasons.isEmpty && !nextReasons.contains(where: \.isPrimary) {
+            nextReasons[0].isPrimary = true
+            nextReasons[0].updatedAt = now()
+        }
+
+        userReasons = nextReasons
+        persistUserReasons(successMessage: "Reason removed.")
+    }
+
+    func addReplacementActivity(
+        title: String,
+        instruction: String,
+        category: ReplacementActivityCategory,
+        linkedTrigger: String = ""
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedInstruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty, !trimmedInstruction.isEmpty else {
+            lastSaveStatus = .failed("Activity title and instruction are required.")
+            return
+        }
+        replacementActivities.append(
+            ReplacementActivity(
+                title: trimmedTitle,
+                instruction: trimmedInstruction,
+                category: category,
+                linkedTrigger: linkedTrigger,
+                createdAt: now(),
+                updatedAt: now()
+            )
+        )
+        persistReplacementActivities(successMessage: "Replacement activity saved.")
+    }
+
+    func activitiesForCurrentCraving(triggers: Set<String>) -> [ReplacementActivity] {
+        let enabled = replacementActivities.filter(\.isEnabled)
+        guard !enabled.isEmpty else {
+            return []
+        }
+
+        let normalizedTriggers = triggers.map { $0.lowercased() }
+        let matched = enabled.filter { activity in
+            let trigger = activity.linkedTrigger.lowercased()
+            return !trigger.isEmpty && normalizedTriggers.contains { selected in
+                trigger.contains(selected) || selected.contains(trigger)
+            }
+        }
+
+        let categoryFallbacks = ReplacementActivityCategory.allCases.compactMap { category in
+            enabled.first { $0.category == category }
+        }
+
+        return Array((matched + categoryFallbacks).uniquedByID().prefix(4))
+    }
+
+    func supportContactForCraving() -> SupportContact? {
+        supportContacts.first { $0.preferredRole == .cravingAlert } ?? supportContacts.first
+    }
+
+    func supportMessageTemplate(for contact: SupportContact) -> String {
+        let trimmed = contact.defaultMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+
+        return "I am having a craving. Can you stay with me for 10 minutes?"
+    }
+
+    func reasonForCravingMode() -> String {
+        if let primary = userReasons.first(where: \.isPrimary) {
+            return primary.text
+        }
+        return userReasons.first?.text ?? "Pause for 10 minutes before deciding. This urge can pass."
+    }
+
+    func deleteCravingEvent(_ id: UUID) {
+        do {
+            try repository.deleteCravingEvent(id)
+            cravingEvents = try repository.recentCravingEvents(limit: 10_000)
+            lastSaveStatus = .saved("Craving record deleted.")
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Craving record could not be deleted.")
+        }
+    }
+
+    func deleteDailyCheckIn(_ id: UUID) {
+        do {
+            try repository.deleteDailyCheckIn(id)
+            dailyCheckIns = try repository.recentCheckIns(limit: 10_000)
+            lastSaveStatus = .saved("Check-in deleted.")
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Check-in could not be deleted.")
+        }
+    }
+
+    func clearStatus() {
+        lastSaveStatus = .idle
+        persistenceError = nil
+    }
+
+    func historyEntries(range: ClosedRange<Date>? = nil) -> [HistoryEntry] {
+        let cravingEntries = cravingEvents.map { event in
+            HistoryEntry(
+                id: event.id,
+                kind: .craving,
+                date: event.completedAt ?? event.dismissedAt ?? event.startedAt,
+                title: cravingHistoryTitle(event),
+                detail: event.selectedTriggers.isEmpty
+                    ? "No trigger selected"
+                    : event.selectedTriggers.joined(separator: ", ")
+            )
+        }
+
+        let checkInEntries = dailyCheckIns.map { checkIn in
+            HistoryEntry(
+                id: checkIn.id,
+                kind: .checkIn,
+                date: checkIn.date,
+                title: checkIn.smokedToday == true ? "Check-in: smoked" : "Check-in: no smoke",
+                detail: "Mood \(Int(checkIn.mood)) / Stress \(Int(checkIn.stress)) / Confidence \(Int(checkIn.confidence))"
+            )
+        }
+
+        let slipEntries = slipEvents.map { event in
+            HistoryEntry(
+                id: event.id,
+                kind: .slip,
+                date: event.occurredAt,
+                title: "Slip: \(event.cigarettesSmoked) cigarette\(event.cigarettesSmoked == 1 ? "" : "s")",
+                detail: event.selectedTriggers.isEmpty
+                    ? event.recoveryAction
+                    : event.selectedTriggers.joined(separator: ", ")
+            )
+        }
+
+        return (cravingEntries + checkInEntries + slipEntries)
+            .filter { entry in
+                guard let range else { return true }
+                return range.contains(entry.date)
+            }
+            .sorted { $0.date > $1.date }
+    }
+
     private func hydrateFromPersistence() {
         isHydrating = true
         defer { isHydrating = false }
@@ -147,27 +689,35 @@ final class TeoPateoStore: ObservableObject {
         do {
             let snapshot = try repository.loadSnapshot()
 
+            isOnboardingCompleted = snapshot.appSettings?.onboardingCompleted ?? false
+            isOnboardingPresented = !isOnboardingCompleted
+
             let loadedPlan = snapshot.quitPlan ?? Self.defaultQuitPlan()
             quitPlan = loadedPlan
             quitMode = loadedPlan.quitMode
             triggerRules = loadedPlan.triggerRules
 
-            supportContacts = snapshot.supportContacts.isEmpty
+            supportContacts = snapshot.supportContacts.isEmpty && !isOnboardingCompleted
                 ? Self.defaultSupportContacts()
                 : snapshot.supportContacts
             userReasons = snapshot.userReasons.isEmpty
                 ? Self.defaultUserReasons()
                 : snapshot.userReasons
+            replacementActivities = snapshot.replacementActivities.isEmpty
+                ? Self.defaultReplacementActivities()
+                : snapshot.replacementActivities
             coachMessages = snapshot.coachMessages.isEmpty
                 ? Self.defaultCoachMessages()
                 : snapshot.coachMessages
             dailyCheckIns = snapshot.dailyCheckIns
             cravingEvents = snapshot.cravingEvents
+            slipEvents = snapshot.slipEvents
 
             try persistDefaultsIfNeeded(snapshot: snapshot)
             persistenceError = nil
         } catch {
             persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Local data could not be loaded.")
             applyDefaultState()
         }
     }
@@ -179,20 +729,30 @@ final class TeoPateoStore: ObservableObject {
         triggerRules = plan.triggerRules
         supportContacts = Self.defaultSupportContacts()
         userReasons = Self.defaultUserReasons()
+        replacementActivities = Self.defaultReplacementActivities()
         coachMessages = Self.defaultCoachMessages()
+        isOnboardingCompleted = false
+        isOnboardingPresented = true
         dailyCheckIns = []
         cravingEvents = []
+        slipEvents = []
     }
 
     private func persistDefaultsIfNeeded(snapshot: PersistedTeoPateoSnapshot) throws {
+        if snapshot.appSettings == nil {
+            try repository.saveAppSettings(AppSettings(onboardingCompleted: isOnboardingCompleted))
+        }
         if snapshot.quitPlan == nil {
             try repository.saveQuitPlan(quitPlan)
         }
-        if snapshot.supportContacts.isEmpty {
+        if snapshot.supportContacts.isEmpty && !isOnboardingCompleted {
             try repository.replaceSupportContacts(supportContacts)
         }
         if snapshot.userReasons.isEmpty {
             try repository.replaceUserReasons(userReasons)
+        }
+        if snapshot.replacementActivities.isEmpty {
+            try repository.replaceReplacementActivities(replacementActivities)
         }
         if snapshot.coachMessages.isEmpty {
             try repository.replaceCoachMessages(coachMessages)
@@ -203,12 +763,51 @@ final class TeoPateoStore: ObservableObject {
         guard !isHydrating else { return }
         quitPlan.quitMode = quitMode
         quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: "Quit approach updated.")
+    }
 
+    private func persistQuitPlan(successMessage: String) {
         do {
+            quitPlan.triggerRules = triggerRules
             try repository.saveQuitPlan(quitPlan)
             persistenceError = nil
+            lastSaveStatus = .saved(successMessage)
         } catch {
             persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Quit plan could not be saved.")
+        }
+    }
+
+    private func persistSupportContacts(successMessage: String) {
+        do {
+            try repository.replaceSupportContacts(supportContacts)
+            persistenceError = nil
+            lastSaveStatus = .saved(successMessage)
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Support contacts could not be saved.")
+        }
+    }
+
+    private func persistUserReasons(successMessage: String) {
+        do {
+            try repository.replaceUserReasons(userReasons)
+            persistenceError = nil
+            lastSaveStatus = .saved(successMessage)
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Reasons could not be saved.")
+        }
+    }
+
+    private func persistReplacementActivities(successMessage: String) {
+        do {
+            try repository.replaceReplacementActivities(replacementActivities)
+            persistenceError = nil
+            lastSaveStatus = .saved(successMessage)
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Replacement activities could not be saved.")
         }
     }
 
@@ -218,12 +817,108 @@ final class TeoPateoStore: ObservableObject {
             persistenceError = nil
         } catch {
             persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Coach messages could not be saved.")
         }
     }
 
+    private func makeCravingEvent(
+        startedAt: Date,
+        completedAt: Date?,
+        durationSeconds: Int,
+        outcome: CravingOutcome,
+        initialIntensity: Double?,
+        finalIntensity: Double?,
+        helpedActivityID: UUID?,
+        supportContactID: UUID?,
+        reflectionNote: String,
+        dismissedAt: Date?
+    ) -> CravingEvent {
+        let now = now()
+        return CravingEvent(
+            startedAt: startedAt,
+            completedAt: completedAt,
+            durationSeconds: max(durationSeconds, 0),
+            selectedTriggers: selectedTriggers.sorted(),
+            outcome: outcome,
+            initialIntensity: initialIntensity,
+            finalIntensity: finalIntensity,
+            helpedActivityID: helpedActivityID,
+            supportContactID: supportContactID,
+            reflectionNote: reflectionNote,
+            dismissedAt: dismissedAt,
+            createdAt: now,
+            updatedAt: now
+        )
+    }
+
+    private func persistCravingEvent(_ event: CravingEvent, successMessage: String) -> Bool {
+        do {
+            try repository.saveCravingEvent(event)
+            cravingEvents = try repository.recentCravingEvents(limit: 10_000)
+            persistenceError = nil
+            lastSaveStatus = .saved(successMessage)
+            return true
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Craving could not be saved.")
+            return false
+        }
+    }
+
+    private func latestCheckIn(on date: Date) -> DailyCheckIn? {
+        let day = calendar.startOfDay(for: date)
+        return dailyCheckIns
+            .filter { calendar.startOfDay(for: $0.date) == day }
+            .sorted {
+                if $0.updatedAt != $1.updatedAt {
+                    return $0.updatedAt > $1.updatedAt
+                }
+                return $0.createdAt > $1.createdAt
+            }
+            .first
+    }
+
+    private func cravingHistoryTitle(_ event: CravingEvent) -> String {
+        switch event.outcome {
+        case .completedWithoutSmoking:
+            return "Craving handled"
+        case .smokedAfterCraving:
+            return "Craving ended in smoking"
+        case .dismissedWithoutOutcome:
+            return "Craving saved for later"
+        }
+    }
+
+    private func earnedMilestones(
+        smokeFreeDays: Int,
+        cravingsHandled: Int,
+        slipCount: Int,
+        moneySaved: Double
+    ) -> [String] {
+        var milestones: [String] = []
+        if cravingsHandled > 0 {
+            milestones.append("First craving handled")
+        }
+        if smokeFreeDays > 0 {
+            milestones.append("First smoke-free day")
+        }
+        if slipCount > 0 {
+            milestones.append("Recovered after a slip")
+        }
+        if smokeFreeDays >= 7 {
+            milestones.append("First smoke-free week")
+        }
+        if moneySaved >= 10 {
+            milestones.append("Saved \(Self.moneySummary(moneySaved))")
+        }
+        return milestones
+    }
+
     private static func calculateInsights(
+        quitPlan: QuitPlan,
         dailyCheckIns: [DailyCheckIn],
         cravingEvents: [CravingEvent],
+        slipEvents: [SlipEvent],
         triggerRules: [TriggerRule],
         now: Date,
         calendar: Calendar
@@ -234,35 +929,55 @@ final class TeoPateoStore: ObservableObject {
             now: now,
             calendar: calendar
         )
-        let cravingsHandled = cravingEvents.filter(\.completedWithoutSmoking).count
+        let handledCravings = cravingEvents.filter { $0.outcome == .completedWithoutSmoking }
+        let slippedCravings = cravingEvents.filter { $0.outcome == .smokedAfterCraving }
         let smokeFreeCheckInDays = checkInsByDay.values.filter { $0.smokedToday == false }.count
-        let cigarettesAvoided = smokeFreeCheckInDays + cravingsHandled
-        let moneySaved = Double(cigarettesAvoided) * estimatedCostPerCigarette
+        let slipCigarettes = slipEvents.reduce(0) { $0 + $1.cigarettesSmoked }
+        let checkInCigarettes = checkInsByDay.values.reduce(0) { $0 + $1.cigarettesSmoked }
+        let avoidedFromDays = Int((Double(smokeFreeCheckInDays) * quitPlan.baselineCigarettesPerDay).rounded())
+        let cigarettesAvoided = max(0, avoidedFromDays + handledCravings.count - slipCigarettes - checkInCigarettes)
+        let moneySaved = Double(cigarettesAvoided) * quitPlan.costPerCigarette
         let riskWindows = calculatedRiskWindows(
-            from: cravingEvents,
+            from: cravingEvents.filter { $0.outcome != .dismissedWithoutOutcome },
             calendar: calendar
         )
         let topTriggers = calculatedTopTriggers(from: cravingEvents)
+        let topSlipTriggers = calculatedTopSlipTriggers(from: slipEvents)
+        let todayRisk = calculatedTodayRisk(
+            latestCheckIn: checkInsByDay[calendar.startOfDay(for: now)],
+            riskWindows: riskWindows,
+            cravingEvents: cravingEvents,
+            slipEvents: slipEvents,
+            now: now,
+            calendar: calendar
+        )
 
         return CalculatedInsights(
             smokeFreeDays: smokeFreeDays,
             smokeFreeSummary: daySummary(smokeFreeDays),
-            cravingsLogged: cravingEvents.count,
-            cravingsHandled: cravingsHandled,
+            cravingsLogged: cravingEvents.filter { $0.outcome != .dismissedWithoutOutcome }.count,
+            cravingsHandled: handledCravings.count,
+            slippedCravings: slippedCravings.count,
             cigarettesAvoided: cigarettesAvoided,
             moneySaved: moneySaved,
             moneySavedSummary: moneySummary(moneySaved),
             riskWindows: riskWindows,
             topTriggers: topTriggers,
+            topSlipTriggers: topSlipTriggers,
             heatMapDays: calculatedHeatMapDays(
                 from: cravingEvents,
                 now: now,
                 calendar: calendar
             ),
             planAdjustment: calculatedPlanAdjustment(
-                topTriggers: topTriggers,
+                topTriggers: topSlipTriggers.isEmpty ? topTriggers : topSlipTriggers,
                 riskWindows: riskWindows,
                 triggerRules: triggerRules
+            ),
+            todayRisk: todayRisk,
+            dataConfidenceSummary: dataConfidenceSummary(
+                cravingCount: cravingEvents.count,
+                slipCount: slipEvents.count
             )
         )
     }
@@ -342,14 +1057,36 @@ final class TeoPateoStore: ObservableObject {
     }
 
     private static func calculatedTopTriggers(from cravingEvents: [CravingEvent]) -> [TriggerInsight] {
-        guard !cravingEvents.isEmpty else {
+        let relevant = cravingEvents.filter { $0.outcome != .dismissedWithoutOutcome }
+        guard !relevant.isEmpty else {
             return []
         }
 
+        return calculatedTriggerCounts(
+            triggerLists: relevant.map(\.selectedTriggers),
+            total: Double(relevant.count)
+        )
+    }
+
+    private static func calculatedTopSlipTriggers(from slipEvents: [SlipEvent]) -> [TriggerInsight] {
+        guard !slipEvents.isEmpty else {
+            return []
+        }
+
+        return calculatedTriggerCounts(
+            triggerLists: slipEvents.map(\.selectedTriggers),
+            total: Double(slipEvents.count)
+        )
+    }
+
+    private static func calculatedTriggerCounts(
+        triggerLists: [[String]],
+        total: Double
+    ) -> [TriggerInsight] {
         var counts: [String: Int] = [:]
-        for event in cravingEvents {
+        for triggers in triggerLists {
             let uniqueTriggers = Set(
-                event.selectedTriggers.map {
+                triggers.map {
                     $0.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                     .filter { !$0.isEmpty }
@@ -359,7 +1096,6 @@ final class TeoPateoStore: ObservableObject {
             }
         }
 
-        let total = Double(cravingEvents.count)
         return counts
             .map { trigger, count in
                 TriggerInsight(
@@ -388,13 +1124,15 @@ final class TeoPateoStore: ObservableObject {
             return []
         }
 
-        let countsByDay = cravingEvents.reduce(into: [Date: Int]()) { result, event in
-            let day = calendar.startOfDay(for: event.startedAt)
-            guard day >= firstDay && day <= today else {
-                return
+        let countsByDay = cravingEvents
+            .filter { $0.outcome != .dismissedWithoutOutcome }
+            .reduce(into: [Date: Int]()) { result, event in
+                let day = calendar.startOfDay(for: event.startedAt)
+                guard day >= firstDay && day <= today else {
+                    return
+                }
+                result[day, default: 0] += 1
             }
-            result[day, default: 0] += 1
-        }
 
         return (0..<28).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: offset, to: firstDay) else {
@@ -403,6 +1141,59 @@ final class TeoPateoStore: ObservableObject {
             let count = countsByDay[date, default: 0]
             return CravingHeatDay(date: date, count: count, level: min(count, 4))
         }
+    }
+
+    private static func calculatedTodayRisk(
+        latestCheckIn: DailyCheckIn?,
+        riskWindows: [RiskWindowInsight],
+        cravingEvents: [CravingEvent],
+        slipEvents: [SlipEvent],
+        now: Date,
+        calendar: Calendar
+    ) -> RiskLevelInsight {
+        var score = 0
+        let currentHour = calendar.component(.hour, from: now)
+        if riskWindows.contains(where: { abs($0.startHour - currentHour) <= 1 }) {
+            score += 2
+        }
+        if let latestCheckIn {
+            if latestCheckIn.stress >= 8 {
+                score += 1
+            }
+            if latestCheckIn.confidence <= 4 {
+                score += 1
+            }
+        }
+
+        let today = calendar.startOfDay(for: now)
+        let cravingsToday = cravingEvents.filter { calendar.startOfDay(for: $0.startedAt) == today }.count
+        let slipsToday = slipEvents.filter { calendar.startOfDay(for: $0.occurredAt) == today }.count
+        if cravingsToday >= 2 {
+            score += 1
+        }
+        if slipsToday > 0 {
+            score += 2
+        }
+
+        if score >= 4 {
+            return RiskLevelInsight(
+                level: .high,
+                summary: "High risk today. Keep the 10-minute rescue and one substitute ready.",
+                actionTitle: "Start rescue"
+            )
+        }
+        if score >= 2 {
+            return RiskLevelInsight(
+                level: .moderate,
+                summary: "Moderate risk. Pick one substitute before the next urge arrives.",
+                actionTitle: "Choose substitute"
+            )
+        }
+        return RiskLevelInsight(
+            level: .low,
+            summary: "Low risk from recent logs. Keep the plan close.",
+            actionTitle: "Review plan"
+        )
     }
 
     private static func calculatedPlanAdjustment(
@@ -414,7 +1205,7 @@ final class TeoPateoStore: ObservableObject {
             if let existingRule = matchingRule(for: topTrigger.name, in: triggerRules) {
                 return PlanAdjustmentInsight(
                     title: "Rehearse the \(topTrigger.name.lowercased()) rule",
-                    detail: "\(topTrigger.name) appears in \(topTrigger.shareSummary) of logged cravings. Keep this rule ready: \(existingRule.action)",
+                    detail: "\(topTrigger.name) appears in \(topTrigger.shareSummary) of logged events. Keep this rule ready: \(existingRule.action)",
                     actionTitle: "Open plan"
                 )
             }
@@ -422,7 +1213,7 @@ final class TeoPateoStore: ObservableObject {
             let windowText = riskWindows.first.map { " around \($0.startLabel)" } ?? ""
             return PlanAdjustmentInsight(
                 title: "Add a \(topTrigger.name.lowercased()) rule",
-                detail: "\(topTrigger.name) is your most frequent logged trigger. Choose one replacement action and one support contact\(windowText).",
+                detail: "\(topTrigger.name) is your most frequent logged trigger. Choose one replacement action\(windowText).",
                 actionTitle: "Open plan"
             )
         }
@@ -430,7 +1221,7 @@ final class TeoPateoStore: ObservableObject {
         if let riskWindow = riskWindows.first {
             return PlanAdjustmentInsight(
                 title: "Prepare for \(riskWindow.startLabel)",
-                detail: "This window has the highest share of logged cravings. Put one substitute activity and one support contact in your plan before it starts.",
+                detail: "This window has the highest share of logged cravings. Put one substitute activity in your plan before it starts.",
                 actionTitle: "Open plan"
             )
         }
@@ -454,6 +1245,17 @@ final class TeoPateoStore: ObservableObject {
         }
     }
 
+    private static func dataConfidenceSummary(cravingCount: Int, slipCount: Int) -> String {
+        let total = cravingCount + slipCount
+        if total < 3 {
+            return "Early pattern. Log a few more cravings before trusting percentages."
+        }
+        if total < 8 {
+            return "Useful early signal from recent history."
+        }
+        return "Strong signal from repeated logged patterns."
+    }
+
     private static func daySummary(_ days: Int) -> String {
         days == 1 ? "1 day" : "\(days) days"
     }
@@ -467,6 +1269,158 @@ final class TeoPateoStore: ObservableObject {
         return formatter.string(from: NSNumber(value: amount)) ?? "$0"
     }
 
+    private static func normalizedOnboardingTriggers(_ triggers: [String]) -> [String] {
+        let validTriggers = Set(QuitTriggerCatalog.onboardingTriggers)
+        let normalized = triggers
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { validTriggers.contains($0) }
+
+        let uniqueTriggers = normalized.reduce(into: [String]()) { result, trigger in
+            if !result.contains(trigger) {
+                result.append(trigger)
+            }
+        }
+
+        return uniqueTriggers.isEmpty
+            ? Array(QuitTriggerCatalog.onboardingTriggers.prefix(3))
+            : uniqueTriggers
+    }
+
+    private static func onboardingReplacementActivities(
+        for triggers: [String],
+        now: Date
+    ) -> [ReplacementActivity] {
+        var activities = triggers.map { trigger in
+            ReplacementActivity(
+                title: onboardingActivityTitle(for: trigger),
+                instruction: onboardingActivityInstruction(for: trigger),
+                category: onboardingActivityCategory(for: trigger),
+                linkedTrigger: trigger,
+                createdAt: now,
+                updatedAt: now
+            )
+        }
+
+        activities.append(
+            ReplacementActivity(
+                title: "Box breathing",
+                instruction: "Breathe in 4, hold 4, out 4, hold 4. Repeat five times.",
+                category: .breathing,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+        activities.append(
+            ReplacementActivity(
+                title: "Write one sentence",
+                instruction: "Name the trigger and the next right action.",
+                category: .journaling,
+                createdAt: now,
+                updatedAt: now
+            )
+        )
+
+        return activities
+    }
+
+    private static func onboardingAction(for trigger: String) -> String {
+        switch trigger {
+        case "Coffee":
+            return "Drink a full glass of water first, then wait 10 minutes before deciding."
+        case "After meals":
+            return "Brush teeth or chew gum as soon as the meal ends."
+        case "Work stress":
+            return "Step away from the task, walk for 10 minutes, then choose the next small action."
+        case "Driving or commute":
+            return "Keep cigarettes out of reach and start a short breathing reset before the trip."
+        case "Alcohol":
+            return "Keep a drink in hand, avoid stepping outside with smokers, and text support if the urge spikes."
+        case "Boredom":
+            return "Start a five-minute reset task before making any smoking decision."
+        case "Social smoking":
+            return "Tell one person you are pausing for 10 minutes and stay away from the smoking spot."
+        case "Morning routine":
+            return "Change the first 10 minutes: water, shower, or a short walk before coffee."
+        case "Evening wind-down":
+            return "Put cigarettes out of sight and start the rescue timer before settling in."
+        default:
+            return "Pause for 10 minutes, name the trigger, and choose one substitute."
+        }
+    }
+
+    private static func onboardingActivityTitle(for trigger: String) -> String {
+        switch trigger {
+        case "Coffee":
+            return "Cold water first"
+        case "After meals":
+            return "Brush or chew"
+        case "Work stress":
+            return "Walk one block"
+        case "Driving or commute":
+            return "Commute breathing"
+        case "Alcohol":
+            return "Step back inside"
+        case "Boredom":
+            return "Five-minute reset"
+        case "Social smoking":
+            return "Text before stepping out"
+        case "Morning routine":
+            return "Change the first 10"
+        case "Evening wind-down":
+            return "Hands-busy reset"
+        default:
+            return "10-minute substitute"
+        }
+    }
+
+    private static func onboardingActivityInstruction(for trigger: String) -> String {
+        switch trigger {
+        case "Coffee":
+            return "Finish one full glass of cold water before deciding anything."
+        case "After meals":
+            return "Brush teeth or chew gum until the urge drops."
+        case "Work stress":
+            return "Walk away from the task until the timer drops below 6:00."
+        case "Driving or commute":
+            return "Take five slow breaths before starting the car or leaving transit."
+        case "Alcohol":
+            return "Move away from the smoking cue and text support before going outside."
+        case "Boredom":
+            return "Tidy one small area or start one quick errand until the urge changes."
+        case "Social smoking":
+            return "Send the craving message before following anyone to smoke."
+        case "Morning routine":
+            return "Drink water and move for two minutes before coffee or phone checks."
+        case "Evening wind-down":
+            return "Hold a cold drink, stretch, or keep both hands busy until the timer ends."
+        default:
+            return "Choose one substitute and stay with it until the timer ends."
+        }
+    }
+
+    private static func onboardingActivityCategory(for trigger: String) -> ReplacementActivityCategory {
+        switch trigger {
+        case "Work stress", "Morning routine":
+            return .movement
+        case "Driving or commute":
+            return .breathing
+        case "Coffee", "After meals", "Evening wind-down":
+            return .sensory
+        case "Social smoking", "Alcohol":
+            return .support
+        default:
+            return .distraction
+        }
+    }
+
+    private static func medicationNote(isInterestedInMedicationSupport: Bool) -> String {
+        if isInterestedInMedicationSupport {
+            return "You marked interest in quit medicines or nicotine replacement. Talk with a doctor, pharmacist, or quitline counselor before making medication decisions."
+        }
+
+        return "Nicotine replacement therapy and prescription quit medicines can help some people. Talk with a doctor, pharmacist, or quitline counselor before making medication decisions."
+    }
+
     private static func defaultQuitPlan() -> QuitPlan {
         let now = Date()
         let quitDate = Calendar.current.date(byAdding: .day, value: 11, to: now) ?? now
@@ -476,10 +1430,17 @@ final class TeoPateoStore: ObservableObject {
             triggerRules: [
                 TriggerRule(trigger: "After coffee", action: "Drink water first, wait 10 minutes, log the urge."),
                 TriggerRule(trigger: "Leaving work", action: "Walk one block before checking messages."),
-                TriggerRule(trigger: "Alcohol", action: "Text support before the first drink."),
+                TriggerRule(trigger: "Alcohol", action: "Keep a drink in hand and step outside without cigarettes."),
                 TriggerRule(trigger: "After meals", action: "Brush teeth or chew gum immediately.")
             ],
             medicationNote: "Nicotine replacement therapy and prescription quit medicines can help some people. Talk with a doctor, pharmacist, or quitline counselor before making medication decisions.",
+            baselineCigarettesPerDay: 10,
+            costPerPack: 10,
+            cigarettesPerPack: 20,
+            taperTargetCigarettesPerDay: 8,
+            taperReductionStep: 2,
+            taperReductionIntervalDays: 3,
+            attemptStartedAt: quitDate,
             createdAt: now,
             updatedAt: now
         )
@@ -487,14 +1448,39 @@ final class TeoPateoStore: ObservableObject {
 
     private static func defaultSupportContacts() -> [SupportContact] {
         [
-            SupportContact(name: "Maya", detail: "Craving alert and evening check-in"),
-            SupportContact(name: "1-800-QUIT-NOW", detail: "US quitline support")
+            SupportContact(
+                name: "Maya",
+                detail: "Craving alert and evening check-in",
+                preferredRole: .cravingAlert,
+                defaultMessage: "I am having a craving. Can you stay with me for 10 minutes?"
+            ),
+            SupportContact(
+                name: "1-800-QUIT-NOW",
+                detail: "US quitline support",
+                phoneNumber: "18007848669",
+                preferredRole: .quitline
+            )
         ]
     }
 
     private static func defaultUserReasons() -> [UserReason] {
         [
-            UserReason(text: "I want mornings without chest tightness, and I want to keep promises I made when I was calm.")
+            UserReason(
+                text: "I want mornings without chest tightness, and I want to keep promises I made when I was calm.",
+                sortOrder: 0,
+                isPrimary: true
+            )
+        ]
+    }
+
+    private static func defaultReplacementActivities() -> [ReplacementActivity] {
+        [
+            ReplacementActivity(title: "Drink cold water", instruction: "Finish one full glass before deciding anything.", category: .sensory, linkedTrigger: "Coffee"),
+            ReplacementActivity(title: "Walk outside", instruction: "Move until the timer drops below 6:00.", category: .movement, linkedTrigger: "Work stress"),
+            ReplacementActivity(title: "Box breathing", instruction: "Breathe in 4, hold 4, out 4, hold 4. Repeat five times.", category: .breathing),
+            ReplacementActivity(title: "Hold something cold", instruction: "Keep an ice cube or cold can in your hand until the urge drops.", category: .sensory),
+            ReplacementActivity(title: "Write one sentence", instruction: "Name the trigger and the next right action.", category: .journaling),
+            ReplacementActivity(title: "Five-minute reset", instruction: "Tidy one small area until the urge drops.", category: .distraction)
         ]
     }
 
@@ -517,9 +1503,12 @@ enum AppTab: String, CaseIterable {
 }
 
 private final class InMemoryTeoPateoRepository: TeoPateoRepository {
+    private var appSettings: AppSettings?
     private var quitPlan: QuitPlan?
     private var dailyCheckIns: [DailyCheckIn] = []
     private var cravingEvents: [CravingEvent] = []
+    private var slipEvents: [SlipEvent] = []
+    private var replacementActivities: [ReplacementActivity] = []
     private var supportContacts: [SupportContact] = []
     private var userReasons: [UserReason] = []
     private var coachMessages: [CoachMessage] = []
@@ -529,13 +1518,24 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
 
     func loadSnapshot() throws -> PersistedTeoPateoSnapshot {
         PersistedTeoPateoSnapshot(
+            appSettings: appSettings,
             quitPlan: quitPlan,
             dailyCheckIns: dailyCheckIns,
             cravingEvents: cravingEvents,
+            slipEvents: slipEvents,
+            replacementActivities: replacementActivities,
             supportContacts: supportContacts,
             userReasons: userReasons,
             coachMessages: coachMessages
         )
+    }
+
+    func fetchAppSettings() throws -> AppSettings? {
+        appSettings
+    }
+
+    func saveAppSettings(_ settings: AppSettings) throws {
+        appSettings = settings
     }
 
     func fetchQuitPlan() throws -> QuitPlan? {
@@ -555,6 +1555,10 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
         Array(dailyCheckIns.sorted { $0.date > $1.date }.prefix(limit))
     }
 
+    func deleteDailyCheckIn(_ id: UUID) throws {
+        dailyCheckIns.removeAll { $0.id == id }
+    }
+
     func saveCravingEvent(_ event: CravingEvent) throws {
         cravingEvents.removeAll { $0.id == event.id }
         cravingEvents.append(event)
@@ -562,6 +1566,27 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
 
     func recentCravingEvents(limit: Int) throws -> [CravingEvent] {
         Array(cravingEvents.sorted { $0.startedAt > $1.startedAt }.prefix(limit))
+    }
+
+    func deleteCravingEvent(_ id: UUID) throws {
+        cravingEvents.removeAll { $0.id == id }
+    }
+
+    func saveSlipEvent(_ event: SlipEvent) throws {
+        slipEvents.removeAll { $0.id == event.id }
+        slipEvents.append(event)
+    }
+
+    func recentSlipEvents(limit: Int) throws -> [SlipEvent] {
+        Array(slipEvents.sorted { $0.occurredAt > $1.occurredAt }.prefix(limit))
+    }
+
+    func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws {
+        replacementActivities = activities
+    }
+
+    func fetchReplacementActivities() throws -> [ReplacementActivity] {
+        replacementActivities
     }
 
     func replaceSupportContacts(_ contacts: [SupportContact]) throws {
@@ -586,5 +1611,17 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
 
     func fetchCoachMessages() throws -> [CoachMessage] {
         coachMessages
+    }
+}
+
+private extension Array where Element: Identifiable {
+    func uniquedByID() -> [Element] {
+        var seen: Set<Element.ID> = []
+        var result: [Element] = []
+        for element in self where !seen.contains(element.id) {
+            seen.insert(element.id)
+            result.append(element)
+        }
+        return result
     }
 }

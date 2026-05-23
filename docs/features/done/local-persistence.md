@@ -55,7 +55,6 @@ Daily check-ins should capture:
 - Stress.
 - Confidence.
 - Smoke/no-smoke status.
-- Daily focus note.
 - Slip recovery note.
 
 Craving events should capture:

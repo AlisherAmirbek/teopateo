@@ -360,6 +360,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
     func saveDailyCheckIn(_ checkIn: DailyCheckIn) throws {
         let smokedToday = checkIn.smokedToday.map { $0 ? 1 : 0 }
         let stayedWithinTaperTarget = checkIn.stayedWithinTaperTarget.map { $0 ? 1 : 0 }
+        let emptyFocusNote = ""
         try dbQueue.write { db in
             try db.execute(literal: """
                 INSERT INTO daily_check_ins (
@@ -377,7 +378,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     \(checkIn.cigarettesSmoked),
                     \(checkIn.taperTargetCigarettes),
                     \(stayedWithinTaperTarget),
-                    \(checkIn.focusNote),
+                    \(emptyFocusNote),
                     \(checkIn.slipNote),
                     \(checkIn.createdAt.timeIntervalSince1970),
                     \(checkIn.updatedAt.timeIntervalSince1970)
@@ -405,7 +406,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 sql: """
                 SELECT id, date, mood, stress, confidence, smoked_today, cigarettes_smoked,
                        taper_target_cigarettes, stayed_within_taper_target,
-                       focus_note, slip_note, created_at, updated_at
+                       slip_note, created_at, updated_at
                 FROM daily_check_ins
                 ORDER BY date DESC, created_at DESC
                 LIMIT ?;
@@ -424,7 +425,6 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     cigarettesSmoked: row["cigarettes_smoked"],
                     taperTargetCigarettes: row["taper_target_cigarettes"],
                     stayedWithinTaperTarget: optionalBool(row, "stayed_within_taper_target"),
-                    focusNote: row["focus_note"],
                     slipNote: row["slip_note"],
                     createdAt: date(row, "created_at"),
                     updatedAt: date(row, "updated_at")

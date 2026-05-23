@@ -161,7 +161,6 @@ final class LocalPersistenceTests: XCTestCase {
             cigarettesSmoked: 2,
             taperTargetCigarettes: 3,
             stayedWithinTaperTarget: true,
-            focusNote: "Delay the first cigarette by 10 minutes.",
             slipNote: "Bought cigarettes after a stressful commute.",
             createdAt: fixedDate(41),
             updatedAt: fixedDate(42)
@@ -400,7 +399,7 @@ final class LocalPersistenceTests: XCTestCase {
 
         store.smokedToday = true
         store.cigarettesSmoked = 7
-        XCTAssertTrue(store.saveCheckIn(date: now, focusNote: "Protect evening.", slipNote: ""))
+        XCTAssertTrue(store.saveCheckIn(date: now, slipNote: ""))
         XCTAssertEqual(store.dailyCheckIns.first?.taperTargetCigarettes, 6)
         XCTAssertEqual(store.dailyCheckIns.first?.stayedWithinTaperTarget, false)
     }
@@ -481,7 +480,6 @@ final class LocalPersistenceTests: XCTestCase {
 
         XCTAssertFalse(store.saveCheckIn(
             date: fixedDate(90),
-            focusNote: "No status yet.",
             slipNote: ""
         ))
         XCTAssertTrue(store.lastSaveStatus.isFailure)
@@ -489,7 +487,6 @@ final class LocalPersistenceTests: XCTestCase {
         store.smokedToday = false
         XCTAssertTrue(store.saveCheckIn(
             date: fixedDate(90),
-            focusNote: "Use rescue plan.",
             slipNote: "Ignored because no smoke."
         ))
         XCTAssertEqual(store.dailyCheckIns.count, 1)
@@ -498,7 +495,6 @@ final class LocalPersistenceTests: XCTestCase {
         store.mood = 9
         XCTAssertTrue(store.saveCheckIn(
             date: fixedDate(90),
-            focusNote: "Updated focus.",
             slipNote: ""
         ))
         XCTAssertEqual(store.dailyCheckIns.count, 1)
@@ -529,7 +525,6 @@ final class LocalPersistenceTests: XCTestCase {
             stress: 9,
             confidence: 3,
             smokedToday: false,
-            focusNote: "Use support.",
             slipNote: "",
             createdAt: fixedDate(92),
             updatedAt: fixedDate(93)
@@ -674,7 +669,6 @@ final class LocalPersistenceTests: XCTestCase {
             stress: 4,
             confidence: 7,
             smokedToday: false,
-            focusNote: "Keep gum nearby.",
             slipNote: "",
             createdAt: fixedDate(140),
             updatedAt: fixedDate(141)
@@ -687,7 +681,6 @@ final class LocalPersistenceTests: XCTestCase {
             confidence: 4,
             smokedToday: true,
             cigarettesSmoked: 1,
-            focusNote: "Protect dinner.",
             slipNote: "Smoked after dinner.",
             createdAt: fixedDate(142),
             updatedAt: fixedDate(143)
@@ -720,14 +713,9 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(recap.topTrigger, "After dinner")
         XCTAssertEqual(recap.planAdjustment.title, "Add a after dinner rule")
 
-        store.updateDailyCheckInNote(
+        store.updateDailyCheckInSlipNote(
             id: fixedUUID(141),
-            focusNote: "Brush teeth after dinner.",
             slipNote: "Dinner was the cue."
-        )
-        XCTAssertEqual(
-            store.dailyCheckIns.first { $0.id == fixedUUID(141) }?.focusNote,
-            "Brush teeth after dinner."
         )
         XCTAssertEqual(
             store.dailyCheckIns.first { $0.id == fixedUUID(141) }?.slipNote,
@@ -751,7 +739,7 @@ final class LocalPersistenceTests: XCTestCase {
         let store = TeoPateoStore(repository: try makeRepository())
 
         store.smokedToday = false
-        XCTAssertTrue(store.saveCheckIn(date: fixedDate(120), focusNote: "A", slipNote: ""))
+        XCTAssertTrue(store.saveCheckIn(date: fixedDate(120), slipNote: ""))
         store.selectedTriggers = ["Social"]
         XCTAssertTrue(store.completeCravingWithoutSmoking(
             startedAt: fixedDate(121),
@@ -834,7 +822,6 @@ final class LocalPersistenceTests: XCTestCase {
             stress: 5,
             confidence: 8,
             smokedToday: smokedToday,
-            focusNote: "Use the rescue plan.",
             slipNote: smokedToday ? "Smoked after a trigger." : "",
             createdAt: fixedDate(id),
             updatedAt: fixedDate(id + 1)

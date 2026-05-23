@@ -341,7 +341,6 @@ private struct HistoryEntryDetailView: View {
     let entry: HistoryEntry
 
     @State private var isEditing = false
-    @State private var focusDraft = ""
     @State private var slipDraft = ""
     @State private var recoveryDraft = ""
     @State private var isDeletePresented = false
@@ -452,12 +451,10 @@ private struct HistoryEntryDetailView: View {
             }
 
             if isEditing {
-                noteEditor("Focus note", text: $focusDraft)
                 if checkIn.smokedToday == true {
                     noteEditor("Slip note", text: $slipDraft)
                 }
             } else {
-                detailLine("Focus note", checkIn.focusNote.isEmpty ? "No focus note" : checkIn.focusNote)
                 if checkIn.smokedToday == true {
                     detailLine("Slip note", checkIn.slipNote.isEmpty ? "No slip note" : checkIn.slipNote)
                 }
@@ -488,7 +485,7 @@ private struct HistoryEntryDetailView: View {
 
     private var actions: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if entry.kind == .checkIn || entry.kind == .slip {
+            if canEditNotes {
                 Button(isEditing ? "Save notes" : "Edit notes") {
                     isEditing ? saveNotes() : beginEditing()
                 }
@@ -507,6 +504,17 @@ private struct HistoryEntryDetailView: View {
                 isDeletePresented = true
             }
             .buttonStyle(QuietButtonStyle())
+        }
+    }
+
+    private var canEditNotes: Bool {
+        switch entry.kind {
+        case .checkIn:
+            return store.dailyCheckIns.first(where: { $0.id == entry.id })?.smokedToday == true
+        case .slip:
+            return true
+        case .craving:
+            return false
         }
     }
 
@@ -543,7 +551,7 @@ private struct HistoryEntryDetailView: View {
     private func saveNotes() {
         switch entry.kind {
         case .checkIn:
-            store.updateDailyCheckInNote(id: entry.id, focusNote: focusDraft, slipNote: slipDraft)
+            store.updateDailyCheckInSlipNote(id: entry.id, slipNote: slipDraft)
         case .slip:
             store.updateSlipEventNotes(id: entry.id, note: slipDraft, recoveryAction: recoveryDraft)
         case .craving:
@@ -568,7 +576,6 @@ private struct HistoryEntryDetailView: View {
         switch entry.kind {
         case .checkIn:
             guard let checkIn = store.dailyCheckIns.first(where: { $0.id == entry.id }) else { return }
-            focusDraft = checkIn.focusNote
             slipDraft = checkIn.slipNote
         case .slip:
             guard let event = store.slipEvents.first(where: { $0.id == entry.id }) else { return }

@@ -139,7 +139,6 @@ final class TeoPateoStore: ObservableObject {
     @discardableResult
     func saveCheckIn(
         date: Date = Date(),
-        focusNote: String,
         slipNote: String
     ) -> Bool {
         guard smokedToday != nil else {
@@ -161,7 +160,6 @@ final class TeoPateoStore: ObservableObject {
             cigarettesSmoked: cigarettesSmoked,
             taperTargetCigarettes: taperTarget,
             stayedWithinTaperTarget: taperTarget.map { Double(cigarettesSmoked) <= $0 },
-            focusNote: focusNote,
             slipNote: smokedToday == true ? slipNote : "",
             createdAt: existing?.createdAt ?? now,
             updatedAt: now
@@ -1087,9 +1085,8 @@ final class TeoPateoStore: ObservableObject {
         }
     }
 
-    func updateDailyCheckInNote(
+    func updateDailyCheckInSlipNote(
         id: UUID,
-        focusNote: String,
         slipNote: String
     ) {
         guard let existing = dailyCheckIns.first(where: { $0.id == id }) else {
@@ -1106,7 +1103,6 @@ final class TeoPateoStore: ObservableObject {
             cigarettesSmoked: existing.cigarettesSmoked,
             taperTargetCigarettes: existing.taperTargetCigarettes,
             stayedWithinTaperTarget: existing.stayedWithinTaperTarget,
-            focusNote: focusNote.trimmingCharacters(in: .whitespacesAndNewlines),
             slipNote: existing.smokedToday == true
                 ? slipNote.trimmingCharacters(in: .whitespacesAndNewlines)
                 : "",

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct CheckInView: View {
     @EnvironmentObject private var store: TeoPateoStore
-    @State private var note = ""
     @State private var slipNote = ""
     @State private var slipContext = ""
     @State private var recoveryAction = "Pause before the next cigarette and use the rescue plan."
@@ -26,7 +25,6 @@ struct CheckInView: View {
                 slipRecovery
             }
 
-            focus
             Button("Save check-in") {
                 save()
             }
@@ -124,18 +122,6 @@ struct CheckInView: View {
         .quietCard()
     }
 
-    private var focus: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Today focus")
-                .font(.rounded(.headline, weight: .bold))
-            TextEditor(text: $note)
-                .frame(height: 104)
-                .padding(8)
-                .background(QuitTheme.paper)
-                .cornerRadius(12)
-        }
-    }
-
     private func smokeChoice(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
@@ -164,7 +150,7 @@ struct CheckInView: View {
     }
 
     private func save() {
-        let saved = store.saveCheckIn(focusNote: note, slipNote: slipNote)
+        let saved = store.saveCheckIn(slipNote: slipNote)
         guard saved, store.smokedToday == true else {
             return
         }

@@ -326,11 +326,6 @@ function renderCheckin() {
         </section>
       ` : ""}
 
-      <section class="panel">
-        <h2>Today focus</h2>
-        <textarea>Delay the first craving by 10 minutes and text Maya if it hits after work.</textarea>
-      </section>
-
       <button class="primary" onclick="saveCheckin()">Save check-in</button>
     </div>
   `;

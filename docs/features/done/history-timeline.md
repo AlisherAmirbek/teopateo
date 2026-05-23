@@ -14,7 +14,7 @@ The history should be useful for reflection without turning the app into a gener
 - Grouped timeline entries by date.
 - Added entry detail views:
   - cravings show time, duration, outcome, triggers, intensity values, activity tried, and note when present
-  - check-ins show mood, stress, confidence, smoking status, taper target, focus note, and slip note
+  - check-ins show mood, stress, confidence, smoking status, taper target, and slip note
   - slips show time, cigarette count, triggers, context, note, and recovery action
 - Added confirmed delete actions for cravings, check-ins, and slips.
 - Added note editing for check-ins and slips.

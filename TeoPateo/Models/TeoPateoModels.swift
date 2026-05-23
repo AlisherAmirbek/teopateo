@@ -317,7 +317,7 @@ enum NotificationPlanner {
                     identifier: identifier(for: .eveningCheckIn),
                     kind: .eveningCheckIn,
                     title: "Check in without judgment",
-                    body: "Record what happened today and choose one focus for tomorrow.",
+                    body: "Record what happened today and reset for tomorrow.",
                     time: settings.eveningCheckInTime
                 )
             )
@@ -635,7 +635,6 @@ struct DailyCheckIn: Identifiable, Codable, Equatable {
     let cigarettesSmoked: Int
     let taperTargetCigarettes: Double?
     let stayedWithinTaperTarget: Bool?
-    let focusNote: String
     let slipNote: String
     let createdAt: Date
     let updatedAt: Date
@@ -650,7 +649,6 @@ struct DailyCheckIn: Identifiable, Codable, Equatable {
         cigarettesSmoked: Int = 0,
         taperTargetCigarettes: Double? = nil,
         stayedWithinTaperTarget: Bool? = nil,
-        focusNote: String,
         slipNote: String,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -664,7 +662,6 @@ struct DailyCheckIn: Identifiable, Codable, Equatable {
         self.cigarettesSmoked = cigarettesSmoked
         self.taperTargetCigarettes = taperTargetCigarettes
         self.stayedWithinTaperTarget = stayedWithinTaperTarget
-        self.focusNote = focusNote
         self.slipNote = slipNote
         self.createdAt = createdAt
         self.updatedAt = updatedAt

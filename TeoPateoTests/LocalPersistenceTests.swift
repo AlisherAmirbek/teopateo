@@ -39,10 +39,11 @@ final class LocalPersistenceTests: XCTestCase {
             "user_reasons",
             "coach_messages",
             "app_settings",
-            "notification_settings"
+            "notification_settings",
+            "risky_situations"
         ]
 
-        XCTAssertEqual(try repository.schemaVersion(), 4)
+        XCTAssertEqual(try repository.schemaVersion(), 5)
         XCTAssertTrue(try repository.tableNames().isSuperset(of: expectedTables))
     }
 
@@ -123,16 +124,31 @@ final class LocalPersistenceTests: XCTestCase {
                 updatedAt: fixedDate(36)
             )
         ]
+        let riskySituations = [
+            RiskySituation(
+                id: fixedUUID(36),
+                title: "Friday drinks",
+                expectedContext: "Bar after work",
+                preventionPlan: "Keep a drink in hand and stay inside.",
+                backupAction: "Start rescue before going outside.",
+                isEnabled: true,
+                createdAt: fixedDate(36),
+                updatedAt: fixedDate(37)
+            )
+        ]
 
         try repository.saveQuitPlan(plan)
         try repository.replaceSupportContacts(contacts)
         try repository.replaceUserReasons(reasons)
         try repository.replaceReplacementActivities(activities)
+        try repository.replaceRiskySituations(riskySituations)
 
         XCTAssertEqual(try repository.fetchQuitPlan(), plan)
         XCTAssertEqual(try repository.fetchSupportContacts(), contacts)
         XCTAssertEqual(try repository.fetchUserReasons(), reasons)
         XCTAssertEqual(try repository.fetchReplacementActivities(), activities)
+        XCTAssertEqual(try repository.fetchRiskySituations(), riskySituations)
+        XCTAssertEqual(try repository.loadSnapshot().riskySituations, riskySituations)
     }
 
     func testDailyCheckInPersistsEverySubmittedField() throws {
@@ -145,6 +161,8 @@ final class LocalPersistenceTests: XCTestCase {
             confidence: 7,
             smokedToday: true,
             cigarettesSmoked: 2,
+            taperTargetCigarettes: 3,
+            stayedWithinTaperTarget: true,
             focusNote: "Delay the first cigarette by 10 minutes.",
             slipNote: "Bought cigarettes after a stressful commute.",
             createdAt: fixedDate(41),
@@ -233,6 +251,115 @@ final class LocalPersistenceTests: XCTestCase {
         )
         let activities = store.activitiesForCurrentCraving(triggers: ["Coffee"])
         XCTAssertTrue(activities.contains { $0.title == "Chew gum" || $0.title == "Drink cold water" })
+    }
+
+    func testStoreManagesQuitPlanRefinements() throws {
+        let repository = try makeRepository()
+        let store = TeoPateoStore(repository: repository)
+
+        let firstRule = try XCTUnwrap(store.triggerRules.first)
+        store.updateTriggerRule(
+            id: firstRule.id,
+            trigger: "After coffee",
+            action: "Brush teeth before coffee.",
+            isEnabled: false
+        )
+        XCTAssertEqual(store.triggerRules.first?.action, "Brush teeth before coffee.")
+        XCTAssertEqual(store.triggerRules.first?.isEnabled, false)
+        store.moveTriggerRule(firstRule.id, direction: 1)
+        XCTAssertNotEqual(store.triggerRules.first?.id, firstRule.id)
+        store.deleteTriggerRule(firstRule.id)
+        XCTAssertFalse(store.triggerRules.contains { $0.id == firstRule.id })
+
+        let firstReason = try XCTUnwrap(store.userReasons.first)
+        store.addUserReason("I want better sleep.")
+        let secondReason = try XCTUnwrap(store.userReasons.first { $0.text == "I want better sleep." })
+        store.updateUserReason(firstReason.id, text: "I want easier mornings.")
+        store.moveUserReason(secondReason.id, direction: -1)
+        XCTAssertEqual(store.userReasons.first?.id, secondReason.id)
+        XCTAssertTrue(store.userReasons.map(\.sortOrder).elementsEqual(0..<store.userReasons.count))
+
+        let firstActivity = try XCTUnwrap(store.replacementActivities.first)
+        store.updateReplacementActivity(
+            id: firstActivity.id,
+            title: "Cold water first",
+            instruction: "Drink water before deciding.",
+            category: .sensory,
+            linkedTrigger: "Coffee",
+            isEnabled: false
+        )
+        XCTAssertEqual(store.replacementActivities.first?.title, "Cold water first")
+        XCTAssertEqual(store.replacementActivities.first?.isEnabled, false)
+        store.moveReplacementActivity(firstActivity.id, direction: 1)
+        XCTAssertNotEqual(store.replacementActivities.first?.id, firstActivity.id)
+        store.deleteReplacementActivity(firstActivity.id)
+        XCTAssertFalse(store.replacementActivities.contains { $0.id == firstActivity.id })
+
+        store.updateMedicationNote("Ask pharmacist about nicotine gum.")
+        XCTAssertEqual(store.currentQuitPlan.medicationNote, "Ask pharmacist about nicotine gum.")
+
+        store.addRiskySituation(
+            title: "Late commute",
+            expectedContext: "Driving home",
+            preventionPlan: "Keep gum in the car.",
+            backupAction: "Start rescue in the driveway."
+        )
+        let risky = try XCTUnwrap(store.riskySituations.first)
+        store.updateRiskySituation(
+            id: risky.id,
+            title: "Late commute home",
+            expectedContext: "Driving home after work",
+            preventionPlan: "Keep gum in the car.",
+            backupAction: "Start rescue before parking.",
+            isEnabled: false
+        )
+        XCTAssertEqual(store.riskySituations.first?.title, "Late commute home")
+        XCTAssertEqual(store.riskySituations.first?.isEnabled, false)
+
+        let reloadedStore = TeoPateoStore(repository: repository)
+        XCTAssertEqual(reloadedStore.currentQuitPlan.medicationNote, "Ask pharmacist about nicotine gum.")
+        XCTAssertEqual(reloadedStore.riskySituations.first?.title, "Late commute home")
+        XCTAssertFalse(reloadedStore.riskySituations.first?.isEnabled ?? true)
+    }
+
+    func testStoreTaperScheduleAndCheckInTarget() throws {
+        let repository = try makeRepository()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = makeDate(
+            year: 2026,
+            month: 5,
+            day: 20,
+            calendar: calendar
+        )
+        try repository.saveQuitPlan(QuitPlan(
+            id: fixedUUID(1),
+            quitDate: start,
+            quitMode: "Taper",
+            triggerRules: [],
+            medicationNote: "",
+            baselineCigarettesPerDay: 10,
+            costPerPack: 10,
+            cigarettesPerPack: 20,
+            taperTargetCigarettesPerDay: 8,
+            taperReductionStep: 2,
+            taperReductionIntervalDays: 2,
+            attemptStartedAt: start,
+            createdAt: fixedDate(1),
+            updatedAt: fixedDate(2)
+        ))
+
+        let now = makeDate(year: 2026, month: 5, day: 23, calendar: calendar)
+        let store = TeoPateoStore(repository: repository, now: { now }, calendar: calendar)
+
+        XCTAssertEqual(store.todayTaperTarget, 6)
+        XCTAssertEqual(store.taperSchedule(days: 3).map(\.targetCigarettes), [6, 4, 4])
+
+        store.smokedToday = true
+        store.cigarettesSmoked = 7
+        XCTAssertTrue(store.saveCheckIn(date: now, focusNote: "Protect evening.", slipNote: ""))
+        XCTAssertEqual(store.dailyCheckIns.first?.taperTargetCigarettes, 6)
+        XCTAssertEqual(store.dailyCheckIns.first?.stayedWithinTaperTarget, false)
     }
 
     func testStoreCompletesOnboardingIntoActionablePlan() throws {
@@ -408,6 +535,43 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(insights.todayRisk.level, .high)
         XCTAssertEqual(insights.dataConfidenceSummary, "Useful early signal from recent history.")
         XCTAssertTrue(store.progressSummary.milestones.contains("First craving handled"))
+    }
+
+    func testStoreAppliesInsightSuggestionToPlan() throws {
+        let repository = try makeRepository()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = makeDate(year: 2026, month: 5, day: 22, hour: 21, calendar: calendar)
+
+        try repository.saveQuitPlan(QuitPlan(
+            id: fixedUUID(1),
+            quitDate: fixedDate(10),
+            quitMode: "Taper",
+            triggerRules: [],
+            medicationNote: "",
+            createdAt: fixedDate(1),
+            updatedAt: fixedDate(2)
+        ))
+        try repository.saveSlipEvent(SlipEvent(
+            id: fixedUUID(120),
+            occurredAt: now,
+            cigarettesSmoked: 1,
+            selectedTriggers: ["After dinner"],
+            note: "Smoked after dinner.",
+            recoveryAction: "Brush teeth first.",
+            createdAt: fixedDate(120),
+            updatedAt: fixedDate(121)
+        ))
+
+        let store = TeoPateoStore(repository: repository, now: { now }, calendar: calendar)
+
+        XCTAssertTrue(store.canApplyPlanAdjustmentSuggestion)
+        XCTAssertTrue(store.applyPlanAdjustmentSuggestion())
+        XCTAssertEqual(store.triggerRules.first?.trigger, "After dinner")
+        XCTAssertFalse(store.canApplyPlanAdjustmentSuggestion)
+
+        let reloadedStore = TeoPateoStore(repository: repository, now: { now }, calendar: calendar)
+        XCTAssertEqual(reloadedStore.triggerRules.first?.trigger, "After dinner")
     }
 
     func testNotificationPlannerBuildsOptInScheduleFromRiskWindows() throws {

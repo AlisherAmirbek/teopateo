@@ -2,12 +2,41 @@ import SwiftUI
 
 struct PlanView: View {
     @EnvironmentObject private var store: TeoPateoStore
+
     @State private var newTrigger = ""
     @State private var newAction = ""
+    @State private var editingRuleID: UUID?
+    @State private var editTrigger = ""
+    @State private var editAction = ""
+    @State private var editRuleEnabled = true
+
     @State private var newReason = ""
+    @State private var editingReasonID: UUID?
+    @State private var editReason = ""
+
     @State private var newActivityTitle = ""
     @State private var newActivityInstruction = ""
+    @State private var newActivityLinkedTrigger = ""
     @State private var newActivityCategory: ReplacementActivityCategory = .distraction
+    @State private var editingActivityID: UUID?
+    @State private var editActivityTitle = ""
+    @State private var editActivityInstruction = ""
+    @State private var editActivityLinkedTrigger = ""
+    @State private var editActivityCategory: ReplacementActivityCategory = .distraction
+    @State private var editActivityEnabled = true
+
+    @State private var newRiskTitle = ""
+    @State private var newRiskContext = ""
+    @State private var newRiskPlan = ""
+    @State private var newRiskBackup = ""
+    @State private var editingRiskID: UUID?
+    @State private var editRiskTitle = ""
+    @State private var editRiskContext = ""
+    @State private var editRiskPlan = ""
+    @State private var editRiskBackup = ""
+    @State private var editRiskEnabled = true
+
+    @State private var medicationDraft = ""
     @State private var isNotificationsPresented = false
 
     var body: some View {
@@ -21,12 +50,17 @@ struct PlanView: View {
             rules
             reasons
             replacementActivities
+            riskySituations
             notifications
             medicationNote
         }
         .sheet(isPresented: $isNotificationsPresented) {
             NotificationSettingsView()
                 .environmentObject(store)
+        }
+        .onAppear(perform: syncMedicationDraft)
+        .onChange(of: store.currentQuitPlan.medicationNote) { _ in
+            syncMedicationDraft()
         }
     }
 
@@ -101,27 +135,95 @@ struct PlanView: View {
                 Text("Cold turkey").tag("Cold turkey")
             }
             .pickerStyle(.segmented)
-            Text(store.quitMode == "Taper" ? "Today's target is \(Int(store.currentQuitPlan.taperTargetCigarettesPerDay)) cigarettes. Adjust the baseline as your taper gets clearer." : "Prepare substitutes before the quit date.")
-                .font(.rounded(.subheadline))
-                .foregroundColor(QuitTheme.muted)
+
+            if store.quitMode == "Taper" {
+                taperControls
+                taperPreview
+            } else {
+                Text("Prepare substitutes before the quit date.")
+                    .font(.rounded(.subheadline))
+                    .foregroundColor(QuitTheme.muted)
+            }
         }
         .quietCard()
     }
 
+    private var taperControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Stepper(
+                "Current target \(Int(store.currentQuitPlan.taperTargetCigarettesPerDay)) cigarettes/day",
+                value: Binding(
+                    get: { Int(store.currentQuitPlan.taperTargetCigarettesPerDay) },
+                    set: {
+                        store.updateTaperSettings(
+                            targetCigarettesPerDay: Double($0),
+                            reductionStep: store.currentQuitPlan.taperReductionStep,
+                            reductionIntervalDays: store.currentQuitPlan.taperReductionIntervalDays
+                        )
+                    }
+                ),
+                in: 0...80
+            )
+
+            Stepper(
+                "Reduce by \(Int(store.currentQuitPlan.taperReductionStep))",
+                value: Binding(
+                    get: { Int(store.currentQuitPlan.taperReductionStep) },
+                    set: {
+                        store.updateTaperSettings(
+                            targetCigarettesPerDay: store.currentQuitPlan.taperTargetCigarettesPerDay,
+                            reductionStep: Double($0),
+                            reductionIntervalDays: store.currentQuitPlan.taperReductionIntervalDays
+                        )
+                    }
+                ),
+                in: 0...20
+            )
+
+            Stepper(
+                "Every \(store.currentQuitPlan.taperReductionIntervalDays) days",
+                value: Binding(
+                    get: { store.currentQuitPlan.taperReductionIntervalDays },
+                    set: {
+                        store.updateTaperSettings(
+                            targetCigarettesPerDay: store.currentQuitPlan.taperTargetCigarettesPerDay,
+                            reductionStep: store.currentQuitPlan.taperReductionStep,
+                            reductionIntervalDays: $0
+                        )
+                    }
+                ),
+                in: 1...30
+            )
+        }
+        .font(.rounded(.subheadline))
+    }
+
+    private var taperPreview: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Upcoming targets")
+                .font(.rounded(.subheadline, weight: .bold))
+
+            ForEach(store.taperSchedule(days: 5)) { day in
+                HStack {
+                    Text(day.isToday ? "Today" : dayLabel(day.date))
+                        .font(.rounded(.caption, weight: .bold))
+                        .foregroundColor(day.isToday ? QuitTheme.cocoa : QuitTheme.muted)
+                    Spacer()
+                    Text("\(Int(day.targetCigarettes)) cigarettes")
+                        .font(.rounded(.caption, weight: .bold))
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
     private var rules: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("When this happens")
+            Text("Trigger rules")
                 .font(.rounded(.headline, weight: .bold))
+
             ForEach(store.triggerRules) { rule in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(rule.trigger)
-                        .font(.rounded(.subheadline, weight: .bold))
-                    Text(rule.action)
-                        .font(.rounded(.caption))
-                        .foregroundColor(QuitTheme.muted)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 4)
+                ruleRow(rule, index: index(of: rule.id, in: store.triggerRules))
             }
 
             Divider()
@@ -139,42 +241,54 @@ struct PlanView: View {
         .quietCard()
     }
 
+    @ViewBuilder
+    private func ruleRow(_ rule: TriggerRule, index: Int) -> some View {
+        if editingRuleID == rule.id {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Trigger", text: $editTrigger)
+                    .textFieldStyle(.roundedBorder)
+                TextField("What I'll do instead", text: $editAction)
+                    .textFieldStyle(.roundedBorder)
+                Toggle("Enabled", isOn: $editRuleEnabled)
+                    .font(.rounded(.caption, weight: .bold))
+                editButtons(
+                    saveTitle: "Save rule",
+                    save: {
+                        store.updateTriggerRule(
+                            id: rule.id,
+                            trigger: editTrigger,
+                            action: editAction,
+                            isEnabled: editRuleEnabled
+                        )
+                        editingRuleID = nil
+                    },
+                    cancel: { editingRuleID = nil }
+                )
+            }
+            .padding(.vertical, 6)
+        } else {
+            managedRow(
+                title: rule.trigger,
+                detail: rule.action,
+                isEnabled: rule.isEnabled,
+                index: index,
+                count: store.triggerRules.count,
+                edit: { beginRuleEdit(rule) },
+                toggle: { store.setTriggerRuleEnabled(rule.id, isEnabled: !rule.isEnabled) },
+                delete: { store.deleteTriggerRule(rule.id) },
+                moveUp: { store.moveTriggerRule(rule.id, direction: -1) },
+                moveDown: { store.moveTriggerRule(rule.id, direction: 1) }
+            )
+        }
+    }
+
     private var reasons: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Reasons")
                 .font(.rounded(.headline, weight: .bold))
 
             ForEach(store.userReasons) { reason in
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(reason.text)
-                            .font(.rounded(.subheadline, weight: .bold))
-                        if reason.isPrimary {
-                            Text("Primary reason")
-                                .font(.rounded(.caption, weight: .bold))
-                                .foregroundColor(QuitTheme.muted)
-                        }
-                    }
-                    Spacer()
-                    if !reason.isPrimary {
-                        Button("Use") {
-                            store.setPrimaryUserReason(reason.id)
-                        }
-                        .font(.rounded(.caption, weight: .bold))
-                        .foregroundColor(QuitTheme.cocoa)
-                    }
-                    Button {
-                        store.deleteUserReason(reason.id)
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(QuitTheme.muted)
-                            .frame(width: 34, height: 34)
-                            .background(QuitTheme.peach.opacity(0.55))
-                            .clipShape(Circle())
-                    }
-                    .accessibilityLabel("Remove reason")
-                }
+                reasonRow(reason, index: index(of: reason.id, in: store.userReasons))
             }
 
             Divider()
@@ -189,26 +303,74 @@ struct PlanView: View {
         .quietCard()
     }
 
+    @ViewBuilder
+    private func reasonRow(_ reason: UserReason, index: Int) -> some View {
+        if editingReasonID == reason.id {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Reason", text: $editReason)
+                    .textFieldStyle(.roundedBorder)
+                editButtons(
+                    saveTitle: "Save reason",
+                    save: {
+                        store.updateUserReason(reason.id, text: editReason)
+                        editingReasonID = nil
+                    },
+                    cancel: { editingReasonID = nil }
+                )
+            }
+            .padding(.vertical, 6)
+        } else {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(reason.text)
+                        .font(.rounded(.subheadline, weight: .bold))
+                    if reason.isPrimary {
+                        Text("Primary reason")
+                            .font(.rounded(.caption, weight: .bold))
+                            .foregroundColor(QuitTheme.muted)
+                    }
+                }
+                Spacer()
+                if !reason.isPrimary {
+                    Button("Use") {
+                        store.setPrimaryUserReason(reason.id)
+                    }
+                    .font(.rounded(.caption, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                }
+                priorityButtons(
+                    index: index,
+                    count: store.userReasons.count,
+                    moveUp: { store.moveUserReason(reason.id, direction: -1) },
+                    moveDown: { store.moveUserReason(reason.id, direction: 1) }
+                )
+                actionButton(systemName: "pencil", title: "Edit reason") {
+                    editingReasonID = reason.id
+                    editReason = reason.text
+                }
+                actionButton(systemName: "trash", title: "Remove reason") {
+                    store.deleteUserReason(reason.id)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
     private var replacementActivities: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Replacement activities")
                 .font(.rounded(.headline, weight: .bold))
 
-            ForEach(store.replacementActivities.filter(\.isEnabled).prefix(4)) { activity in
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(activity.title)
-                        .font(.rounded(.subheadline, weight: .bold))
-                    Text(activity.instruction)
-                        .font(.rounded(.caption))
-                        .foregroundColor(QuitTheme.muted)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            ForEach(store.replacementActivities) { activity in
+                activityRow(activity, index: index(of: activity.id, in: store.replacementActivities))
             }
 
             Divider()
             TextField("Activity", text: $newActivityTitle)
                 .textFieldStyle(.roundedBorder)
             TextField("Instruction", text: $newActivityInstruction)
+                .textFieldStyle(.roundedBorder)
+            TextField("Linked trigger, optional", text: $newActivityLinkedTrigger)
                 .textFieldStyle(.roundedBorder)
             Picker("Category", selection: $newActivityCategory) {
                 ForEach(ReplacementActivityCategory.allCases, id: \.self) { category in
@@ -220,23 +382,189 @@ struct PlanView: View {
                 store.addReplacementActivity(
                     title: newActivityTitle,
                     instruction: newActivityInstruction,
-                    category: newActivityCategory
+                    category: newActivityCategory,
+                    linkedTrigger: newActivityLinkedTrigger
                 )
                 newActivityTitle = ""
                 newActivityInstruction = ""
+                newActivityLinkedTrigger = ""
             }
             .buttonStyle(QuietButtonStyle())
         }
         .quietCard()
     }
 
+    @ViewBuilder
+    private func activityRow(_ activity: ReplacementActivity, index: Int) -> some View {
+        if editingActivityID == activity.id {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Activity", text: $editActivityTitle)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Instruction", text: $editActivityInstruction)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Linked trigger, optional", text: $editActivityLinkedTrigger)
+                    .textFieldStyle(.roundedBorder)
+                Picker("Category", selection: $editActivityCategory) {
+                    ForEach(ReplacementActivityCategory.allCases, id: \.self) { category in
+                        Text(category.title).tag(category)
+                    }
+                }
+                .pickerStyle(.menu)
+                Toggle("Enabled", isOn: $editActivityEnabled)
+                    .font(.rounded(.caption, weight: .bold))
+                editButtons(
+                    saveTitle: "Save activity",
+                    save: {
+                        store.updateReplacementActivity(
+                            id: activity.id,
+                            title: editActivityTitle,
+                            instruction: editActivityInstruction,
+                            category: editActivityCategory,
+                            linkedTrigger: editActivityLinkedTrigger,
+                            isEnabled: editActivityEnabled
+                        )
+                        editingActivityID = nil
+                    },
+                    cancel: { editingActivityID = nil }
+                )
+            }
+            .padding(.vertical, 6)
+        } else {
+            let detail = activity.linkedTrigger.isEmpty
+                ? activity.instruction
+                : "\(activity.instruction) Linked to \(activity.linkedTrigger)."
+            managedRow(
+                title: activity.title,
+                detail: detail,
+                isEnabled: activity.isEnabled,
+                index: index,
+                count: store.replacementActivities.count,
+                edit: { beginActivityEdit(activity) },
+                toggle: { store.setReplacementActivityEnabled(activity.id, isEnabled: !activity.isEnabled) },
+                delete: { store.deleteReplacementActivity(activity.id) },
+                moveUp: { store.moveReplacementActivity(activity.id, direction: -1) },
+                moveDown: { store.moveReplacementActivity(activity.id, direction: 1) }
+            )
+        }
+    }
+
+    private var riskySituations: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Risky situations")
+                .font(.rounded(.headline, weight: .bold))
+
+            if store.riskySituations.isEmpty {
+                Text("Add planned situations like a stressful workday, drinks with friends, or a long drive.")
+                    .font(.rounded(.subheadline))
+                    .foregroundColor(QuitTheme.muted)
+            } else {
+                ForEach(store.riskySituations) { situation in
+                    riskySituationRow(situation)
+                }
+            }
+
+            Divider()
+            TextField("Situation", text: $newRiskTitle)
+                .textFieldStyle(.roundedBorder)
+            TextField("Expected context or time", text: $newRiskContext)
+                .textFieldStyle(.roundedBorder)
+            TextField("Prevention plan", text: $newRiskPlan)
+                .textFieldStyle(.roundedBorder)
+            TextField("Backup action", text: $newRiskBackup)
+                .textFieldStyle(.roundedBorder)
+            Button("Add risky situation") {
+                store.addRiskySituation(
+                    title: newRiskTitle,
+                    expectedContext: newRiskContext,
+                    preventionPlan: newRiskPlan,
+                    backupAction: newRiskBackup
+                )
+                newRiskTitle = ""
+                newRiskContext = ""
+                newRiskPlan = ""
+                newRiskBackup = ""
+            }
+            .buttonStyle(QuietButtonStyle())
+        }
+        .quietCard()
+    }
+
+    @ViewBuilder
+    private func riskySituationRow(_ situation: RiskySituation) -> some View {
+        if editingRiskID == situation.id {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Situation", text: $editRiskTitle)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Expected context or time", text: $editRiskContext)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Prevention plan", text: $editRiskPlan)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Backup action", text: $editRiskBackup)
+                    .textFieldStyle(.roundedBorder)
+                Toggle("Enabled", isOn: $editRiskEnabled)
+                    .font(.rounded(.caption, weight: .bold))
+                editButtons(
+                    saveTitle: "Save situation",
+                    save: {
+                        store.updateRiskySituation(
+                            id: situation.id,
+                            title: editRiskTitle,
+                            expectedContext: editRiskContext,
+                            preventionPlan: editRiskPlan,
+                            backupAction: editRiskBackup,
+                            isEnabled: editRiskEnabled
+                        )
+                        editingRiskID = nil
+                    },
+                    cancel: { editingRiskID = nil }
+                )
+            }
+            .padding(.vertical, 6)
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(situation.title)
+                            .font(.rounded(.subheadline, weight: .bold))
+                        Text(situation.preventionPlan)
+                            .font(.rounded(.caption))
+                            .foregroundColor(QuitTheme.muted)
+                        if !situation.expectedContext.isEmpty || !situation.backupAction.isEmpty {
+                            Text([situation.expectedContext, situation.backupAction].filter { !$0.isEmpty }.joined(separator: " | "))
+                                .font(.rounded(.caption))
+                                .foregroundColor(QuitTheme.muted)
+                        }
+                    }
+                    .opacity(situation.isEnabled ? 1 : 0.48)
+                    Spacer()
+                    actionButton(systemName: situation.isEnabled ? "pause" : "play", title: situation.isEnabled ? "Disable situation" : "Enable situation") {
+                        store.setRiskySituationEnabled(situation.id, isEnabled: !situation.isEnabled)
+                    }
+                    actionButton(systemName: "pencil", title: "Edit situation") {
+                        beginRiskEdit(situation)
+                    }
+                    actionButton(systemName: "trash", title: "Remove situation") {
+                        store.deleteRiskySituation(situation.id)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
     private var medicationNote: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Medication note")
                 .font(.rounded(.headline, weight: .bold))
-            Text(store.currentQuitPlan.medicationNote)
-                .font(.rounded(.subheadline))
-                .foregroundColor(QuitTheme.muted)
+            TextEditor(text: $medicationDraft)
+                .frame(height: 92)
+                .padding(8)
+                .background(QuitTheme.background)
+                .cornerRadius(12)
+            Button("Save medication note") {
+                store.updateMedicationNote(medicationDraft)
+            }
+            .buttonStyle(QuietButtonStyle())
         }
         .quietCard()
     }
@@ -269,6 +597,115 @@ struct PlanView: View {
         .quietCard()
     }
 
+    private func managedRow(
+        title: String,
+        detail: String,
+        isEnabled: Bool,
+        index: Int,
+        count: Int,
+        edit: @escaping () -> Void,
+        toggle: @escaping () -> Void,
+        delete: @escaping () -> Void,
+        moveUp: @escaping () -> Void,
+        moveDown: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.rounded(.subheadline, weight: .bold))
+                Text(detail)
+                    .font(.rounded(.caption))
+                    .foregroundColor(QuitTheme.muted)
+            }
+            .opacity(isEnabled ? 1 : 0.48)
+            Spacer()
+            priorityButtons(index: index, count: count, moveUp: moveUp, moveDown: moveDown)
+            actionButton(systemName: isEnabled ? "pause" : "play", title: isEnabled ? "Disable" : "Enable", action: toggle)
+            actionButton(systemName: "pencil", title: "Edit", action: edit)
+            actionButton(systemName: "trash", title: "Remove", action: delete)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func priorityButtons(
+        index: Int,
+        count: Int,
+        moveUp: @escaping () -> Void,
+        moveDown: @escaping () -> Void
+    ) -> some View {
+        VStack(spacing: 4) {
+            actionButton(systemName: "chevron.up", title: "Move up", action: moveUp)
+                .disabled(index <= 0)
+                .opacity(index <= 0 ? 0.38 : 1)
+            actionButton(systemName: "chevron.down", title: "Move down", action: moveDown)
+                .disabled(index >= count - 1)
+                .opacity(index >= count - 1 ? 0.38 : 1)
+        }
+    }
+
+    private func actionButton(
+        systemName: String,
+        title: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(QuitTheme.cocoa)
+                .frame(width: 31, height: 31)
+                .background(QuitTheme.peach.opacity(0.55))
+                .clipShape(Circle())
+        }
+        .accessibilityLabel(title)
+    }
+
+    private func editButtons(
+        saveTitle: String,
+        save: @escaping () -> Void,
+        cancel: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 10) {
+            Button(saveTitle, action: save)
+                .buttonStyle(QuietButtonStyle())
+            Button("Cancel", action: cancel)
+                .font(.rounded(.caption, weight: .bold))
+                .foregroundColor(QuitTheme.muted)
+        }
+    }
+
+    private func beginRuleEdit(_ rule: TriggerRule) {
+        editingRuleID = rule.id
+        editTrigger = rule.trigger
+        editAction = rule.action
+        editRuleEnabled = rule.isEnabled
+    }
+
+    private func beginActivityEdit(_ activity: ReplacementActivity) {
+        editingActivityID = activity.id
+        editActivityTitle = activity.title
+        editActivityInstruction = activity.instruction
+        editActivityLinkedTrigger = activity.linkedTrigger
+        editActivityCategory = activity.category
+        editActivityEnabled = activity.isEnabled
+    }
+
+    private func beginRiskEdit(_ situation: RiskySituation) {
+        editingRiskID = situation.id
+        editRiskTitle = situation.title
+        editRiskContext = situation.expectedContext
+        editRiskPlan = situation.preventionPlan
+        editRiskBackup = situation.backupAction
+        editRiskEnabled = situation.isEnabled
+    }
+
+    private func syncMedicationDraft() {
+        medicationDraft = store.currentQuitPlan.medicationNote
+    }
+
+    private func index<T: Identifiable>(of id: T.ID, in values: [T]) -> Int {
+        values.firstIndex { $0.id == id } ?? 0
+    }
+
     private var notificationSummary: String {
         if store.plannedNotificationItems.isEmpty {
             return store.notificationSettings.riskyWindowEnabled
@@ -295,6 +732,12 @@ struct PlanView: View {
             return days == 1 ? "1 day away." : "\(days) days away."
         }
         return "Quit date has passed. Keep the attempt alive or choose a new date."
+    }
+
+    private func dayLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return formatter.string(from: date)
     }
 
     private func currency(_ value: Double) -> String {

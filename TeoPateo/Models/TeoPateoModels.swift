@@ -534,6 +534,14 @@ struct PlanAdjustmentInsight: Equatable {
     let actionTitle: String
 }
 
+struct TaperScheduleDay: Identifiable, Equatable {
+    let date: Date
+    let targetCigarettes: Double
+    let isToday: Bool
+
+    var id: Date { date }
+}
+
 struct TriggerRule: Identifiable, Codable, Equatable {
     let id: UUID
     var trigger: String
@@ -634,6 +642,8 @@ struct DailyCheckIn: Identifiable, Codable, Equatable {
     let confidence: Double
     let smokedToday: Bool?
     let cigarettesSmoked: Int
+    let taperTargetCigarettes: Double?
+    let stayedWithinTaperTarget: Bool?
     let focusNote: String
     let slipNote: String
     let createdAt: Date
@@ -647,6 +657,8 @@ struct DailyCheckIn: Identifiable, Codable, Equatable {
         confidence: Double,
         smokedToday: Bool?,
         cigarettesSmoked: Int = 0,
+        taperTargetCigarettes: Double? = nil,
+        stayedWithinTaperTarget: Bool? = nil,
         focusNote: String,
         slipNote: String,
         createdAt: Date = Date(),
@@ -659,6 +671,8 @@ struct DailyCheckIn: Identifiable, Codable, Equatable {
         self.confidence = confidence
         self.smokedToday = smokedToday
         self.cigarettesSmoked = cigarettesSmoked
+        self.taperTargetCigarettes = taperTargetCigarettes
+        self.stayedWithinTaperTarget = stayedWithinTaperTarget
         self.focusNote = focusNote
         self.slipNote = slipNote
         self.createdAt = createdAt
@@ -821,6 +835,37 @@ struct ReplacementActivity: Identifiable, Codable, Equatable {
     }
 }
 
+struct RiskySituation: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var expectedContext: String
+    var preventionPlan: String
+    var backupAction: String
+    var isEnabled: Bool
+    let createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        expectedContext: String,
+        preventionPlan: String,
+        backupAction: String,
+        isEnabled: Bool = true,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.title = title
+        self.expectedContext = expectedContext
+        self.preventionPlan = preventionPlan
+        self.backupAction = backupAction
+        self.isEnabled = isEnabled
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
 struct SupportContact: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
@@ -950,6 +995,7 @@ struct PersistedTeoPateoSnapshot: Equatable {
     var cravingEvents: [CravingEvent]
     var slipEvents: [SlipEvent]
     var replacementActivities: [ReplacementActivity]
+    var riskySituations: [RiskySituation]
     var supportContacts: [SupportContact]
     var userReasons: [UserReason]
     var coachMessages: [CoachMessage]
@@ -962,6 +1008,7 @@ struct PersistedTeoPateoSnapshot: Equatable {
         cravingEvents: [CravingEvent] = [],
         slipEvents: [SlipEvent] = [],
         replacementActivities: [ReplacementActivity] = [],
+        riskySituations: [RiskySituation] = [],
         supportContacts: [SupportContact] = [],
         userReasons: [UserReason] = [],
         coachMessages: [CoachMessage] = []
@@ -973,6 +1020,7 @@ struct PersistedTeoPateoSnapshot: Equatable {
         self.cravingEvents = cravingEvents
         self.slipEvents = slipEvents
         self.replacementActivities = replacementActivities
+        self.riskySituations = riskySituations
         self.supportContacts = supportContacts
         self.userReasons = userReasons
         self.coachMessages = coachMessages

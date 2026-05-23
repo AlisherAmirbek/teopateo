@@ -20,6 +20,7 @@ struct CheckInView: View {
 
             sliders
             smokedToday
+            taperTarget
 
             if store.smokedToday == true {
                 slipRecovery
@@ -72,6 +73,27 @@ struct CheckInView: View {
             }
         }
         .quietCard()
+    }
+
+    @ViewBuilder
+    private var taperTarget: some View {
+        if let target = store.todayTaperTarget {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Taper target")
+                    .font(.rounded(.headline, weight: .bold))
+                Text("Today's target is \(Int(target)) cigarette\(Int(target) == 1 ? "" : "s").")
+                    .font(.rounded(.subheadline))
+                    .foregroundColor(QuitTheme.muted)
+
+                if let smokedToday = store.smokedToday {
+                    let cigarettes = smokedToday ? store.cigarettesSmoked : 0
+                    Text(Double(cigarettes) <= target ? "This check-in is within target." : "This check-in is above target. Use it to adjust tomorrow's plan.")
+                        .font(.rounded(.caption, weight: .bold))
+                        .foregroundColor(Double(cigarettes) <= target ? QuitTheme.sage : QuitTheme.cocoa)
+                }
+            }
+            .quietCard()
+        }
     }
 
     private var slipRecovery: some View {

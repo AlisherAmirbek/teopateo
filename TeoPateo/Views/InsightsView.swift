@@ -141,6 +141,14 @@ struct InsightsView: View {
             Text(insights.planAdjustment.detail)
                 .font(.rounded(.subheadline))
                 .foregroundColor(QuitTheme.muted)
+            if store.canApplyPlanAdjustmentSuggestion {
+                Button("Apply suggestion") {
+                    if store.applyPlanAdjustmentSuggestion() {
+                        store.selectedTab = .plan
+                    }
+                }
+                .buttonStyle(FilledButtonStyle())
+            }
             Button(insights.planAdjustment.actionTitle) {
                 store.selectedTab = .plan
             }

@@ -928,6 +928,27 @@ final class TeoPateoStore: ObservableObject {
         return "I am having a craving. Can you stay with me for 10 minutes?"
     }
 
+    func reasonsForCravingMode() -> [UserReason] {
+        if let primary = userReasons.first(where: \.isPrimary) {
+            let remaining = userReasons
+                .filter { $0.id != primary.id }
+                .sorted { lhs, rhs in
+                    if lhs.sortOrder != rhs.sortOrder {
+                        return lhs.sortOrder < rhs.sortOrder
+                    }
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+            return [primary] + remaining
+        }
+
+        return userReasons.sorted {
+            if $0.updatedAt != $1.updatedAt {
+                return $0.updatedAt > $1.updatedAt
+            }
+            return $0.createdAt > $1.createdAt
+        }
+    }
+
     func refreshNotificationAuthorization() {
         notificationScheduler.currentAuthorizationStatus { [weak self] status in
             DispatchQueue.main.async {
@@ -1000,10 +1021,10 @@ final class TeoPateoStore: ObservableObject {
     }
 
     func reasonForCravingMode() -> String {
-        if let primary = userReasons.first(where: \.isPrimary) {
-            return primary.text
+        if let reason = reasonsForCravingMode().first {
+            return reason.text
         }
-        return userReasons.first?.text ?? "Pause for 10 minutes before deciding. This urge can pass."
+        return Self.motivationFallback
     }
 
     var canApplyPlanAdjustmentSuggestion: Bool {
@@ -1268,7 +1289,8 @@ final class TeoPateoStore: ObservableObject {
             supportContacts = snapshot.supportContacts.isEmpty && !isOnboardingCompleted
                 ? Self.defaultSupportContacts()
                 : snapshot.supportContacts
-            userReasons = snapshot.userReasons.isEmpty
+            let shouldSeedDefaultData = Self.shouldSeedDefaultData(appSettings: snapshot.appSettings)
+            userReasons = snapshot.userReasons.isEmpty && shouldSeedDefaultData
                 ? Self.defaultUserReasons()
                 : snapshot.userReasons
             replacementActivities = snapshot.replacementActivities.isEmpty
@@ -1310,7 +1332,8 @@ final class TeoPateoStore: ObservableObject {
     }
 
     private func persistDefaultsIfNeeded(snapshot: PersistedTeoPateoSnapshot) throws {
-        if snapshot.appSettings == nil {
+        let shouldSeedDefaultData = Self.shouldSeedDefaultData(appSettings: snapshot.appSettings)
+        if shouldSeedDefaultData {
             try repository.saveAppSettings(AppSettings(onboardingCompleted: isOnboardingCompleted))
         }
         if snapshot.notificationSettings == nil {
@@ -1322,7 +1345,7 @@ final class TeoPateoStore: ObservableObject {
         if snapshot.supportContacts.isEmpty && !isOnboardingCompleted {
             try repository.replaceSupportContacts(supportContacts)
         }
-        if snapshot.userReasons.isEmpty {
+        if snapshot.userReasons.isEmpty && shouldSeedDefaultData {
             try repository.replaceUserReasons(userReasons)
         }
         if snapshot.replacementActivities.isEmpty {
@@ -2019,6 +2042,17 @@ final class TeoPateoStore: ObservableObject {
         formatter.minimumFractionDigits = amount.rounded() == amount ? 0 : 2
         formatter.maximumFractionDigits = 2
         return formatter.string(from: NSNumber(value: amount)) ?? "$0"
+    }
+
+    private static var motivationFallback: String {
+        "Pause for 10 minutes before deciding. This urge can pass."
+    }
+
+    private static func shouldSeedDefaultData(appSettings: AppSettings?) -> Bool {
+        guard let appSettings else {
+            return true
+        }
+        return appSettings.updatedAt.timeIntervalSince1970 <= 0
     }
 
     private static func normalizedOnboardingTriggers(_ triggers: [String]) -> [String] {

@@ -253,6 +253,55 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertTrue(activities.contains { $0.title == "Chew gum" || $0.title == "Drink cold water" })
     }
 
+    func testMotivationVaultUsesPrimaryLatestAndFallbackReasons() throws {
+        let repository = try makeRepository()
+        try repository.replaceUserReasons([
+            UserReason(
+                id: fixedUUID(150),
+                text: "Older reason",
+                sortOrder: 0,
+                isPrimary: false,
+                createdAt: fixedDate(150),
+                updatedAt: fixedDate(151)
+            ),
+            UserReason(
+                id: fixedUUID(151),
+                text: "Latest reason",
+                sortOrder: 1,
+                isPrimary: false,
+                createdAt: fixedDate(152),
+                updatedAt: fixedDate(153)
+            )
+        ])
+
+        let store = TeoPateoStore(repository: repository)
+
+        XCTAssertEqual(store.reasonForCravingMode(), "Latest reason")
+        XCTAssertEqual(store.reasonsForCravingMode().map(\.text), ["Latest reason", "Older reason"])
+
+        store.setPrimaryUserReason(fixedUUID(150))
+        XCTAssertEqual(store.reasonForCravingMode(), "Older reason")
+        XCTAssertEqual(store.reasonsForCravingMode().first?.id, fixedUUID(150))
+
+        let reloadedStore = TeoPateoStore(repository: repository)
+        XCTAssertEqual(reloadedStore.reasonForCravingMode(), "Older reason")
+        XCTAssertEqual(reloadedStore.reasonsForCravingMode().first?.id, fixedUUID(150))
+
+        store.deleteUserReason(fixedUUID(150))
+        store.deleteUserReason(fixedUUID(151))
+        XCTAssertEqual(
+            store.reasonForCravingMode(),
+            "Pause for 10 minutes before deciding. This urge can pass."
+        )
+
+        let emptyReloadedStore = TeoPateoStore(repository: repository)
+        XCTAssertTrue(emptyReloadedStore.userReasons.isEmpty)
+        XCTAssertEqual(
+            emptyReloadedStore.reasonForCravingMode(),
+            "Pause for 10 minutes before deciding. This urge can pass."
+        )
+    }
+
     func testStoreManagesQuitPlanRefinements() throws {
         let repository = try makeRepository()
         let store = TeoPateoStore(repository: repository)

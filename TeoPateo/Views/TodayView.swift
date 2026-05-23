@@ -3,6 +3,7 @@ import SwiftUI
 struct TodayView: View {
     @EnvironmentObject private var store: TeoPateoStore
     @State private var isNotificationsPresented = false
+    @State private var isMotivationPresented = false
 
     var body: some View {
         ZStack {
@@ -29,6 +30,10 @@ struct TodayView: View {
         }
         .sheet(isPresented: $isNotificationsPresented) {
             NotificationSettingsView()
+                .environmentObject(store)
+        }
+        .sheet(isPresented: $isMotivationPresented) {
+            MotivationVaultView()
                 .environmentObject(store)
         }
     }
@@ -154,6 +159,25 @@ struct TodayView: View {
                 }
             }
             .buttonStyle(QuietButtonStyle())
+
+            if risk.actionTitle == "Review plan" {
+                Divider()
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Reason to protect")
+                        .font(.rounded(.caption, weight: .bold))
+                        .foregroundColor(QuitTheme.ink)
+                    Text(store.reasonForCravingMode())
+                        .font(.rounded(.caption))
+                        .foregroundColor(QuitTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button("Manage reasons") {
+                    isMotivationPresented = true
+                }
+                .buttonStyle(QuietButtonStyle())
+            }
         }
         .quietCard()
         .padding(.top, 18)

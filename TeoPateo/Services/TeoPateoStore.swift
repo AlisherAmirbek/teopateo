@@ -23,13 +23,17 @@ final class TeoPateoStore: ObservableObject {
     @Published private(set) var cravingEvents: [CravingEvent] = []
     @Published private(set) var slipEvents: [SlipEvent] = []
     @Published private(set) var replacementActivities: [ReplacementActivity] = []
+    @Published private(set) var riskySituations: [RiskySituation] = []
     @Published private(set) var coachMessages: [CoachMessage] = []
+    @Published private(set) var notificationSettings = NotificationSettings()
+    @Published private(set) var notificationPermissionStatus: NotificationPermissionStatus = .unknown
     @Published private(set) var isOnboardingCompleted = false
     @Published private(set) var persistenceError: String?
     @Published private(set) var lastSaveStatus: SaveStatus = .idle
     @Published private(set) var supportMessageDraft = ""
 
     private let repository: TeoPateoRepository
+    private let notificationScheduler: NotificationScheduling
     private let now: () -> Date
     private let calendar: Calendar
     private var quitPlan = TeoPateoStore.defaultQuitPlan()
@@ -47,10 +51,12 @@ final class TeoPateoStore: ObservableObject {
 
     init(
         repository: TeoPateoRepository,
+        notificationScheduler: NotificationScheduling = LocalNotificationScheduler(),
         now: @escaping () -> Date = Date.init,
         calendar: Calendar = .current
     ) {
         self.repository = repository
+        self.notificationScheduler = notificationScheduler
         self.now = now
         self.calendar = calendar
         hydrateFromPersistence()
@@ -58,6 +64,10 @@ final class TeoPateoStore: ObservableObject {
 
     var currentQuitPlan: QuitPlan {
         quitPlan
+    }
+
+    var todayTaperTarget: Double? {
+        taperTarget(on: now())
     }
 
     var todayCheckIn: DailyCheckIn? {
@@ -101,6 +111,15 @@ final class TeoPateoStore: ObservableObject {
         )
     }
 
+    var plannedNotificationItems: [NotificationScheduleItem] {
+        NotificationPlanner.scheduleItems(
+            settings: notificationSettings,
+            quitPlan: quitPlan,
+            riskWindows: calculatedInsights.riskWindows,
+            topTriggers: calculatedInsights.topTriggers
+        )
+    }
+
     var historyGroups: [HistoryDayGroup] {
         let entries = historyEntries()
         let grouped = Dictionary(grouping: entries) { entry in
@@ -130,6 +149,8 @@ final class TeoPateoStore: ObservableObject {
 
         let now = now()
         let existing = latestCheckIn(on: date)
+        let cigarettesSmoked = smokedToday == true ? max(cigarettesSmoked, 1) : 0
+        let taperTarget = taperTarget(on: date)
         let checkIn = DailyCheckIn(
             id: existing?.id ?? UUID(),
             date: date,
@@ -137,7 +158,9 @@ final class TeoPateoStore: ObservableObject {
             stress: stress,
             confidence: confidence,
             smokedToday: smokedToday,
-            cigarettesSmoked: smokedToday == true ? max(cigarettesSmoked, 1) : 0,
+            cigarettesSmoked: cigarettesSmoked,
+            taperTargetCigarettes: taperTarget,
+            stayedWithinTaperTarget: taperTarget.map { Double(cigarettesSmoked) <= $0 },
             focusNote: focusNote,
             slipNote: smokedToday == true ? slipNote : "",
             createdAt: existing?.createdAt ?? now,
@@ -358,6 +381,60 @@ final class TeoPateoStore: ObservableObject {
         persistQuitPlan(successMessage: "Progress baseline updated.")
     }
 
+    func updateTaperSettings(
+        targetCigarettesPerDay: Double,
+        reductionStep: Double,
+        reductionIntervalDays: Int
+    ) {
+        quitPlan.taperTargetCigarettesPerDay = min(
+            max(targetCigarettesPerDay, 0),
+            max(quitPlan.baselineCigarettesPerDay, 0)
+        )
+        quitPlan.taperReductionStep = max(reductionStep, 0)
+        quitPlan.taperReductionIntervalDays = max(reductionIntervalDays, 1)
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: "Taper schedule updated.")
+    }
+
+    func taperTarget(on date: Date) -> Double? {
+        guard quitPlan.quitMode == "Taper" else {
+            return nil
+        }
+
+        let startDay = calendar.startOfDay(for: quitPlan.attemptStartedAt)
+        let targetDay = calendar.startOfDay(for: date)
+        let elapsedDays = max(
+            calendar.dateComponents([.day], from: startDay, to: targetDay).day ?? 0,
+            0
+        )
+        let interval = max(quitPlan.taperReductionIntervalDays, 1)
+        let completedIntervals = elapsedDays / interval
+        let reduction = Double(completedIntervals) * max(quitPlan.taperReductionStep, 0)
+        return max(quitPlan.taperTargetCigarettesPerDay - reduction, 0)
+    }
+
+    func taperSchedule(days: Int = 7) -> [TaperScheduleDay] {
+        guard quitPlan.quitMode == "Taper", days > 0 else {
+            return []
+        }
+
+        let today = calendar.startOfDay(for: now())
+        return (0..<days).compactMap { offset in
+            guard
+                let date = calendar.date(byAdding: .day, value: offset, to: today),
+                let target = taperTarget(on: date)
+            else {
+                return nil
+            }
+
+            return TaperScheduleDay(
+                date: date,
+                targetCigarettes: target,
+                isToday: calendar.isDate(date, inSameDayAs: today)
+            )
+        }
+    }
+
     @discardableResult
     func completeOnboarding(_ input: OnboardingPlanInput) -> Bool {
         let now = now()
@@ -392,9 +469,7 @@ final class TeoPateoStore: ObservableObject {
         nextPlan.quitDate = input.quitDate
         nextPlan.quitMode = normalizedMode
         nextPlan.triggerRules = nextTriggerRules
-        nextPlan.medicationNote = Self.medicationNote(
-            isInterestedInMedicationSupport: input.isInterestedInMedicationSupport
-        )
+        nextPlan.medicationNote = ""
         nextPlan.baselineCigarettesPerDay = max(input.cigarettesPerDay, 0)
         nextPlan.costPerPack = max(input.costPerPack, 0)
         nextPlan.cigarettesPerPack = 20
@@ -413,6 +488,7 @@ final class TeoPateoStore: ObservableObject {
             try repository.replaceSupportContacts([])
             try repository.replaceUserReasons(nextReasons)
             try repository.replaceReplacementActivities(nextActivities)
+            try repository.replaceRiskySituations([])
             try repository.saveAppSettings(nextSettings)
 
             isHydrating = true
@@ -422,6 +498,7 @@ final class TeoPateoStore: ObservableObject {
             supportContacts = []
             userReasons = nextReasons
             replacementActivities = nextActivities
+            riskySituations = []
             self.selectedTriggers = Set(selectedTriggers)
             isOnboardingCompleted = true
             isOnboardingPresented = false
@@ -459,6 +536,71 @@ final class TeoPateoStore: ObservableObject {
         quitPlan.triggerRules = triggerRules
         quitPlan.updatedAt = now()
         persistQuitPlan(successMessage: "Trigger rule added.")
+    }
+
+    func updateTriggerRule(
+        id: UUID,
+        trigger: String,
+        action: String,
+        isEnabled: Bool
+    ) {
+        let trimmedTrigger = trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedAction = action.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTrigger.isEmpty, !trimmedAction.isEmpty else {
+            lastSaveStatus = .failed("Trigger and action are required.")
+            return
+        }
+        guard let index = triggerRules.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        triggerRules[index].trigger = trimmedTrigger
+        triggerRules[index].action = trimmedAction
+        triggerRules[index].isEnabled = isEnabled
+        quitPlan.triggerRules = triggerRules
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: "Trigger rule updated.")
+    }
+
+    func setTriggerRuleEnabled(_ id: UUID, isEnabled: Bool) {
+        guard let index = triggerRules.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        triggerRules[index].isEnabled = isEnabled
+        quitPlan.triggerRules = triggerRules
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: isEnabled ? "Trigger rule enabled." : "Trigger rule disabled.")
+    }
+
+    func deleteTriggerRule(_ id: UUID) {
+        guard triggerRules.contains(where: { $0.id == id }) else {
+            return
+        }
+
+        triggerRules.removeAll { $0.id == id }
+        quitPlan.triggerRules = triggerRules
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: "Trigger rule removed.")
+    }
+
+    func moveTriggerRule(_ id: UUID, direction: Int) {
+        guard
+            direction != 0,
+            let fromIndex = triggerRules.firstIndex(where: { $0.id == id })
+        else {
+            return
+        }
+
+        let toIndex = min(max(fromIndex + direction, 0), triggerRules.count - 1)
+        guard toIndex != fromIndex else {
+            return
+        }
+
+        triggerRules.move(from: fromIndex, to: toIndex)
+        quitPlan.triggerRules = triggerRules
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: "Trigger rules reordered.")
     }
 
     func addSupportContact(
@@ -523,6 +665,39 @@ final class TeoPateoStore: ObservableObject {
         persistUserReasons(successMessage: "Primary reason updated.")
     }
 
+    func updateUserReason(_ id: UUID, text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            lastSaveStatus = .failed("Reason cannot be empty.")
+            return
+        }
+        guard let index = userReasons.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        userReasons[index].text = trimmed
+        userReasons[index].updatedAt = now()
+        persistUserReasons(successMessage: "Reason updated.")
+    }
+
+    func moveUserReason(_ id: UUID, direction: Int) {
+        guard
+            direction != 0,
+            let fromIndex = userReasons.firstIndex(where: { $0.id == id })
+        else {
+            return
+        }
+
+        let toIndex = min(max(fromIndex + direction, 0), userReasons.count - 1)
+        guard toIndex != fromIndex else {
+            return
+        }
+
+        userReasons.move(from: fromIndex, to: toIndex)
+        userReasons = normalizedUserReasons(userReasons)
+        persistUserReasons(successMessage: "Reasons reordered.")
+    }
+
     func deleteUserReason(_ id: UUID) {
         guard userReasons.contains(where: { $0.id == id }) else {
             return
@@ -571,6 +746,146 @@ final class TeoPateoStore: ObservableObject {
         persistReplacementActivities(successMessage: "Replacement activity saved.")
     }
 
+    func updateReplacementActivity(
+        id: UUID,
+        title: String,
+        instruction: String,
+        category: ReplacementActivityCategory,
+        linkedTrigger: String,
+        isEnabled: Bool
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedInstruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTrigger = linkedTrigger.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty, !trimmedInstruction.isEmpty else {
+            lastSaveStatus = .failed("Activity title and instruction are required.")
+            return
+        }
+        guard let index = replacementActivities.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        replacementActivities[index].title = trimmedTitle
+        replacementActivities[index].instruction = trimmedInstruction
+        replacementActivities[index].category = category
+        replacementActivities[index].linkedTrigger = trimmedTrigger
+        replacementActivities[index].isEnabled = isEnabled
+        replacementActivities[index].updatedAt = now()
+        persistReplacementActivities(successMessage: "Replacement activity updated.")
+    }
+
+    func setReplacementActivityEnabled(_ id: UUID, isEnabled: Bool) {
+        guard let index = replacementActivities.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        replacementActivities[index].isEnabled = isEnabled
+        replacementActivities[index].updatedAt = now()
+        persistReplacementActivities(successMessage: isEnabled ? "Replacement activity enabled." : "Replacement activity disabled.")
+    }
+
+    func deleteReplacementActivity(_ id: UUID) {
+        guard replacementActivities.contains(where: { $0.id == id }) else {
+            return
+        }
+
+        replacementActivities.removeAll { $0.id == id }
+        persistReplacementActivities(successMessage: "Replacement activity removed.")
+    }
+
+    func moveReplacementActivity(_ id: UUID, direction: Int) {
+        guard
+            direction != 0,
+            let fromIndex = replacementActivities.firstIndex(where: { $0.id == id })
+        else {
+            return
+        }
+
+        let toIndex = min(max(fromIndex + direction, 0), replacementActivities.count - 1)
+        guard toIndex != fromIndex else {
+            return
+        }
+
+        replacementActivities.move(from: fromIndex, to: toIndex)
+        persistReplacementActivities(successMessage: "Replacement activities reordered.")
+    }
+
+    func addRiskySituation(
+        title: String,
+        expectedContext: String,
+        preventionPlan: String,
+        backupAction: String
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedContext = expectedContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPlan = preventionPlan.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBackup = backupAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty, !trimmedPlan.isEmpty else {
+            lastSaveStatus = .failed("Risky situation and prevention plan are required.")
+            return
+        }
+
+        riskySituations.append(
+            RiskySituation(
+                title: trimmedTitle,
+                expectedContext: trimmedContext,
+                preventionPlan: trimmedPlan,
+                backupAction: trimmedBackup,
+                createdAt: now(),
+                updatedAt: now()
+            )
+        )
+        persistRiskySituations(successMessage: "Risky situation saved.")
+    }
+
+    func updateRiskySituation(
+        id: UUID,
+        title: String,
+        expectedContext: String,
+        preventionPlan: String,
+        backupAction: String,
+        isEnabled: Bool
+    ) {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedContext = expectedContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPlan = preventionPlan.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBackup = backupAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty, !trimmedPlan.isEmpty else {
+            lastSaveStatus = .failed("Risky situation and prevention plan are required.")
+            return
+        }
+        guard let index = riskySituations.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        riskySituations[index].title = trimmedTitle
+        riskySituations[index].expectedContext = trimmedContext
+        riskySituations[index].preventionPlan = trimmedPlan
+        riskySituations[index].backupAction = trimmedBackup
+        riskySituations[index].isEnabled = isEnabled
+        riskySituations[index].updatedAt = now()
+        persistRiskySituations(successMessage: "Risky situation updated.")
+    }
+
+    func setRiskySituationEnabled(_ id: UUID, isEnabled: Bool) {
+        guard let index = riskySituations.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        riskySituations[index].isEnabled = isEnabled
+        riskySituations[index].updatedAt = now()
+        persistRiskySituations(successMessage: isEnabled ? "Risky situation enabled." : "Risky situation disabled.")
+    }
+
+    func deleteRiskySituation(_ id: UUID) {
+        guard riskySituations.contains(where: { $0.id == id }) else {
+            return
+        }
+
+        riskySituations.removeAll { $0.id == id }
+        persistRiskySituations(successMessage: "Risky situation removed.")
+    }
+
     func activitiesForCurrentCraving(triggers: Set<String>) -> [ReplacementActivity] {
         let enabled = replacementActivities.filter(\.isEnabled)
         guard !enabled.isEmpty else {
@@ -605,11 +920,137 @@ final class TeoPateoStore: ObservableObject {
         return "I am having a craving. Can you stay with me for 10 minutes?"
     }
 
-    func reasonForCravingMode() -> String {
+    func reasonsForCravingMode() -> [UserReason] {
         if let primary = userReasons.first(where: \.isPrimary) {
-            return primary.text
+            let remaining = userReasons
+                .filter { $0.id != primary.id }
+                .sorted { lhs, rhs in
+                    if lhs.sortOrder != rhs.sortOrder {
+                        return lhs.sortOrder < rhs.sortOrder
+                    }
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+            return [primary] + remaining
         }
-        return userReasons.first?.text ?? "Pause for 10 minutes before deciding. This urge can pass."
+
+        return userReasons.sorted {
+            if $0.updatedAt != $1.updatedAt {
+                return $0.updatedAt > $1.updatedAt
+            }
+            return $0.createdAt > $1.createdAt
+        }
+    }
+
+    func refreshNotificationAuthorization() {
+        notificationScheduler.currentAuthorizationStatus { [weak self] status in
+            DispatchQueue.main.async {
+                self?.notificationPermissionStatus = status
+                if status.canScheduleNotifications {
+                    self?.syncScheduledNotifications(showSuccess: false)
+                }
+            }
+        }
+    }
+
+    func requestNotificationAuthorization() {
+        notificationScheduler.requestAuthorization { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let status):
+                    self.notificationPermissionStatus = status
+                    if status.canScheduleNotifications {
+                        self.lastSaveStatus = .saved("Notifications allowed. Choose the reminders you want.")
+                        self.syncScheduledNotifications(showSuccess: false)
+                    } else {
+                        self.lastSaveStatus = .failed("Notifications were not allowed.")
+                    }
+                case .failure:
+                    self.lastSaveStatus = .failed("Notification permission could not be requested.")
+                }
+            }
+        }
+    }
+
+    func setNotificationEnabled(_ kind: NotificationKind, isEnabled: Bool) {
+        if isEnabled && !notificationPermissionStatus.canScheduleNotifications {
+            guard notificationPermissionStatus != .denied else {
+                lastSaveStatus = .failed("Notifications are blocked in iOS Settings.")
+                return
+            }
+
+            notificationScheduler.requestAuthorization { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let status):
+                        self.notificationPermissionStatus = status
+                        guard status.canScheduleNotifications else {
+                            self.lastSaveStatus = .failed("Notifications were not allowed.")
+                            return
+                        }
+                        self.saveNotificationPreference(kind, isEnabled: true)
+                    case .failure:
+                        self.lastSaveStatus = .failed("Notification permission could not be requested.")
+                    }
+                }
+            }
+            return
+        }
+
+        saveNotificationPreference(kind, isEnabled: isEnabled)
+    }
+
+    func updateNotificationTime(_ kind: NotificationKind, time: ReminderTime) {
+        guard kind.supportsFixedTime else { return }
+        var next = notificationSettings
+        next.setTime(time, for: kind)
+        next.updatedAt = now()
+        guard persistNotificationSettings(next, successMessage: "\(kind.title) time updated.") else {
+            return
+        }
+        syncScheduledNotifications(showSuccess: false)
+    }
+
+    func reasonForCravingMode() -> String {
+        if let reason = reasonsForCravingMode().first {
+            return reason.text
+        }
+        return Self.motivationFallback
+    }
+
+    var canApplyPlanAdjustmentSuggestion: Bool {
+        let insights = calculatedInsights
+        if let topTrigger = (insights.topSlipTriggers.first ?? insights.topTriggers.first) {
+            return matchingTriggerRule(for: topTrigger.name) == nil
+        }
+        return false
+    }
+
+    @discardableResult
+    func applyPlanAdjustmentSuggestion() -> Bool {
+        let insights = calculatedInsights
+        if let topTrigger = (insights.topSlipTriggers.first ?? insights.topTriggers.first) {
+            guard matchingTriggerRule(for: topTrigger.name) == nil else {
+                lastSaveStatus = .failed("That trigger already has a rule.")
+                return false
+            }
+
+            let windowText = insights.riskWindows.first.map { " near \($0.startLabel)" } ?? ""
+            triggerRules.append(
+                TriggerRule(
+                    trigger: topTrigger.name,
+                    action: "Start a 10-minute substitute\(windowText) before deciding whether to smoke."
+                )
+            )
+            quitPlan.triggerRules = triggerRules
+            quitPlan.updatedAt = now()
+            persistQuitPlan(successMessage: "Insight added a trigger rule.")
+            return true
+        }
+
+        lastSaveStatus = .failed("Log more cravings before applying a suggestion.")
+        return false
     }
 
     func deleteCravingEvent(_ id: UUID) {
@@ -617,6 +1058,7 @@ final class TeoPateoStore: ObservableObject {
             try repository.deleteCravingEvent(id)
             cravingEvents = try repository.recentCravingEvents(limit: 10_000)
             lastSaveStatus = .saved("Craving record deleted.")
+            syncScheduledNotifications(showSuccess: false)
         } catch {
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Craving record could not be deleted.")
@@ -634,9 +1076,124 @@ final class TeoPateoStore: ObservableObject {
         }
     }
 
+    func deleteSlipEvent(_ id: UUID) {
+        do {
+            try repository.deleteSlipEvent(id)
+            slipEvents = try repository.recentSlipEvents(limit: 10_000)
+            lastSaveStatus = .saved("Slip record deleted.")
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Slip record could not be deleted.")
+        }
+    }
+
+    func updateDailyCheckInNote(
+        id: UUID,
+        focusNote: String,
+        slipNote: String
+    ) {
+        guard let existing = dailyCheckIns.first(where: { $0.id == id }) else {
+            return
+        }
+
+        let checkIn = DailyCheckIn(
+            id: existing.id,
+            date: existing.date,
+            mood: existing.mood,
+            stress: existing.stress,
+            confidence: existing.confidence,
+            smokedToday: existing.smokedToday,
+            cigarettesSmoked: existing.cigarettesSmoked,
+            taperTargetCigarettes: existing.taperTargetCigarettes,
+            stayedWithinTaperTarget: existing.stayedWithinTaperTarget,
+            focusNote: focusNote.trimmingCharacters(in: .whitespacesAndNewlines),
+            slipNote: existing.smokedToday == true
+                ? slipNote.trimmingCharacters(in: .whitespacesAndNewlines)
+                : "",
+            createdAt: existing.createdAt,
+            updatedAt: now()
+        )
+
+        do {
+            try repository.saveDailyCheckIn(checkIn)
+            dailyCheckIns = try repository.recentCheckIns(limit: 10_000)
+            persistenceError = nil
+            lastSaveStatus = .saved("Check-in note updated.")
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Check-in note could not be updated.")
+        }
+    }
+
+    func updateSlipEventNotes(
+        id: UUID,
+        note: String,
+        recoveryAction: String
+    ) {
+        guard let existing = slipEvents.first(where: { $0.id == id }) else {
+            return
+        }
+
+        let event = SlipEvent(
+            id: existing.id,
+            occurredAt: existing.occurredAt,
+            cigarettesSmoked: existing.cigarettesSmoked,
+            selectedTriggers: existing.selectedTriggers,
+            mood: existing.mood,
+            stress: existing.stress,
+            context: existing.context,
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+            recoveryAction: recoveryAction.trimmingCharacters(in: .whitespacesAndNewlines),
+            createdAt: existing.createdAt,
+            updatedAt: now()
+        )
+
+        do {
+            try repository.saveSlipEvent(event)
+            slipEvents = try repository.recentSlipEvents(limit: 10_000)
+            persistenceError = nil
+            lastSaveStatus = .saved("Slip note updated.")
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Slip note could not be updated.")
+        }
+    }
+
     func clearStatus() {
         lastSaveStatus = .idle
         persistenceError = nil
+    }
+
+    func weeklyRecap(for date: Date? = nil) -> WeeklyRecap {
+        let range = weekRange(containing: date ?? now())
+        let checkInsByDay = Self.latestCheckInsByDay(
+            dailyCheckIns.filter { range.contains($0.date) },
+            calendar: calendar
+        )
+        let weeklyCravings = cravingEvents.filter {
+            range.contains($0.completedAt ?? $0.dismissedAt ?? $0.startedAt) &&
+                $0.outcome != .dismissedWithoutOutcome
+        }
+        let weeklySlips = slipEvents.filter { range.contains($0.occurredAt) }
+        let topTriggers = Self.calculatedTriggerCounts(
+            triggerLists: weeklyCravings.map(\.selectedTriggers) + weeklySlips.map(\.selectedTriggers),
+            total: Double(max(weeklyCravings.count + weeklySlips.count, 1))
+        )
+        let riskWindows = Self.calculatedRiskWindows(from: weeklyCravings, calendar: calendar)
+
+        return WeeklyRecap(
+            weekStart: range.lowerBound,
+            weekEnd: range.upperBound,
+            cravingsLogged: weeklyCravings.count,
+            cravingsHandled: weeklyCravings.filter { $0.outcome == .completedWithoutSmoking }.count,
+            smokeFreeCheckInDays: checkInsByDay.values.filter { $0.smokedToday == false }.count,
+            topTrigger: topTriggers.first?.name,
+            planAdjustment: Self.calculatedPlanAdjustment(
+                topTriggers: topTriggers,
+                riskWindows: riskWindows,
+                triggerRules: triggerRules
+            )
+        )
     }
 
     func historyEntries(range: ClosedRange<Date>? = nil) -> [HistoryEntry] {
@@ -646,9 +1203,7 @@ final class TeoPateoStore: ObservableObject {
                 kind: .craving,
                 date: event.completedAt ?? event.dismissedAt ?? event.startedAt,
                 title: cravingHistoryTitle(event),
-                detail: event.selectedTriggers.isEmpty
-                    ? "No trigger selected"
-                    : event.selectedTriggers.joined(separator: ", ")
+                detail: cravingHistoryDetail(event)
             )
         }
 
@@ -658,7 +1213,7 @@ final class TeoPateoStore: ObservableObject {
                 kind: .checkIn,
                 date: checkIn.date,
                 title: checkIn.smokedToday == true ? "Check-in: smoked" : "Check-in: no smoke",
-                detail: "Mood \(Int(checkIn.mood)) / Stress \(Int(checkIn.stress)) / Confidence \(Int(checkIn.confidence))"
+                detail: checkInHistoryDetail(checkIn)
             )
         }
 
@@ -668,9 +1223,7 @@ final class TeoPateoStore: ObservableObject {
                 kind: .slip,
                 date: event.occurredAt,
                 title: "Slip: \(event.cigarettesSmoked) cigarette\(event.cigarettesSmoked == 1 ? "" : "s")",
-                detail: event.selectedTriggers.isEmpty
-                    ? event.recoveryAction
-                    : event.selectedTriggers.joined(separator: ", ")
+                detail: slipHistoryDetail(event)
             )
         }
 
@@ -682,6 +1235,10 @@ final class TeoPateoStore: ObservableObject {
             .sorted { $0.date > $1.date }
     }
 
+    func historyEntry(for id: UUID, kind: HistoryEntry.Kind) -> HistoryEntry? {
+        historyEntries().first { $0.id == id && $0.kind == kind }
+    }
+
     private func hydrateFromPersistence() {
         isHydrating = true
         defer { isHydrating = false }
@@ -691,6 +1248,7 @@ final class TeoPateoStore: ObservableObject {
 
             isOnboardingCompleted = snapshot.appSettings?.onboardingCompleted ?? false
             isOnboardingPresented = !isOnboardingCompleted
+            notificationSettings = snapshot.notificationSettings ?? NotificationSettings()
 
             let loadedPlan = snapshot.quitPlan ?? Self.defaultQuitPlan()
             quitPlan = loadedPlan
@@ -700,12 +1258,14 @@ final class TeoPateoStore: ObservableObject {
             supportContacts = snapshot.supportContacts.isEmpty && !isOnboardingCompleted
                 ? Self.defaultSupportContacts()
                 : snapshot.supportContacts
-            userReasons = snapshot.userReasons.isEmpty
+            let shouldSeedDefaultData = Self.shouldSeedDefaultData(appSettings: snapshot.appSettings)
+            userReasons = snapshot.userReasons.isEmpty && shouldSeedDefaultData
                 ? Self.defaultUserReasons()
                 : snapshot.userReasons
             replacementActivities = snapshot.replacementActivities.isEmpty
                 ? Self.defaultReplacementActivities()
                 : snapshot.replacementActivities
+            riskySituations = snapshot.riskySituations
             coachMessages = snapshot.coachMessages.isEmpty
                 ? Self.defaultCoachMessages()
                 : snapshot.coachMessages
@@ -730,7 +1290,9 @@ final class TeoPateoStore: ObservableObject {
         supportContacts = Self.defaultSupportContacts()
         userReasons = Self.defaultUserReasons()
         replacementActivities = Self.defaultReplacementActivities()
+        riskySituations = []
         coachMessages = Self.defaultCoachMessages()
+        notificationSettings = NotificationSettings()
         isOnboardingCompleted = false
         isOnboardingPresented = true
         dailyCheckIns = []
@@ -739,8 +1301,12 @@ final class TeoPateoStore: ObservableObject {
     }
 
     private func persistDefaultsIfNeeded(snapshot: PersistedTeoPateoSnapshot) throws {
-        if snapshot.appSettings == nil {
+        let shouldSeedDefaultData = Self.shouldSeedDefaultData(appSettings: snapshot.appSettings)
+        if shouldSeedDefaultData {
             try repository.saveAppSettings(AppSettings(onboardingCompleted: isOnboardingCompleted))
+        }
+        if snapshot.notificationSettings == nil {
+            try repository.saveNotificationSettings(notificationSettings)
         }
         if snapshot.quitPlan == nil {
             try repository.saveQuitPlan(quitPlan)
@@ -748,11 +1314,14 @@ final class TeoPateoStore: ObservableObject {
         if snapshot.supportContacts.isEmpty && !isOnboardingCompleted {
             try repository.replaceSupportContacts(supportContacts)
         }
-        if snapshot.userReasons.isEmpty {
+        if snapshot.userReasons.isEmpty && shouldSeedDefaultData {
             try repository.replaceUserReasons(userReasons)
         }
         if snapshot.replacementActivities.isEmpty {
             try repository.replaceReplacementActivities(replacementActivities)
+        }
+        if !riskySituations.isEmpty && snapshot.riskySituations.isEmpty {
+            try repository.replaceRiskySituations(riskySituations)
         }
         if snapshot.coachMessages.isEmpty {
             try repository.replaceCoachMessages(coachMessages)
@@ -772,6 +1341,7 @@ final class TeoPateoStore: ObservableObject {
             try repository.saveQuitPlan(quitPlan)
             persistenceError = nil
             lastSaveStatus = .saved(successMessage)
+            syncScheduledNotifications(showSuccess: false)
         } catch {
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Quit plan could not be saved.")
@@ -811,6 +1381,17 @@ final class TeoPateoStore: ObservableObject {
         }
     }
 
+    private func persistRiskySituations(successMessage: String) {
+        do {
+            try repository.replaceRiskySituations(riskySituations)
+            persistenceError = nil
+            lastSaveStatus = .saved(successMessage)
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Risky situations could not be saved.")
+        }
+    }
+
     private func persistCoachMessages() {
         do {
             try repository.replaceCoachMessages(coachMessages)
@@ -818,6 +1399,83 @@ final class TeoPateoStore: ObservableObject {
         } catch {
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Coach messages could not be saved.")
+        }
+    }
+
+    private func saveNotificationPreference(
+        _ kind: NotificationKind,
+        isEnabled: Bool
+    ) {
+        var next = notificationSettings
+        next.setEnabled(isEnabled, for: kind)
+        next.updatedAt = now()
+
+        let message = isEnabled
+            ? "\(kind.title) reminder enabled."
+            : "\(kind.title) reminder disabled."
+        guard persistNotificationSettings(next, successMessage: message) else {
+            return
+        }
+        syncScheduledNotifications(showSuccess: false)
+    }
+
+    @discardableResult
+    private func persistNotificationSettings(
+        _ settings: NotificationSettings,
+        successMessage: String
+    ) -> Bool {
+        let previous = notificationSettings
+        notificationSettings = settings
+
+        do {
+            try repository.saveNotificationSettings(settings)
+            persistenceError = nil
+            lastSaveStatus = .saved(successMessage)
+            return true
+        } catch {
+            notificationSettings = previous
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Notification settings could not be saved.")
+            return false
+        }
+    }
+
+    private func syncScheduledNotifications(showSuccess: Bool) {
+        if !notificationSettings.hasEnabledReminders {
+            guard notificationPermissionStatus.canScheduleNotifications else {
+                return
+            }
+            notificationScheduler.cancelScheduledNotifications { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if case .failure = result {
+                        self.lastSaveStatus = .failed("Scheduled notifications could not be updated.")
+                    } else if showSuccess {
+                        self.lastSaveStatus = .saved("Notifications updated.")
+                    }
+                }
+            }
+            return
+        }
+
+        guard notificationPermissionStatus.canScheduleNotifications else {
+            return
+        }
+
+        notificationScheduler.replaceScheduledNotifications(
+            with: plannedNotificationItems
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success:
+                    if showSuccess {
+                        self.lastSaveStatus = .saved("Notifications updated.")
+                    }
+                case .failure:
+                    self.lastSaveStatus = .failed("Scheduled notifications could not be updated.")
+                }
+            }
         }
     }
 
@@ -857,11 +1515,30 @@ final class TeoPateoStore: ObservableObject {
             cravingEvents = try repository.recentCravingEvents(limit: 10_000)
             persistenceError = nil
             lastSaveStatus = .saved(successMessage)
+            syncScheduledNotifications(showSuccess: false)
             return true
         } catch {
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Craving could not be saved.")
             return false
+        }
+    }
+
+    private func normalizedUserReasons(_ reasons: [UserReason]) -> [UserReason] {
+        reasons.enumerated().map { index, reason in
+            var updated = reason
+            updated.sortOrder = index
+            updated.updatedAt = now()
+            return updated
+        }
+    }
+
+    private func matchingTriggerRule(for trigger: String) -> TriggerRule? {
+        let triggerText = trigger.lowercased()
+        return triggerRules.first { rule in
+            guard rule.isEnabled else { return false }
+            let ruleText = rule.trigger.lowercased()
+            return ruleText.contains(triggerText) || triggerText.contains(ruleText)
         }
     }
 
@@ -887,6 +1564,63 @@ final class TeoPateoStore: ObservableObject {
         case .dismissedWithoutOutcome:
             return "Craving saved for later"
         }
+    }
+
+    private func cravingHistoryDetail(_ event: CravingEvent) -> String {
+        var details = [durationSummary(event.durationSeconds)]
+        if !event.selectedTriggers.isEmpty {
+            details.append(event.selectedTriggers.joined(separator: ", "))
+        } else {
+            details.append("No trigger selected")
+        }
+        if let activityID = event.helpedActivityID,
+           let activity = replacementActivities.first(where: { $0.id == activityID }) {
+            details.append(activity.title)
+        }
+        return details.joined(separator: " | ")
+    }
+
+    private func checkInHistoryDetail(_ checkIn: DailyCheckIn) -> String {
+        var details = [
+            "Mood \(Int(checkIn.mood))",
+            "Stress \(Int(checkIn.stress))",
+            "Confidence \(Int(checkIn.confidence))"
+        ]
+        if let target = checkIn.taperTargetCigarettes {
+            details.append("Target \(Int(target))")
+        }
+        return details.joined(separator: " | ")
+    }
+
+    private func slipHistoryDetail(_ event: SlipEvent) -> String {
+        var details = [
+            "\(event.cigarettesSmoked) cigarette\(event.cigarettesSmoked == 1 ? "" : "s")"
+        ]
+        if !event.selectedTriggers.isEmpty {
+            details.append(event.selectedTriggers.joined(separator: ", "))
+        }
+        if !event.recoveryAction.isEmpty {
+            details.append(event.recoveryAction)
+        }
+        return details.joined(separator: " | ")
+    }
+
+    private func durationSummary(_ seconds: Int) -> String {
+        let minutes = max(seconds, 0) / 60
+        if minutes <= 0 {
+            return "Under 1 minute"
+        }
+        return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+    }
+
+    private func weekRange(containing date: Date) -> ClosedRange<Date> {
+        if let interval = calendar.dateInterval(of: .weekOfYear, for: date) {
+            return interval.start...interval.end.addingTimeInterval(-1)
+        }
+
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
+        return start...end.addingTimeInterval(-1)
     }
 
     private func earnedMilestones(
@@ -1270,6 +2004,17 @@ final class TeoPateoStore: ObservableObject {
         return formatter.string(from: NSNumber(value: amount)) ?? "$0"
     }
 
+    private static var motivationFallback: String {
+        "Pause for 10 minutes before deciding. This urge can pass."
+    }
+
+    private static func shouldSeedDefaultData(appSettings: AppSettings?) -> Bool {
+        guard let appSettings else {
+            return true
+        }
+        return appSettings.updatedAt.timeIntervalSince1970 <= 0
+    }
+
     private static func normalizedOnboardingTriggers(_ triggers: [String]) -> [String] {
         let validTriggers = Set(QuitTriggerCatalog.onboardingTriggers)
         let normalized = triggers
@@ -1414,14 +2159,6 @@ final class TeoPateoStore: ObservableObject {
         }
     }
 
-    private static func medicationNote(isInterestedInMedicationSupport: Bool) -> String {
-        if isInterestedInMedicationSupport {
-            return "You marked interest in quit medicines or nicotine replacement. Talk with a doctor, pharmacist, or quitline counselor before making medication decisions."
-        }
-
-        return "Nicotine replacement therapy and prescription quit medicines can help some people. Talk with a doctor, pharmacist, or quitline counselor before making medication decisions."
-    }
-
     private static func defaultQuitPlan() -> QuitPlan {
         let now = Date()
         let quitDate = Calendar.current.date(byAdding: .day, value: 11, to: now) ?? now
@@ -1434,7 +2171,7 @@ final class TeoPateoStore: ObservableObject {
                 TriggerRule(trigger: "Alcohol", action: "Keep a drink in hand and step outside without cigarettes."),
                 TriggerRule(trigger: "After meals", action: "Brush teeth or chew gum immediately.")
             ],
-            medicationNote: "Nicotine replacement therapy and prescription quit medicines can help some people. Talk with a doctor, pharmacist, or quitline counselor before making medication decisions.",
+            medicationNote: "",
             baselineCigarettesPerDay: 10,
             costPerPack: 10,
             cigarettesPerPack: 20,
@@ -1505,11 +2242,13 @@ enum AppTab: String, CaseIterable {
 
 private final class InMemoryTeoPateoRepository: TeoPateoRepository {
     private var appSettings: AppSettings?
+    private var notificationSettings: NotificationSettings?
     private var quitPlan: QuitPlan?
     private var dailyCheckIns: [DailyCheckIn] = []
     private var cravingEvents: [CravingEvent] = []
     private var slipEvents: [SlipEvent] = []
     private var replacementActivities: [ReplacementActivity] = []
+    private var riskySituations: [RiskySituation] = []
     private var supportContacts: [SupportContact] = []
     private var userReasons: [UserReason] = []
     private var coachMessages: [CoachMessage] = []
@@ -1520,11 +2259,13 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
     func loadSnapshot() throws -> PersistedTeoPateoSnapshot {
         PersistedTeoPateoSnapshot(
             appSettings: appSettings,
+            notificationSettings: notificationSettings,
             quitPlan: quitPlan,
             dailyCheckIns: dailyCheckIns,
             cravingEvents: cravingEvents,
             slipEvents: slipEvents,
             replacementActivities: replacementActivities,
+            riskySituations: riskySituations,
             supportContacts: supportContacts,
             userReasons: userReasons,
             coachMessages: coachMessages
@@ -1537,6 +2278,14 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
 
     func saveAppSettings(_ settings: AppSettings) throws {
         appSettings = settings
+    }
+
+    func fetchNotificationSettings() throws -> NotificationSettings? {
+        notificationSettings
+    }
+
+    func saveNotificationSettings(_ settings: NotificationSettings) throws {
+        notificationSettings = settings
     }
 
     func fetchQuitPlan() throws -> QuitPlan? {
@@ -1582,12 +2331,24 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
         Array(slipEvents.sorted { $0.occurredAt > $1.occurredAt }.prefix(limit))
     }
 
+    func deleteSlipEvent(_ id: UUID) throws {
+        slipEvents.removeAll { $0.id == id }
+    }
+
     func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws {
         replacementActivities = activities
     }
 
     func fetchReplacementActivities() throws -> [ReplacementActivity] {
         replacementActivities
+    }
+
+    func replaceRiskySituations(_ situations: [RiskySituation]) throws {
+        riskySituations = situations
+    }
+
+    func fetchRiskySituations() throws -> [RiskySituation] {
+        riskySituations
     }
 
     func replaceSupportContacts(_ contacts: [SupportContact]) throws {
@@ -1624,5 +2385,12 @@ private extension Array where Element: Identifiable {
             result.append(element)
         }
         return result
+    }
+}
+
+private extension Array {
+    mutating func move(from sourceIndex: Int, to destinationIndex: Int) {
+        let element = remove(at: sourceIndex)
+        insert(element, at: destinationIndex)
     }
 }

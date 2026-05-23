@@ -8,12 +8,11 @@ The strongest version is:
 
 > A personal quit coach for the exact moment you are about to smoke.
 
-This matches standard cessation guidance: CDC emphasizes quit plans, counseling, and quit-smoking medicines; Smokefree.gov emphasizes cravings, triggers, support systems, and personalized quit plans.
+This matches standard cessation guidance: CDC emphasizes quit plans and counseling; Smokefree.gov emphasizes cravings, triggers, support systems, and personalized quit plans.
 
 Reference sources:
 
 - CDC quit smoking
-- CDC quit medicines
 - Smokefree cravings and triggers
 - Smokefree quit plan
 
@@ -30,7 +29,6 @@ The free product should help the user understand the app, create a basic quit pl
 - Daily check-in.
 - Basic progress dashboard.
 - Quitline and professional support prompts.
-- High-level medication education.
 
 ### Paid Package
 
@@ -58,7 +56,7 @@ Capture the user's baseline and quitting context:
 - Reasons for quitting
 - Support people
 - Quit date
-- Interest in medication or professional support
+- Interest in professional support
 
 ### Quit Plan Builder
 
@@ -70,7 +68,6 @@ Help the user turn their quit intention into a practical plan:
 - Craving plan
 - Substitute activities
 - Support contacts
-- Risky situations
 - "What I'll do instead" rules
 
 ### Craving Emergency Mode
@@ -170,11 +167,6 @@ Surface trustworthy support paths:
 - 1-800-QUIT-NOW in the US
 - Doctor and pharmacist prompts
 - Educational info about counseling
-- Educational info about medication
-
-### Medication Education
-
-Explain nicotine replacement therapy and FDA-approved quit medicines at a high level. Use clear language that encourages the user to talk to a healthcare professional before making medication decisions.
 
 ### Motivation Vault
 
@@ -196,7 +188,6 @@ Support the quit plan with opt-in reminders:
 - Risky-time warnings
 - Post-meal reminders
 - Evening check-ins
-- Medication or nicotine replacement therapy reminders if enabled
 
 ### Achievements Without Childishness
 

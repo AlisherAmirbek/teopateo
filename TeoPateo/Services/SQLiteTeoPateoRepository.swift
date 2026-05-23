@@ -9,6 +9,9 @@ protocol TeoPateoRepository {
     func fetchAppSettings() throws -> AppSettings?
     func saveAppSettings(_ settings: AppSettings) throws
 
+    func fetchNotificationSettings() throws -> NotificationSettings?
+    func saveNotificationSettings(_ settings: NotificationSettings) throws
+
     func fetchQuitPlan() throws -> QuitPlan?
     func saveQuitPlan(_ plan: QuitPlan) throws
 
@@ -22,9 +25,13 @@ protocol TeoPateoRepository {
 
     func saveSlipEvent(_ event: SlipEvent) throws
     func recentSlipEvents(limit: Int) throws -> [SlipEvent]
+    func deleteSlipEvent(_ id: UUID) throws
 
     func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws
     func fetchReplacementActivities() throws -> [ReplacementActivity]
+
+    func replaceRiskySituations(_ situations: [RiskySituation]) throws
+    func fetchRiskySituations() throws -> [RiskySituation]
 
     func replaceSupportContacts(_ contacts: [SupportContact]) throws
     func fetchSupportContacts() throws -> [SupportContact]
@@ -97,11 +104,13 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
     func loadSnapshot() throws -> PersistedTeoPateoSnapshot {
         PersistedTeoPateoSnapshot(
             appSettings: try fetchAppSettings(),
+            notificationSettings: try fetchNotificationSettings(),
             quitPlan: try fetchQuitPlan(),
             dailyCheckIns: try recentCheckIns(limit: 10_000),
             cravingEvents: try recentCravingEvents(limit: 10_000),
             slipEvents: try recentSlipEvents(limit: 10_000),
             replacementActivities: try fetchReplacementActivities(),
+            riskySituations: try fetchRiskySituations(),
             supportContacts: try fetchSupportContacts(),
             userReasons: try fetchUserReasons(),
             coachMessages: try fetchCoachMessages()
@@ -143,6 +152,101 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     onboarding_completed = excluded.onboarding_completed,
+                    updated_at = excluded.updated_at;
+                """)
+        }
+    }
+
+    func fetchNotificationSettings() throws -> NotificationSettings? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT morning_plan_enabled, risky_window_enabled,
+                       post_meal_enabled, evening_check_in_enabled,
+                       medication_enabled, morning_plan_hour,
+                       morning_plan_minute, post_meal_hour,
+                       post_meal_minute, evening_check_in_hour,
+                       evening_check_in_minute, medication_hour,
+                       medication_minute, updated_at
+                FROM notification_settings
+                WHERE id = 0;
+                """
+            )
+
+            guard let row else {
+                return nil
+            }
+
+            return NotificationSettings(
+                morningPlanEnabled: bool(row, "morning_plan_enabled"),
+                riskyWindowEnabled: bool(row, "risky_window_enabled"),
+                postMealEnabled: bool(row, "post_meal_enabled"),
+                eveningCheckInEnabled: bool(row, "evening_check_in_enabled"),
+                medicationEnabled: bool(row, "medication_enabled"),
+                morningPlanTime: ReminderTime(
+                    hour: row["morning_plan_hour"],
+                    minute: row["morning_plan_minute"]
+                ),
+                postMealTime: ReminderTime(
+                    hour: row["post_meal_hour"],
+                    minute: row["post_meal_minute"]
+                ),
+                eveningCheckInTime: ReminderTime(
+                    hour: row["evening_check_in_hour"],
+                    minute: row["evening_check_in_minute"]
+                ),
+                medicationTime: ReminderTime(
+                    hour: row["medication_hour"],
+                    minute: row["medication_minute"]
+                ),
+                updatedAt: date(row, "updated_at")
+            )
+        }
+    }
+
+    func saveNotificationSettings(_ settings: NotificationSettings) throws {
+        try dbQueue.write { db in
+            try db.execute(literal: """
+                INSERT INTO notification_settings (
+                    id, morning_plan_enabled, risky_window_enabled,
+                    post_meal_enabled, evening_check_in_enabled,
+                    medication_enabled, morning_plan_hour, morning_plan_minute,
+                    post_meal_hour, post_meal_minute, evening_check_in_hour,
+                    evening_check_in_minute, medication_hour, medication_minute,
+                    updated_at
+                )
+                VALUES (
+                    0,
+                    \(settings.morningPlanEnabled ? 1 : 0),
+                    \(settings.riskyWindowEnabled ? 1 : 0),
+                    \(settings.postMealEnabled ? 1 : 0),
+                    \(settings.eveningCheckInEnabled ? 1 : 0),
+                    \(settings.medicationEnabled ? 1 : 0),
+                    \(settings.morningPlanTime.hour),
+                    \(settings.morningPlanTime.minute),
+                    \(settings.postMealTime.hour),
+                    \(settings.postMealTime.minute),
+                    \(settings.eveningCheckInTime.hour),
+                    \(settings.eveningCheckInTime.minute),
+                    \(settings.medicationTime.hour),
+                    \(settings.medicationTime.minute),
+                    \(settings.updatedAt.timeIntervalSince1970)
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    morning_plan_enabled = excluded.morning_plan_enabled,
+                    risky_window_enabled = excluded.risky_window_enabled,
+                    post_meal_enabled = excluded.post_meal_enabled,
+                    evening_check_in_enabled = excluded.evening_check_in_enabled,
+                    medication_enabled = excluded.medication_enabled,
+                    morning_plan_hour = excluded.morning_plan_hour,
+                    morning_plan_minute = excluded.morning_plan_minute,
+                    post_meal_hour = excluded.post_meal_hour,
+                    post_meal_minute = excluded.post_meal_minute,
+                    evening_check_in_hour = excluded.evening_check_in_hour,
+                    evening_check_in_minute = excluded.evening_check_in_minute,
+                    medication_hour = excluded.medication_hour,
+                    medication_minute = excluded.medication_minute,
                     updated_at = excluded.updated_at;
                 """)
         }
@@ -255,10 +359,12 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
 
     func saveDailyCheckIn(_ checkIn: DailyCheckIn) throws {
         let smokedToday = checkIn.smokedToday.map { $0 ? 1 : 0 }
+        let stayedWithinTaperTarget = checkIn.stayedWithinTaperTarget.map { $0 ? 1 : 0 }
         try dbQueue.write { db in
             try db.execute(literal: """
                 INSERT INTO daily_check_ins (
                     id, date, mood, stress, confidence, smoked_today, cigarettes_smoked,
+                    taper_target_cigarettes, stayed_within_taper_target,
                     focus_note, slip_note, created_at, updated_at
                 )
                 VALUES (
@@ -269,6 +375,8 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     \(checkIn.confidence),
                     \(smokedToday),
                     \(checkIn.cigarettesSmoked),
+                    \(checkIn.taperTargetCigarettes),
+                    \(stayedWithinTaperTarget),
                     \(checkIn.focusNote),
                     \(checkIn.slipNote),
                     \(checkIn.createdAt.timeIntervalSince1970),
@@ -281,6 +389,8 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     confidence = excluded.confidence,
                     smoked_today = excluded.smoked_today,
                     cigarettes_smoked = excluded.cigarettes_smoked,
+                    taper_target_cigarettes = excluded.taper_target_cigarettes,
+                    stayed_within_taper_target = excluded.stayed_within_taper_target,
                     focus_note = excluded.focus_note,
                     slip_note = excluded.slip_note,
                     updated_at = excluded.updated_at;
@@ -294,6 +404,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 db,
                 sql: """
                 SELECT id, date, mood, stress, confidence, smoked_today, cigarettes_smoked,
+                       taper_target_cigarettes, stayed_within_taper_target,
                        focus_note, slip_note, created_at, updated_at
                 FROM daily_check_ins
                 ORDER BY date DESC, created_at DESC
@@ -311,6 +422,8 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     confidence: row["confidence"],
                     smokedToday: optionalBool(row, "smoked_today"),
                     cigarettesSmoked: row["cigarettes_smoked"],
+                    taperTargetCigarettes: row["taper_target_cigarettes"],
+                    stayedWithinTaperTarget: optionalBool(row, "stayed_within_taper_target"),
                     focusNote: row["focus_note"],
                     slipNote: row["slip_note"],
                     createdAt: date(row, "created_at"),
@@ -517,6 +630,12 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         }
     }
 
+    func deleteSlipEvent(_ id: UUID) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM slip_events WHERE id = ?;", arguments: [id.uuidString])
+        }
+    }
+
     func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws {
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM replacement_activities;")
@@ -563,6 +682,58 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     category: ReplacementActivityCategory(rawValue: row["category"]) ?? .distraction,
                     durationSeconds: row["duration_seconds"],
                     linkedTrigger: row["linked_trigger"],
+                    isEnabled: bool(row, "is_enabled"),
+                    createdAt: date(row, "created_at"),
+                    updatedAt: date(row, "updated_at")
+                )
+            }
+        }
+    }
+
+    func replaceRiskySituations(_ situations: [RiskySituation]) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM risky_situations;")
+            for (position, situation) in situations.enumerated() {
+                try db.execute(literal: """
+                    INSERT INTO risky_situations (
+                        id, title, expected_context, prevention_plan,
+                        backup_action, is_enabled, position, created_at, updated_at
+                    )
+                    VALUES (
+                        \(situation.id.uuidString),
+                        \(situation.title),
+                        \(situation.expectedContext),
+                        \(situation.preventionPlan),
+                        \(situation.backupAction),
+                        \(situation.isEnabled ? 1 : 0),
+                        \(position),
+                        \(situation.createdAt.timeIntervalSince1970),
+                        \(situation.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+        }
+    }
+
+    func fetchRiskySituations() throws -> [RiskySituation] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, title, expected_context, prevention_plan,
+                       backup_action, is_enabled, created_at, updated_at
+                FROM risky_situations
+                ORDER BY position ASC, created_at ASC;
+                """
+            )
+
+            return try rows.map { row in
+                RiskySituation(
+                    id: try uuid(row, "id"),
+                    title: row["title"],
+                    expectedContext: row["expected_context"],
+                    preventionPlan: row["prevention_plan"],
+                    backupAction: row["backup_action"],
                     isEnabled: bool(row, "is_enabled"),
                     createdAt: date(row, "created_at"),
                     updatedAt: date(row, "updated_at")
@@ -896,6 +1067,59 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 VALUES (0, 0, 0);
 
                 PRAGMA user_version = 3;
+                """)
+        }
+
+        migrator.registerMigration("v4") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS notification_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 0),
+                    morning_plan_enabled INTEGER NOT NULL DEFAULT 0,
+                    risky_window_enabled INTEGER NOT NULL DEFAULT 0,
+                    post_meal_enabled INTEGER NOT NULL DEFAULT 0,
+                    evening_check_in_enabled INTEGER NOT NULL DEFAULT 0,
+                    medication_enabled INTEGER NOT NULL DEFAULT 0,
+                    morning_plan_hour INTEGER NOT NULL DEFAULT 8,
+                    morning_plan_minute INTEGER NOT NULL DEFAULT 30,
+                    post_meal_hour INTEGER NOT NULL DEFAULT 13,
+                    post_meal_minute INTEGER NOT NULL DEFAULT 30,
+                    evening_check_in_hour INTEGER NOT NULL DEFAULT 20,
+                    evening_check_in_minute INTEGER NOT NULL DEFAULT 30,
+                    medication_hour INTEGER NOT NULL DEFAULT 9,
+                    medication_minute INTEGER NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL
+                );
+
+                INSERT OR IGNORE INTO notification_settings (
+                    id, updated_at
+                )
+                VALUES (0, 0);
+
+                PRAGMA user_version = 4;
+                """)
+        }
+
+        migrator.registerMigration("v5") { db in
+            try db.execute(sql: """
+                ALTER TABLE daily_check_ins ADD COLUMN taper_target_cigarettes REAL;
+                ALTER TABLE daily_check_ins ADD COLUMN stayed_within_taper_target INTEGER;
+
+                CREATE TABLE IF NOT EXISTS risky_situations (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    title TEXT NOT NULL,
+                    expected_context TEXT NOT NULL,
+                    prevention_plan TEXT NOT NULL,
+                    backup_action TEXT NOT NULL,
+                    is_enabled INTEGER NOT NULL,
+                    position INTEGER NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS risky_situations_enabled_index
+                    ON risky_situations(is_enabled);
+
+                PRAGMA user_version = 5;
                 """)
         }
 

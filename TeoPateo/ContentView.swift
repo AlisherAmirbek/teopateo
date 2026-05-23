@@ -44,5 +44,8 @@ struct ContentView: View {
             CravingModeView()
                 .environmentObject(store)
         }
+        .onAppear {
+            store.refreshNotificationAuthorization()
+        }
     }
 }

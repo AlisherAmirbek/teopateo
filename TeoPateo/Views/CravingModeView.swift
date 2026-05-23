@@ -13,6 +13,7 @@ struct CravingModeView: View {
     @State private var reflectionNote = ""
     @State private var slipNote = ""
     @State private var step: CravingStep = .rescue
+    @State private var reasonIndex = 0
 
     private let triggers = ["Coffee", "Work stress", "After meal", "Boredom", "Alcohol", "Social"]
 
@@ -46,6 +47,7 @@ struct CravingModeView: View {
         .onAppear {
             startedAt = Date()
             store.startCravingSession()
+            reasonIndex = 0
         }
         .onDisappear {
             timer?.invalidate()
@@ -92,6 +94,7 @@ struct CravingModeView: View {
     private var rescueContent: some View {
         VStack(alignment: .leading, spacing: 18) {
             timerPanel
+            motivationPanel
             intensityNowPanel
             activityPanel(title: "Pick one action now", subtitle: "Do one small replacement while the timer runs.")
             triggerPanel(title: "Optional trigger")
@@ -168,6 +171,32 @@ struct CravingModeView: View {
 
     private var intensityNowPanel: some View {
         sliderPanel(title: "Craving now", value: $initialIntensity)
+    }
+
+    private var motivationPanel: some View {
+        let reasons = store.reasonsForCravingMode()
+        let text = reasons.isEmpty
+            ? store.reasonForCravingMode()
+            : reasons[safeReasonIndex(count: reasons.count)].text
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Reason to wait")
+                .font(.rounded(.headline, weight: .bold))
+            Text(text)
+                .font(.rounded(.subheadline))
+                .foregroundColor(QuitTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 10) {
+                if reasons.count > 1 {
+                    Button("Show another reason") {
+                        reasonIndex = (safeReasonIndex(count: reasons.count) + 1) % reasons.count
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                }
+            }
+        }
+        .quietCard()
     }
 
     private func sliderPanel(title: String, value: Binding<Double>) -> some View {
@@ -383,6 +412,13 @@ struct CravingModeView: View {
         )
         resetTimer()
         dismiss()
+    }
+
+    private func safeReasonIndex(count: Int) -> Int {
+        guard count > 0 else {
+            return 0
+        }
+        return min(reasonIndex, count - 1)
     }
 }
 

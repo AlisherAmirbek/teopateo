@@ -9,7 +9,6 @@ struct OnboardingView: View {
     @State private var quitMode = "Taper"
     @State private var selectedTriggers: Set<String> = ["Coffee", "After meals", "Work stress"]
     @State private var primaryReason = ""
-    @State private var isInterestedInMedicationSupport = false
 
     private let finalStep = 5
 
@@ -223,12 +222,6 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 14) {
                 TextField("Reason for quitting", text: $primaryReason)
                     .textFieldStyle(.roundedBorder)
-
-                Divider()
-
-                Toggle("I want to discuss quit medicines or nicotine replacement", isOn: $isInterestedInMedicationSupport)
-                    .font(.rounded(.subheadline))
-                    .toggleStyle(SwitchToggleStyle(tint: QuitTheme.cocoa))
             }
             .quietCard()
 
@@ -325,8 +318,7 @@ struct OnboardingView: View {
                     quitDate: quitDate,
                     quitMode: quitMode,
                     selectedTriggers: selectedTriggerList,
-                    primaryReason: primaryReason,
-                    isInterestedInMedicationSupport: isInterestedInMedicationSupport
+                    primaryReason: primaryReason
                 )
             )
             return

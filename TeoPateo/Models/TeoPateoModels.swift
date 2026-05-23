@@ -60,6 +60,341 @@ enum SupportRole: String, Codable, Equatable {
     }
 }
 
+enum NotificationPermissionStatus: String, Equatable {
+    case unknown
+    case notDetermined
+    case denied
+    case authorized
+    case provisional
+    case ephemeral
+
+    var canScheduleNotifications: Bool {
+        switch self {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .unknown, .notDetermined, .denied:
+            return false
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .unknown:
+            return "Checking permission"
+        case .notDetermined:
+            return "Permission needed"
+        case .denied:
+            return "Notifications blocked"
+        case .authorized, .provisional, .ephemeral:
+            return "Notifications allowed"
+        }
+    }
+}
+
+enum NotificationKind: String, CaseIterable, Codable, Equatable {
+    case morningPlan = "morning_plan"
+    case riskyWindow = "risky_window"
+    case postMeal = "post_meal"
+    case eveningCheckIn = "evening_check_in"
+    case medication = "medication"
+
+    var title: String {
+        switch self {
+        case .morningPlan:
+            return "Morning plan"
+        case .riskyWindow:
+            return "Risk-window warning"
+        case .postMeal:
+            return "Post-meal reminder"
+        case .eveningCheckIn:
+            return "Evening check-in"
+        case .medication:
+            return "Medication or NRT"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .morningPlan:
+            return "Review the day's target and one substitute before the first routine cue."
+        case .riskyWindow:
+            return "Warn before your highest-risk craving windows once history reveals them."
+        case .postMeal:
+            return "Prompt the after-meal replacement action before autopilot starts."
+        case .eveningCheckIn:
+            return "Close the day with a short check-in and recovery note if needed."
+        case .medication:
+            return "Only use this for a medicine or nicotine replacement plan you made with a clinician, pharmacist, or quitline counselor."
+        }
+    }
+
+    var supportsFixedTime: Bool {
+        self != .riskyWindow
+    }
+}
+
+struct ReminderTime: Codable, Equatable {
+    var hour: Int
+    var minute: Int
+
+    init(hour: Int, minute: Int) {
+        self.hour = min(max(hour, 0), 23)
+        self.minute = min(max(minute, 0), 59)
+    }
+
+    var minuteOfDay: Int {
+        hour * 60 + minute
+    }
+
+    var displayLabel: String {
+        let displayHour = hour % 12 == 0 ? 12 : hour % 12
+        let suffix = hour < 12 ? "AM" : "PM"
+        return String(format: "%d:%02d %@", displayHour, minute, suffix)
+    }
+}
+
+struct NotificationSettings: Codable, Equatable {
+    var morningPlanEnabled: Bool
+    var riskyWindowEnabled: Bool
+    var postMealEnabled: Bool
+    var eveningCheckInEnabled: Bool
+    var medicationEnabled: Bool
+    var morningPlanTime: ReminderTime
+    var postMealTime: ReminderTime
+    var eveningCheckInTime: ReminderTime
+    var medicationTime: ReminderTime
+    var updatedAt: Date
+
+    init(
+        morningPlanEnabled: Bool = false,
+        riskyWindowEnabled: Bool = false,
+        postMealEnabled: Bool = false,
+        eveningCheckInEnabled: Bool = false,
+        medicationEnabled: Bool = false,
+        morningPlanTime: ReminderTime = ReminderTime(hour: 8, minute: 30),
+        postMealTime: ReminderTime = ReminderTime(hour: 13, minute: 30),
+        eveningCheckInTime: ReminderTime = ReminderTime(hour: 20, minute: 30),
+        medicationTime: ReminderTime = ReminderTime(hour: 9, minute: 0),
+        updatedAt: Date = Date()
+    ) {
+        self.morningPlanEnabled = morningPlanEnabled
+        self.riskyWindowEnabled = riskyWindowEnabled
+        self.postMealEnabled = postMealEnabled
+        self.eveningCheckInEnabled = eveningCheckInEnabled
+        self.medicationEnabled = medicationEnabled
+        self.morningPlanTime = morningPlanTime
+        self.postMealTime = postMealTime
+        self.eveningCheckInTime = eveningCheckInTime
+        self.medicationTime = medicationTime
+        self.updatedAt = updatedAt
+    }
+
+    var hasEnabledReminders: Bool {
+        morningPlanEnabled ||
+            riskyWindowEnabled ||
+            postMealEnabled ||
+            eveningCheckInEnabled ||
+            medicationEnabled
+    }
+
+    func isEnabled(_ kind: NotificationKind) -> Bool {
+        switch kind {
+        case .morningPlan:
+            return morningPlanEnabled
+        case .riskyWindow:
+            return riskyWindowEnabled
+        case .postMeal:
+            return postMealEnabled
+        case .eveningCheckIn:
+            return eveningCheckInEnabled
+        case .medication:
+            return medicationEnabled
+        }
+    }
+
+    func time(for kind: NotificationKind) -> ReminderTime? {
+        switch kind {
+        case .morningPlan:
+            return morningPlanTime
+        case .postMeal:
+            return postMealTime
+        case .eveningCheckIn:
+            return eveningCheckInTime
+        case .medication:
+            return medicationTime
+        case .riskyWindow:
+            return nil
+        }
+    }
+
+    mutating func setEnabled(_ isEnabled: Bool, for kind: NotificationKind) {
+        switch kind {
+        case .morningPlan:
+            morningPlanEnabled = isEnabled
+        case .riskyWindow:
+            riskyWindowEnabled = isEnabled
+        case .postMeal:
+            postMealEnabled = isEnabled
+        case .eveningCheckIn:
+            eveningCheckInEnabled = isEnabled
+        case .medication:
+            medicationEnabled = isEnabled
+        }
+    }
+
+    mutating func setTime(_ time: ReminderTime, for kind: NotificationKind) {
+        switch kind {
+        case .morningPlan:
+            morningPlanTime = time
+        case .postMeal:
+            postMealTime = time
+        case .eveningCheckIn:
+            eveningCheckInTime = time
+        case .medication:
+            medicationTime = time
+        case .riskyWindow:
+            return
+        }
+    }
+}
+
+struct NotificationScheduleItem: Equatable {
+    let identifier: String
+    let kind: NotificationKind
+    let title: String
+    let body: String
+    let time: ReminderTime
+}
+
+enum NotificationPlanner {
+    static let identifierPrefix = "teopateo.notification."
+
+    static var allManagedIdentifiers: [String] {
+        [
+            identifier(for: .morningPlan),
+            identifier(for: .postMeal),
+            identifier(for: .eveningCheckIn),
+            identifier(for: .medication)
+        ] + (0..<24).map { riskyWindowIdentifier(startHour: $0) }
+    }
+
+    static func scheduleItems(
+        settings: NotificationSettings,
+        quitPlan: QuitPlan,
+        riskWindows: [RiskWindowInsight],
+        topTriggers: [TriggerInsight]
+    ) -> [NotificationScheduleItem] {
+        var items: [NotificationScheduleItem] = []
+
+        if settings.morningPlanEnabled {
+            items.append(
+                NotificationScheduleItem(
+                    identifier: identifier(for: .morningPlan),
+                    kind: .morningPlan,
+                    title: "Review today's quit plan",
+                    body: "Choose the first trigger you will protect and keep one 10-minute substitute ready.",
+                    time: settings.morningPlanTime
+                )
+            )
+        }
+
+        if settings.riskyWindowEnabled {
+            items.append(contentsOf: riskWindowItems(
+                quitPlan: quitPlan,
+                riskWindows: riskWindows,
+                topTriggers: topTriggers
+            ))
+        }
+
+        if settings.postMealEnabled {
+            items.append(
+                NotificationScheduleItem(
+                    identifier: identifier(for: .postMeal),
+                    kind: .postMeal,
+                    title: "Protect the after-meal window",
+                    body: "Start the replacement action before smoking becomes automatic.",
+                    time: settings.postMealTime
+                )
+            )
+        }
+
+        if settings.eveningCheckInEnabled {
+            items.append(
+                NotificationScheduleItem(
+                    identifier: identifier(for: .eveningCheckIn),
+                    kind: .eveningCheckIn,
+                    title: "Check in without judgment",
+                    body: "Record what happened today and choose one focus for tomorrow.",
+                    time: settings.eveningCheckInTime
+                )
+            )
+        }
+
+        if settings.medicationEnabled {
+            items.append(
+                NotificationScheduleItem(
+                    identifier: identifier(for: .medication),
+                    kind: .medication,
+                    title: "Medication or NRT reminder",
+                    body: "Follow the plan you made with your clinician, pharmacist, or quitline counselor.",
+                    time: settings.medicationTime
+                )
+            )
+        }
+
+        return items.sorted {
+            if $0.time.minuteOfDay != $1.time.minuteOfDay {
+                return $0.time.minuteOfDay < $1.time.minuteOfDay
+            }
+            return $0.identifier < $1.identifier
+        }
+    }
+
+    private static func riskWindowItems(
+        quitPlan: QuitPlan,
+        riskWindows: [RiskWindowInsight],
+        topTriggers: [TriggerInsight]
+    ) -> [NotificationScheduleItem] {
+        let topTrigger = topTriggers.first?.name
+        let action = topTrigger.flatMap { matchingRule(for: $0, in: quitPlan.triggerRules)?.action }
+        let actionText = action.map { " Start with: \($0)" } ?? " Keep your 10-minute rescue ready."
+
+        return riskWindows.prefix(3).map { window in
+            NotificationScheduleItem(
+                identifier: riskyWindowIdentifier(startHour: window.startHour),
+                kind: .riskyWindow,
+                title: "Risk window coming up",
+                body: "\(window.startLabel) has shown up in your craving history.\(actionText)",
+                time: warningTime(beforeStartHour: window.startHour)
+            )
+        }
+    }
+
+    private static func warningTime(beforeStartHour startHour: Int) -> ReminderTime {
+        ReminderTime(hour: (startHour + 23) % 24, minute: 30)
+    }
+
+    private static func matchingRule(
+        for trigger: String,
+        in triggerRules: [TriggerRule]
+    ) -> TriggerRule? {
+        let triggerText = trigger.lowercased()
+        return triggerRules.first { rule in
+            guard rule.isEnabled else { return false }
+            let ruleText = rule.trigger.lowercased()
+            return ruleText.contains(triggerText) || triggerText.contains(ruleText)
+        }
+    }
+
+    private static func identifier(for kind: NotificationKind) -> String {
+        identifierPrefix + kind.rawValue
+    }
+
+    private static func riskyWindowIdentifier(startHour: Int) -> String {
+        identifierPrefix + "risky_window_\(startHour)"
+    }
+}
+
 enum ReplacementActivityCategory: String, Codable, CaseIterable, Equatable {
     case movement
     case breathing
@@ -609,6 +944,7 @@ struct HistoryDayGroup: Identifiable, Equatable {
 
 struct PersistedTeoPateoSnapshot: Equatable {
     var appSettings: AppSettings?
+    var notificationSettings: NotificationSettings?
     var quitPlan: QuitPlan?
     var dailyCheckIns: [DailyCheckIn]
     var cravingEvents: [CravingEvent]
@@ -620,6 +956,7 @@ struct PersistedTeoPateoSnapshot: Equatable {
 
     init(
         appSettings: AppSettings? = nil,
+        notificationSettings: NotificationSettings? = nil,
         quitPlan: QuitPlan? = nil,
         dailyCheckIns: [DailyCheckIn] = [],
         cravingEvents: [CravingEvent] = [],
@@ -630,6 +967,7 @@ struct PersistedTeoPateoSnapshot: Equatable {
         coachMessages: [CoachMessage] = []
     ) {
         self.appSettings = appSettings
+        self.notificationSettings = notificationSettings
         self.quitPlan = quitPlan
         self.dailyCheckIns = dailyCheckIns
         self.cravingEvents = cravingEvents

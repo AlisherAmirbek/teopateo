@@ -24,12 +24,15 @@ final class TeoPateoStore: ObservableObject {
     @Published private(set) var slipEvents: [SlipEvent] = []
     @Published private(set) var replacementActivities: [ReplacementActivity] = []
     @Published private(set) var coachMessages: [CoachMessage] = []
+    @Published private(set) var notificationSettings = NotificationSettings()
+    @Published private(set) var notificationPermissionStatus: NotificationPermissionStatus = .unknown
     @Published private(set) var isOnboardingCompleted = false
     @Published private(set) var persistenceError: String?
     @Published private(set) var lastSaveStatus: SaveStatus = .idle
     @Published private(set) var supportMessageDraft = ""
 
     private let repository: TeoPateoRepository
+    private let notificationScheduler: NotificationScheduling
     private let now: () -> Date
     private let calendar: Calendar
     private var quitPlan = TeoPateoStore.defaultQuitPlan()
@@ -47,10 +50,12 @@ final class TeoPateoStore: ObservableObject {
 
     init(
         repository: TeoPateoRepository,
+        notificationScheduler: NotificationScheduling = LocalNotificationScheduler(),
         now: @escaping () -> Date = Date.init,
         calendar: Calendar = .current
     ) {
         self.repository = repository
+        self.notificationScheduler = notificationScheduler
         self.now = now
         self.calendar = calendar
         hydrateFromPersistence()
@@ -98,6 +103,15 @@ final class TeoPateoStore: ObservableObject {
                 slipCount: slipEvents.count,
                 moneySaved: insights.moneySaved
             )
+        )
+    }
+
+    var plannedNotificationItems: [NotificationScheduleItem] {
+        NotificationPlanner.scheduleItems(
+            settings: notificationSettings,
+            quitPlan: quitPlan,
+            riskWindows: calculatedInsights.riskWindows,
+            topTriggers: calculatedInsights.topTriggers
         )
     }
 
@@ -605,6 +619,77 @@ final class TeoPateoStore: ObservableObject {
         return "I am having a craving. Can you stay with me for 10 minutes?"
     }
 
+    func refreshNotificationAuthorization() {
+        notificationScheduler.currentAuthorizationStatus { [weak self] status in
+            DispatchQueue.main.async {
+                self?.notificationPermissionStatus = status
+                if status.canScheduleNotifications {
+                    self?.syncScheduledNotifications(showSuccess: false)
+                }
+            }
+        }
+    }
+
+    func requestNotificationAuthorization() {
+        notificationScheduler.requestAuthorization { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let status):
+                    self.notificationPermissionStatus = status
+                    if status.canScheduleNotifications {
+                        self.lastSaveStatus = .saved("Notifications allowed. Choose the reminders you want.")
+                        self.syncScheduledNotifications(showSuccess: false)
+                    } else {
+                        self.lastSaveStatus = .failed("Notifications were not allowed.")
+                    }
+                case .failure:
+                    self.lastSaveStatus = .failed("Notification permission could not be requested.")
+                }
+            }
+        }
+    }
+
+    func setNotificationEnabled(_ kind: NotificationKind, isEnabled: Bool) {
+        if isEnabled && !notificationPermissionStatus.canScheduleNotifications {
+            guard notificationPermissionStatus != .denied else {
+                lastSaveStatus = .failed("Notifications are blocked in iOS Settings.")
+                return
+            }
+
+            notificationScheduler.requestAuthorization { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    switch result {
+                    case .success(let status):
+                        self.notificationPermissionStatus = status
+                        guard status.canScheduleNotifications else {
+                            self.lastSaveStatus = .failed("Notifications were not allowed.")
+                            return
+                        }
+                        self.saveNotificationPreference(kind, isEnabled: true)
+                    case .failure:
+                        self.lastSaveStatus = .failed("Notification permission could not be requested.")
+                    }
+                }
+            }
+            return
+        }
+
+        saveNotificationPreference(kind, isEnabled: isEnabled)
+    }
+
+    func updateNotificationTime(_ kind: NotificationKind, time: ReminderTime) {
+        guard kind.supportsFixedTime else { return }
+        var next = notificationSettings
+        next.setTime(time, for: kind)
+        next.updatedAt = now()
+        guard persistNotificationSettings(next, successMessage: "\(kind.title) time updated.") else {
+            return
+        }
+        syncScheduledNotifications(showSuccess: false)
+    }
+
     func reasonForCravingMode() -> String {
         if let primary = userReasons.first(where: \.isPrimary) {
             return primary.text
@@ -617,6 +702,7 @@ final class TeoPateoStore: ObservableObject {
             try repository.deleteCravingEvent(id)
             cravingEvents = try repository.recentCravingEvents(limit: 10_000)
             lastSaveStatus = .saved("Craving record deleted.")
+            syncScheduledNotifications(showSuccess: false)
         } catch {
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Craving record could not be deleted.")
@@ -691,6 +777,7 @@ final class TeoPateoStore: ObservableObject {
 
             isOnboardingCompleted = snapshot.appSettings?.onboardingCompleted ?? false
             isOnboardingPresented = !isOnboardingCompleted
+            notificationSettings = snapshot.notificationSettings ?? NotificationSettings()
 
             let loadedPlan = snapshot.quitPlan ?? Self.defaultQuitPlan()
             quitPlan = loadedPlan
@@ -731,6 +818,7 @@ final class TeoPateoStore: ObservableObject {
         userReasons = Self.defaultUserReasons()
         replacementActivities = Self.defaultReplacementActivities()
         coachMessages = Self.defaultCoachMessages()
+        notificationSettings = NotificationSettings()
         isOnboardingCompleted = false
         isOnboardingPresented = true
         dailyCheckIns = []
@@ -741,6 +829,9 @@ final class TeoPateoStore: ObservableObject {
     private func persistDefaultsIfNeeded(snapshot: PersistedTeoPateoSnapshot) throws {
         if snapshot.appSettings == nil {
             try repository.saveAppSettings(AppSettings(onboardingCompleted: isOnboardingCompleted))
+        }
+        if snapshot.notificationSettings == nil {
+            try repository.saveNotificationSettings(notificationSettings)
         }
         if snapshot.quitPlan == nil {
             try repository.saveQuitPlan(quitPlan)
@@ -772,6 +863,7 @@ final class TeoPateoStore: ObservableObject {
             try repository.saveQuitPlan(quitPlan)
             persistenceError = nil
             lastSaveStatus = .saved(successMessage)
+            syncScheduledNotifications(showSuccess: false)
         } catch {
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Quit plan could not be saved.")
@@ -821,6 +913,83 @@ final class TeoPateoStore: ObservableObject {
         }
     }
 
+    private func saveNotificationPreference(
+        _ kind: NotificationKind,
+        isEnabled: Bool
+    ) {
+        var next = notificationSettings
+        next.setEnabled(isEnabled, for: kind)
+        next.updatedAt = now()
+
+        let message = isEnabled
+            ? "\(kind.title) reminder enabled."
+            : "\(kind.title) reminder disabled."
+        guard persistNotificationSettings(next, successMessage: message) else {
+            return
+        }
+        syncScheduledNotifications(showSuccess: false)
+    }
+
+    @discardableResult
+    private func persistNotificationSettings(
+        _ settings: NotificationSettings,
+        successMessage: String
+    ) -> Bool {
+        let previous = notificationSettings
+        notificationSettings = settings
+
+        do {
+            try repository.saveNotificationSettings(settings)
+            persistenceError = nil
+            lastSaveStatus = .saved(successMessage)
+            return true
+        } catch {
+            notificationSettings = previous
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Notification settings could not be saved.")
+            return false
+        }
+    }
+
+    private func syncScheduledNotifications(showSuccess: Bool) {
+        if !notificationSettings.hasEnabledReminders {
+            guard notificationPermissionStatus.canScheduleNotifications else {
+                return
+            }
+            notificationScheduler.cancelScheduledNotifications { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if case .failure = result {
+                        self.lastSaveStatus = .failed("Scheduled notifications could not be updated.")
+                    } else if showSuccess {
+                        self.lastSaveStatus = .saved("Notifications updated.")
+                    }
+                }
+            }
+            return
+        }
+
+        guard notificationPermissionStatus.canScheduleNotifications else {
+            return
+        }
+
+        notificationScheduler.replaceScheduledNotifications(
+            with: plannedNotificationItems
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success:
+                    if showSuccess {
+                        self.lastSaveStatus = .saved("Notifications updated.")
+                    }
+                case .failure:
+                    self.lastSaveStatus = .failed("Scheduled notifications could not be updated.")
+                }
+            }
+        }
+    }
+
     private func makeCravingEvent(
         startedAt: Date,
         completedAt: Date?,
@@ -857,6 +1026,7 @@ final class TeoPateoStore: ObservableObject {
             cravingEvents = try repository.recentCravingEvents(limit: 10_000)
             persistenceError = nil
             lastSaveStatus = .saved(successMessage)
+            syncScheduledNotifications(showSuccess: false)
             return true
         } catch {
             persistenceError = error.localizedDescription
@@ -1505,6 +1675,7 @@ enum AppTab: String, CaseIterable {
 
 private final class InMemoryTeoPateoRepository: TeoPateoRepository {
     private var appSettings: AppSettings?
+    private var notificationSettings: NotificationSettings?
     private var quitPlan: QuitPlan?
     private var dailyCheckIns: [DailyCheckIn] = []
     private var cravingEvents: [CravingEvent] = []
@@ -1520,6 +1691,7 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
     func loadSnapshot() throws -> PersistedTeoPateoSnapshot {
         PersistedTeoPateoSnapshot(
             appSettings: appSettings,
+            notificationSettings: notificationSettings,
             quitPlan: quitPlan,
             dailyCheckIns: dailyCheckIns,
             cravingEvents: cravingEvents,
@@ -1537,6 +1709,14 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
 
     func saveAppSettings(_ settings: AppSettings) throws {
         appSettings = settings
+    }
+
+    func fetchNotificationSettings() throws -> NotificationSettings? {
+        notificationSettings
+    }
+
+    func saveNotificationSettings(_ settings: NotificationSettings) throws {
+        notificationSettings = settings
     }
 
     func fetchQuitPlan() throws -> QuitPlan? {

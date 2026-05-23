@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TodayView: View {
     @EnvironmentObject private var store: TeoPateoStore
+    @State private var isNotificationsPresented = false
 
     var body: some View {
         ZStack {
@@ -25,6 +26,10 @@ struct TodayView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 24)
             }
+        }
+        .sheet(isPresented: $isNotificationsPresented) {
+            NotificationSettingsView()
+                .environmentObject(store)
         }
     }
 
@@ -65,10 +70,12 @@ struct TodayView: View {
 
             Spacer()
 
-            Button {} label: {
-                Image(systemName: "bell")
+            Button {
+                isNotificationsPresented = true
+            } label: {
+                Image(systemName: store.notificationSettings.hasEnabledReminders ? "bell.fill" : "bell")
                     .font(.system(size: 23, weight: .regular, design: .rounded))
-                    .foregroundColor(QuitTheme.faint)
+                    .foregroundColor(store.notificationSettings.hasEnabledReminders ? QuitTheme.cocoa : QuitTheme.faint)
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel("Notifications")

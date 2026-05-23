@@ -8,6 +8,7 @@ struct PlanView: View {
     @State private var newActivityTitle = ""
     @State private var newActivityInstruction = ""
     @State private var newActivityCategory: ReplacementActivityCategory = .distraction
+    @State private var isNotificationsPresented = false
 
     var body: some View {
         RootScreen {
@@ -20,7 +21,12 @@ struct PlanView: View {
             rules
             reasons
             replacementActivities
+            notifications
             medicationNote
+        }
+        .sheet(isPresented: $isNotificationsPresented) {
+            NotificationSettingsView()
+                .environmentObject(store)
         }
     }
 
@@ -233,6 +239,49 @@ struct PlanView: View {
                 .foregroundColor(QuitTheme.muted)
         }
         .quietCard()
+    }
+
+    private var notifications: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: store.notificationSettings.hasEnabledReminders ? "bell.badge.fill" : "bell")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .frame(width: 34, height: 34)
+                    .background(QuitTheme.peach.opacity(0.74))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Notifications")
+                        .font(.rounded(.headline, weight: .bold))
+                    Text(notificationSummary)
+                        .font(.rounded(.caption))
+                        .foregroundColor(QuitTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Button("Manage reminders") {
+                isNotificationsPresented = true
+            }
+            .buttonStyle(QuietButtonStyle())
+        }
+        .quietCard()
+    }
+
+    private var notificationSummary: String {
+        if store.plannedNotificationItems.isEmpty {
+            return store.notificationSettings.riskyWindowEnabled
+                ? "Risk-window alerts are waiting for more craving history."
+                : "Add opt-in reminders for morning plans, risky windows, meals, and evening check-ins."
+        }
+
+        let first = store.plannedNotificationItems[0]
+        if store.plannedNotificationItems.count == 1 {
+            return "\(first.title) at \(first.time.displayLabel)."
+        }
+
+        return "\(store.plannedNotificationItems.count) reminders scheduled. Next saved time: \(first.time.displayLabel)."
     }
 
     private var quitDateSummary: String {

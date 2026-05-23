@@ -38,10 +38,11 @@ final class LocalPersistenceTests: XCTestCase {
             "support_contacts",
             "user_reasons",
             "coach_messages",
-            "app_settings"
+            "app_settings",
+            "notification_settings"
         ]
 
-        XCTAssertEqual(try repository.schemaVersion(), 3)
+        XCTAssertEqual(try repository.schemaVersion(), 4)
         XCTAssertTrue(try repository.tableNames().isSuperset(of: expectedTables))
     }
 
@@ -58,6 +59,29 @@ final class LocalPersistenceTests: XCTestCase {
 
         XCTAssertEqual(try repository.fetchAppSettings(), settings)
         XCTAssertEqual(try repository.loadSnapshot().appSettings, settings)
+    }
+
+    func testNotificationSettingsRoundTrip() throws {
+        let repository = try makeRepository()
+        let settings = NotificationSettings(
+            morningPlanEnabled: true,
+            riskyWindowEnabled: true,
+            postMealEnabled: false,
+            eveningCheckInEnabled: true,
+            medicationEnabled: true,
+            morningPlanTime: ReminderTime(hour: 7, minute: 45),
+            postMealTime: ReminderTime(hour: 14, minute: 10),
+            eveningCheckInTime: ReminderTime(hour: 21, minute: 5),
+            medicationTime: ReminderTime(hour: 9, minute: 15),
+            updatedAt: fixedDate(15)
+        )
+
+        XCTAssertEqual(try repository.fetchNotificationSettings()?.morningPlanEnabled, false)
+
+        try repository.saveNotificationSettings(settings)
+
+        XCTAssertEqual(try repository.fetchNotificationSettings(), settings)
+        XCTAssertEqual(try repository.loadSnapshot().notificationSettings, settings)
     }
 
     func testQuitPlanSupportReasonsAndActivitiesRoundTrip() throws {
@@ -384,6 +408,40 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(insights.todayRisk.level, .high)
         XCTAssertEqual(insights.dataConfidenceSummary, "Useful early signal from recent history.")
         XCTAssertTrue(store.progressSummary.milestones.contains("First craving handled"))
+    }
+
+    func testNotificationPlannerBuildsOptInScheduleFromRiskWindows() throws {
+        var settings = NotificationSettings(updatedAt: fixedDate(130))
+        settings.morningPlanEnabled = true
+        settings.riskyWindowEnabled = true
+        settings.eveningCheckInEnabled = true
+        settings.morningPlanTime = ReminderTime(hour: 7, minute: 15)
+        settings.eveningCheckInTime = ReminderTime(hour: 20, minute: 45)
+
+        let items = NotificationPlanner.scheduleItems(
+            settings: settings,
+            quitPlan: makeQuitPlan(quitMode: "Taper"),
+            riskWindows: [
+                RiskWindowInsight(startHour: 21, cravingCount: 3, share: 0.6),
+                RiskWindowInsight(startHour: 8, cravingCount: 2, share: 0.4)
+            ],
+            topTriggers: [
+                TriggerInsight(name: "After coffee", count: 3, share: 0.6)
+            ]
+        )
+
+        XCTAssertEqual(items.count, 4)
+        XCTAssertTrue(items.contains {
+            $0.kind == .morningPlan && $0.time == ReminderTime(hour: 7, minute: 15)
+        })
+        XCTAssertTrue(items.contains {
+            $0.kind == .riskyWindow &&
+                $0.time == ReminderTime(hour: 20, minute: 30) &&
+                $0.body.contains("Drink water first.")
+        })
+        XCTAssertTrue(items.contains {
+            $0.kind == .eveningCheckIn && $0.time == ReminderTime(hour: 20, minute: 45)
+        })
     }
 
     func testHistoryDeleteRemovesAccidentalRecords() throws {

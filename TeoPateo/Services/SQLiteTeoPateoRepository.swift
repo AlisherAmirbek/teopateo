@@ -9,6 +9,9 @@ protocol TeoPateoRepository {
     func fetchAppSettings() throws -> AppSettings?
     func saveAppSettings(_ settings: AppSettings) throws
 
+    func fetchNotificationSettings() throws -> NotificationSettings?
+    func saveNotificationSettings(_ settings: NotificationSettings) throws
+
     func fetchQuitPlan() throws -> QuitPlan?
     func saveQuitPlan(_ plan: QuitPlan) throws
 
@@ -97,6 +100,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
     func loadSnapshot() throws -> PersistedTeoPateoSnapshot {
         PersistedTeoPateoSnapshot(
             appSettings: try fetchAppSettings(),
+            notificationSettings: try fetchNotificationSettings(),
             quitPlan: try fetchQuitPlan(),
             dailyCheckIns: try recentCheckIns(limit: 10_000),
             cravingEvents: try recentCravingEvents(limit: 10_000),
@@ -143,6 +147,101 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     onboarding_completed = excluded.onboarding_completed,
+                    updated_at = excluded.updated_at;
+                """)
+        }
+    }
+
+    func fetchNotificationSettings() throws -> NotificationSettings? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT morning_plan_enabled, risky_window_enabled,
+                       post_meal_enabled, evening_check_in_enabled,
+                       medication_enabled, morning_plan_hour,
+                       morning_plan_minute, post_meal_hour,
+                       post_meal_minute, evening_check_in_hour,
+                       evening_check_in_minute, medication_hour,
+                       medication_minute, updated_at
+                FROM notification_settings
+                WHERE id = 0;
+                """
+            )
+
+            guard let row else {
+                return nil
+            }
+
+            return NotificationSettings(
+                morningPlanEnabled: bool(row, "morning_plan_enabled"),
+                riskyWindowEnabled: bool(row, "risky_window_enabled"),
+                postMealEnabled: bool(row, "post_meal_enabled"),
+                eveningCheckInEnabled: bool(row, "evening_check_in_enabled"),
+                medicationEnabled: bool(row, "medication_enabled"),
+                morningPlanTime: ReminderTime(
+                    hour: row["morning_plan_hour"],
+                    minute: row["morning_plan_minute"]
+                ),
+                postMealTime: ReminderTime(
+                    hour: row["post_meal_hour"],
+                    minute: row["post_meal_minute"]
+                ),
+                eveningCheckInTime: ReminderTime(
+                    hour: row["evening_check_in_hour"],
+                    minute: row["evening_check_in_minute"]
+                ),
+                medicationTime: ReminderTime(
+                    hour: row["medication_hour"],
+                    minute: row["medication_minute"]
+                ),
+                updatedAt: date(row, "updated_at")
+            )
+        }
+    }
+
+    func saveNotificationSettings(_ settings: NotificationSettings) throws {
+        try dbQueue.write { db in
+            try db.execute(literal: """
+                INSERT INTO notification_settings (
+                    id, morning_plan_enabled, risky_window_enabled,
+                    post_meal_enabled, evening_check_in_enabled,
+                    medication_enabled, morning_plan_hour, morning_plan_minute,
+                    post_meal_hour, post_meal_minute, evening_check_in_hour,
+                    evening_check_in_minute, medication_hour, medication_minute,
+                    updated_at
+                )
+                VALUES (
+                    0,
+                    \(settings.morningPlanEnabled ? 1 : 0),
+                    \(settings.riskyWindowEnabled ? 1 : 0),
+                    \(settings.postMealEnabled ? 1 : 0),
+                    \(settings.eveningCheckInEnabled ? 1 : 0),
+                    \(settings.medicationEnabled ? 1 : 0),
+                    \(settings.morningPlanTime.hour),
+                    \(settings.morningPlanTime.minute),
+                    \(settings.postMealTime.hour),
+                    \(settings.postMealTime.minute),
+                    \(settings.eveningCheckInTime.hour),
+                    \(settings.eveningCheckInTime.minute),
+                    \(settings.medicationTime.hour),
+                    \(settings.medicationTime.minute),
+                    \(settings.updatedAt.timeIntervalSince1970)
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    morning_plan_enabled = excluded.morning_plan_enabled,
+                    risky_window_enabled = excluded.risky_window_enabled,
+                    post_meal_enabled = excluded.post_meal_enabled,
+                    evening_check_in_enabled = excluded.evening_check_in_enabled,
+                    medication_enabled = excluded.medication_enabled,
+                    morning_plan_hour = excluded.morning_plan_hour,
+                    morning_plan_minute = excluded.morning_plan_minute,
+                    post_meal_hour = excluded.post_meal_hour,
+                    post_meal_minute = excluded.post_meal_minute,
+                    evening_check_in_hour = excluded.evening_check_in_hour,
+                    evening_check_in_minute = excluded.evening_check_in_minute,
+                    medication_hour = excluded.medication_hour,
+                    medication_minute = excluded.medication_minute,
                     updated_at = excluded.updated_at;
                 """)
         }
@@ -896,6 +995,35 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 VALUES (0, 0, 0);
 
                 PRAGMA user_version = 3;
+                """)
+        }
+
+        migrator.registerMigration("v4") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS notification_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 0),
+                    morning_plan_enabled INTEGER NOT NULL DEFAULT 0,
+                    risky_window_enabled INTEGER NOT NULL DEFAULT 0,
+                    post_meal_enabled INTEGER NOT NULL DEFAULT 0,
+                    evening_check_in_enabled INTEGER NOT NULL DEFAULT 0,
+                    medication_enabled INTEGER NOT NULL DEFAULT 0,
+                    morning_plan_hour INTEGER NOT NULL DEFAULT 8,
+                    morning_plan_minute INTEGER NOT NULL DEFAULT 30,
+                    post_meal_hour INTEGER NOT NULL DEFAULT 13,
+                    post_meal_minute INTEGER NOT NULL DEFAULT 30,
+                    evening_check_in_hour INTEGER NOT NULL DEFAULT 20,
+                    evening_check_in_minute INTEGER NOT NULL DEFAULT 30,
+                    medication_hour INTEGER NOT NULL DEFAULT 9,
+                    medication_minute INTEGER NOT NULL DEFAULT 0,
+                    updated_at REAL NOT NULL
+                );
+
+                INSERT OR IGNORE INTO notification_settings (
+                    id, updated_at
+                )
+                VALUES (0, 0);
+
+                PRAGMA user_version = 4;
                 """)
         }
 

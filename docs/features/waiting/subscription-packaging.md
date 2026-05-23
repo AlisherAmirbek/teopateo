@@ -19,7 +19,6 @@ Free users should still receive basic quit support and trustworthy external reso
 - Daily check-in.
 - Basic progress dashboard.
 - Quitline and professional support prompts.
-- High-level medication education.
 
 ## Paid Package
 

@@ -469,9 +469,7 @@ final class TeoPateoStore: ObservableObject {
         nextPlan.quitDate = input.quitDate
         nextPlan.quitMode = normalizedMode
         nextPlan.triggerRules = nextTriggerRules
-        nextPlan.medicationNote = Self.medicationNote(
-            isInterestedInMedicationSupport: input.isInterestedInMedicationSupport
-        )
+        nextPlan.medicationNote = ""
         nextPlan.baselineCigarettesPerDay = max(input.cigarettesPerDay, 0)
         nextPlan.costPerPack = max(input.costPerPack, 0)
         nextPlan.cigarettesPerPack = 20
@@ -812,12 +810,6 @@ final class TeoPateoStore: ObservableObject {
         persistReplacementActivities(successMessage: "Replacement activities reordered.")
     }
 
-    func updateMedicationNote(_ note: String) {
-        quitPlan.medicationNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        quitPlan.updatedAt = now()
-        persistQuitPlan(successMessage: "Medication note updated.")
-    }
-
     func addRiskySituation(
         title: String,
         expectedContext: String,
@@ -1032,9 +1024,6 @@ final class TeoPateoStore: ObservableObject {
         if let topTrigger = (insights.topSlipTriggers.first ?? insights.topTriggers.first) {
             return matchingTriggerRule(for: topTrigger.name) == nil
         }
-        if let riskWindow = insights.riskWindows.first {
-            return matchingRiskySituation(for: riskWindow.startLabel) == nil
-        }
         return false
     }
 
@@ -1057,26 +1046,6 @@ final class TeoPateoStore: ObservableObject {
             quitPlan.triggerRules = triggerRules
             quitPlan.updatedAt = now()
             persistQuitPlan(successMessage: "Insight added a trigger rule.")
-            return true
-        }
-
-        if let riskWindow = insights.riskWindows.first {
-            guard matchingRiskySituation(for: riskWindow.startLabel) == nil else {
-                lastSaveStatus = .failed("That risky window is already planned.")
-                return false
-            }
-
-            riskySituations.append(
-                RiskySituation(
-                    title: "Protect \(riskWindow.startLabel)",
-                    expectedContext: "Highest-risk craving window from recent history.",
-                    preventionPlan: "Choose one replacement activity before this window starts.",
-                    backupAction: "Start craving rescue if the urge gets sharp.",
-                    createdAt: now(),
-                    updatedAt: now()
-                )
-            )
-            persistRiskySituations(successMessage: "Insight added a risky situation.")
             return true
         }
 
@@ -1570,15 +1539,6 @@ final class TeoPateoStore: ObservableObject {
             guard rule.isEnabled else { return false }
             let ruleText = rule.trigger.lowercased()
             return ruleText.contains(triggerText) || triggerText.contains(ruleText)
-        }
-    }
-
-    private func matchingRiskySituation(for text: String) -> RiskySituation? {
-        let target = text.lowercased()
-        return riskySituations.first { situation in
-            let title = situation.title.lowercased()
-            let context = situation.expectedContext.lowercased()
-            return title.contains(target) || context.contains(target)
         }
     }
 
@@ -2199,14 +2159,6 @@ final class TeoPateoStore: ObservableObject {
         }
     }
 
-    private static func medicationNote(isInterestedInMedicationSupport: Bool) -> String {
-        if isInterestedInMedicationSupport {
-            return "You marked interest in quit medicines or nicotine replacement. Talk with a doctor, pharmacist, or quitline counselor before making medication decisions."
-        }
-
-        return "Nicotine replacement therapy and prescription quit medicines can help some people. Talk with a doctor, pharmacist, or quitline counselor before making medication decisions."
-    }
-
     private static func defaultQuitPlan() -> QuitPlan {
         let now = Date()
         let quitDate = Calendar.current.date(byAdding: .day, value: 11, to: now) ?? now
@@ -2219,7 +2171,7 @@ final class TeoPateoStore: ObservableObject {
                 TriggerRule(trigger: "Alcohol", action: "Keep a drink in hand and step outside without cigarettes."),
                 TriggerRule(trigger: "After meals", action: "Brush teeth or chew gum immediately.")
             ],
-            medicationNote: "Nicotine replacement therapy and prescription quit medicines can help some people. Talk with a doctor, pharmacist, or quitline counselor before making medication decisions.",
+            medicationNote: "",
             baselineCigarettesPerDay: 10,
             costPerPack: 10,
             cigarettesPerPack: 20,

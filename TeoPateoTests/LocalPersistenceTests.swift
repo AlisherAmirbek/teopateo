@@ -69,11 +69,9 @@ final class LocalPersistenceTests: XCTestCase {
             riskyWindowEnabled: true,
             postMealEnabled: false,
             eveningCheckInEnabled: true,
-            medicationEnabled: true,
             morningPlanTime: ReminderTime(hour: 7, minute: 45),
             postMealTime: ReminderTime(hour: 14, minute: 10),
             eveningCheckInTime: ReminderTime(hour: 21, minute: 5),
-            medicationTime: ReminderTime(hour: 9, minute: 15),
             updatedAt: fixedDate(15)
         )
 
@@ -344,9 +342,6 @@ final class LocalPersistenceTests: XCTestCase {
         store.deleteReplacementActivity(firstActivity.id)
         XCTAssertFalse(store.replacementActivities.contains { $0.id == firstActivity.id })
 
-        store.updateMedicationNote("Ask pharmacist about nicotine gum.")
-        XCTAssertEqual(store.currentQuitPlan.medicationNote, "Ask pharmacist about nicotine gum.")
-
         store.addRiskySituation(
             title: "Late commute",
             expectedContext: "Driving home",
@@ -366,7 +361,6 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(store.riskySituations.first?.isEnabled, false)
 
         let reloadedStore = TeoPateoStore(repository: repository)
-        XCTAssertEqual(reloadedStore.currentQuitPlan.medicationNote, "Ask pharmacist about nicotine gum.")
         XCTAssertEqual(reloadedStore.riskySituations.first?.title, "Late commute home")
         XCTAssertFalse(reloadedStore.riskySituations.first?.isEnabled ?? true)
     }
@@ -424,8 +418,7 @@ final class LocalPersistenceTests: XCTestCase {
                 quitDate: fixedDate(200),
                 quitMode: "Cold turkey",
                 selectedTriggers: ["Coffee", "Work stress"],
-                primaryReason: "I want to breathe easier.",
-                isInterestedInMedicationSupport: true
+                primaryReason: "I want to breathe easier."
             )
         ))
 
@@ -438,7 +431,7 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(store.userReasons.first?.text, "I want to breathe easier.")
         XCTAssertTrue(store.supportContacts.isEmpty)
         XCTAssertTrue(store.replacementActivities.contains { $0.linkedTrigger == "Coffee" })
-        XCTAssertTrue(store.currentQuitPlan.medicationNote.contains("You marked interest"))
+        XCTAssertTrue(store.currentQuitPlan.medicationNote.isEmpty)
 
         let reloadedStore = TeoPateoStore(repository: repository)
         XCTAssertTrue(reloadedStore.isOnboardingCompleted)
@@ -816,7 +809,7 @@ final class LocalPersistenceTests: XCTestCase {
                     isEnabled: false
                 )
             ],
-            medicationNote: "Ask a clinician before medication decisions.",
+            medicationNote: "",
             baselineCigarettesPerDay: 5,
             costPerPack: 10,
             cigarettesPerPack: 20,

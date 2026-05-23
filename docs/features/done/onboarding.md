@@ -11,11 +11,10 @@ Capture the user's baseline smoking context and turn it into the first version o
 - Quit date.
 - Quit approach.
 - Reasons for quitting.
-- Interest in discussing quit medicines or nicotine replacement.
 
 ## App Impact
 
-The onboarding flow populates the quit plan, initial dashboard metrics, trigger rules, replacement activities, medication note, and primary reason.
+The onboarding flow populates the quit plan, initial dashboard metrics, trigger rules, replacement activities, and primary reason.
 
 ## Implemented Scope
 
@@ -25,7 +24,6 @@ The onboarding flow populates the quit plan, initial dashboard metrics, trigger 
 - Quit date and taper/cold-turkey approach capture.
 - Trigger selection from a structured catalog.
 - Primary quit reason capture.
-- Medication-support interest capture through the plan note.
 - Plan creation through `TeoPateoStore.completeOnboarding`.
 - Persisted onboarding completion state.
 - Tests covering completion persistence and generated plan data.

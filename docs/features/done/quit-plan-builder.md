@@ -13,7 +13,6 @@ The plan should answer:
 - What will I do instead when each trigger happens?
 - Why does this quit attempt matter to me?
 - What replacement actions can I use during a craving?
-- What medication or professional support do I want to discuss with a clinician, pharmacist, or quitline counselor?
 
 ## Implemented Scope
 
@@ -29,7 +28,6 @@ The plan should answer:
 - New trigger rules can be added from the Plan tab.
 - Personal reasons can be added, marked primary, and deleted.
 - Replacement activities can be reviewed and added with a category.
-- Medication note is rendered from `QuitPlan.medicationNote`.
 - Plan changes are persisted through `TeoPateoStore` and the SQLite repository.
 - Tests cover plan, reason, activity, and persistence behavior.
 
@@ -59,5 +57,4 @@ The plan should answer:
 - Trigger rules can be added.
 - Personal reasons can be added, marked primary, and removed.
 - Replacement activities can be added.
-- Medication note is sourced from the stored quit plan.
 - The UI keeps a calm, non-shaming tone.

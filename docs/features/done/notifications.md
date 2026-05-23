@@ -10,7 +10,6 @@ Add opt-in local notifications for the moments most likely to protect the quit a
 - Risk-window warnings generated from logged craving history.
 - Post-meal reminders.
 - Evening check-ins.
-- Medication or nicotine replacement reminders, with copy that points users back to a clinician, pharmacist, or quitline counselor.
 - Durable notification settings in local SQLite storage.
 - A notification settings sheet from the Today bell and Quit Plan screen.
 - Local scheduling through `UserNotifications`.

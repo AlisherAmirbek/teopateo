@@ -51,7 +51,6 @@ Use slip data to suggest:
 
 - A new trigger rule.
 - A stronger existing trigger rule.
-- A risky situation to prepare for.
 - A replacement activity that matches the trigger.
 
 For MVP, the app can show the suggestion and route to Plan. Later, it can apply the suggestion directly.

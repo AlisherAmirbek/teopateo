@@ -14,7 +14,7 @@ struct NotificationSettingsView: View {
                 StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
                 permissionCard
 
-                ForEach(NotificationKind.allCases, id: \.self) { kind in
+                ForEach(NotificationKind.userVisibleCases, id: \.self) { kind in
                     reminderCard(kind)
                 }
 
@@ -220,7 +220,6 @@ private extension NotificationSettings {
     var hasEnabledRemindersExcludingRiskWindow: Bool {
         morningPlanEnabled ||
             postMealEnabled ||
-            eveningCheckInEnabled ||
-            medicationEnabled
+            eveningCheckInEnabled
     }
 }

@@ -15,9 +15,6 @@ struct InsightsView: View {
 
             todayRisk
             progressSummary
-            riskWindows
-            triggerContribution
-            slipContribution
             heatMap
             planAdjustment
             historyPreview
@@ -75,54 +72,6 @@ struct InsightsView: View {
             }
         }
         .quietCard()
-    }
-
-    private var riskWindows: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Highest-risk windows")
-                .font(.rounded(.headline, weight: .bold))
-
-            if insights.riskWindows.isEmpty {
-                Text("Log cravings from rescue mode to reveal the times that need extra protection.")
-                    .font(.rounded(.subheadline))
-                    .foregroundColor(QuitTheme.muted)
-            } else {
-                ForEach(insights.riskWindows) { window in
-                    HStack {
-                        Text(window.title)
-                            .font(.rounded(.subheadline, weight: .bold))
-                            .foregroundColor(QuitTheme.ink)
-                        Spacer()
-                        Text("\(window.shareSummary) of cravings")
-                            .font(.rounded(.caption, weight: .bold))
-                            .foregroundColor(QuitTheme.muted)
-                    }
-                    .padding(.top, 4)
-                }
-                Button("View supporting history") {
-                    isHistoryPresented = true
-                }
-                .buttonStyle(QuietButtonStyle())
-                .padding(.top, 4)
-            }
-        }
-        .quietCard()
-    }
-
-    private var triggerContribution: some View {
-        contributionSection(
-            title: "Craving triggers",
-            empty: "Select triggers when you finish a craving rescue. Trigger percentages will appear after the first logged craving.",
-            triggers: insights.topTriggers
-        )
-    }
-
-    private var slipContribution: some View {
-        contributionSection(
-            title: "Slip triggers",
-            empty: "Record a slip recovery to separate smoking triggers from handled-craving triggers.",
-            triggers: insights.topSlipTriggers
-        )
     }
 
     private var heatMap: some View {
@@ -198,28 +147,6 @@ struct InsightsView: View {
         .quietCard()
     }
 
-    private func contributionSection(
-        title: String,
-        empty: String,
-        triggers: [TriggerInsight]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title)
-                .font(.rounded(.headline, weight: .bold))
-
-            if triggers.isEmpty {
-                Text(empty)
-                    .font(.rounded(.subheadline))
-                    .foregroundColor(QuitTheme.muted)
-            } else {
-                ForEach(triggers) { trigger in
-                    contributionRow(trigger.name, CGFloat(trigger.share), trigger.shareSummary)
-                }
-            }
-        }
-        .quietCard()
-    }
-
     private func metricRow(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label)
@@ -232,29 +159,6 @@ struct InsightsView: View {
                 .multilineTextAlignment(.trailing)
         }
         .padding(.vertical, 2)
-    }
-
-    private func contributionRow(_ label: String, _ progress: CGFloat, _ value: String) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .font(.rounded(.caption, weight: .bold))
-                .lineLimit(2)
-                .minimumScaleFactor(0.82)
-                .frame(width: 88, alignment: .leading)
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(QuitTheme.peach.opacity(0.42))
-                    Capsule()
-                        .fill(QuitTheme.cocoa)
-                        .frame(width: proxy.size.width * min(max(progress, 0), 1))
-                }
-            }
-            .frame(height: 9)
-            Text(value)
-                .font(.rounded(.caption, weight: .bold))
-                .frame(width: 38, alignment: .trailing)
-        }
     }
 
     private func color(for level: Int) -> Color {

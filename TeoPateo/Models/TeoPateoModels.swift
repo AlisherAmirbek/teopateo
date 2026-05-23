@@ -96,7 +96,13 @@ enum NotificationKind: String, CaseIterable, Codable, Equatable {
     case riskyWindow = "risky_window"
     case postMeal = "post_meal"
     case eveningCheckIn = "evening_check_in"
-    case medication = "medication"
+
+    static let userVisibleCases: [NotificationKind] = [
+        .morningPlan,
+        .riskyWindow,
+        .postMeal,
+        .eveningCheckIn
+    ]
 
     var title: String {
         switch self {
@@ -108,8 +114,6 @@ enum NotificationKind: String, CaseIterable, Codable, Equatable {
             return "Post-meal reminder"
         case .eveningCheckIn:
             return "Evening check-in"
-        case .medication:
-            return "Medication or NRT"
         }
     }
 
@@ -123,8 +127,6 @@ enum NotificationKind: String, CaseIterable, Codable, Equatable {
             return "Prompt the after-meal replacement action before autopilot starts."
         case .eveningCheckIn:
             return "Close the day with a short check-in and recovery note if needed."
-        case .medication:
-            return "Only use this for a medicine or nicotine replacement plan you made with a clinician, pharmacist, or quitline counselor."
         }
     }
 
@@ -193,8 +195,7 @@ struct NotificationSettings: Codable, Equatable {
         morningPlanEnabled ||
             riskyWindowEnabled ||
             postMealEnabled ||
-            eveningCheckInEnabled ||
-            medicationEnabled
+            eveningCheckInEnabled
     }
 
     func isEnabled(_ kind: NotificationKind) -> Bool {
@@ -207,8 +208,6 @@ struct NotificationSettings: Codable, Equatable {
             return postMealEnabled
         case .eveningCheckIn:
             return eveningCheckInEnabled
-        case .medication:
-            return medicationEnabled
         }
     }
 
@@ -220,8 +219,6 @@ struct NotificationSettings: Codable, Equatable {
             return postMealTime
         case .eveningCheckIn:
             return eveningCheckInTime
-        case .medication:
-            return medicationTime
         case .riskyWindow:
             return nil
         }
@@ -237,8 +234,6 @@ struct NotificationSettings: Codable, Equatable {
             postMealEnabled = isEnabled
         case .eveningCheckIn:
             eveningCheckInEnabled = isEnabled
-        case .medication:
-            medicationEnabled = isEnabled
         }
     }
 
@@ -250,8 +245,6 @@ struct NotificationSettings: Codable, Equatable {
             postMealTime = time
         case .eveningCheckIn:
             eveningCheckInTime = time
-        case .medication:
-            medicationTime = time
         case .riskyWindow:
             return
         }
@@ -274,7 +267,7 @@ enum NotificationPlanner {
             identifier(for: .morningPlan),
             identifier(for: .postMeal),
             identifier(for: .eveningCheckIn),
-            identifier(for: .medication)
+            identifierPrefix + "medication"
         ] + (0..<24).map { riskyWindowIdentifier(startHour: $0) }
     }
 
@@ -326,18 +319,6 @@ enum NotificationPlanner {
                     title: "Check in without judgment",
                     body: "Record what happened today and choose one focus for tomorrow.",
                     time: settings.eveningCheckInTime
-                )
-            )
-        }
-
-        if settings.medicationEnabled {
-            items.append(
-                NotificationScheduleItem(
-                    identifier: identifier(for: .medication),
-                    kind: .medication,
-                    title: "Medication or NRT reminder",
-                    body: "Follow the plan you made with your clinician, pharmacist, or quitline counselor.",
-                    time: settings.medicationTime
                 )
             )
         }
@@ -955,7 +936,6 @@ struct OnboardingPlanInput: Equatable {
     var quitMode: String
     var selectedTriggers: [String]
     var primaryReason: String
-    var isInterestedInMedicationSupport: Bool
 
     init(
         cigarettesPerDay: Double,
@@ -963,8 +943,7 @@ struct OnboardingPlanInput: Equatable {
         quitDate: Date,
         quitMode: String,
         selectedTriggers: [String],
-        primaryReason: String,
-        isInterestedInMedicationSupport: Bool = false
+        primaryReason: String
     ) {
         self.cigarettesPerDay = cigarettesPerDay
         self.costPerPack = costPerPack
@@ -972,7 +951,6 @@ struct OnboardingPlanInput: Equatable {
         self.quitMode = quitMode
         self.selectedTriggers = selectedTriggers
         self.primaryReason = primaryReason
-        self.isInterestedInMedicationSupport = isInterestedInMedicationSupport
     }
 }
 

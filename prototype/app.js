@@ -202,10 +202,6 @@ function renderPlan() {
         </div>
       </section>
 
-      <section class="panel">
-        <h2>Medication note</h2>
-        <p>Nicotine replacement therapy and prescription quit medicines can help some people. Talk with a doctor, pharmacist, or quitline counselor before making a medication decision.</p>
-      </section>
     </div>
   `;
 }

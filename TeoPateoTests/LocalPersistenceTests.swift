@@ -378,6 +378,7 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(insights.cravingsHandled, 2)
         XCTAssertEqual(insights.cigarettesAvoided, 16)
         XCTAssertEqual(insights.moneySaved, 8, accuracy: 0.001)
+        XCTAssertEqual(insights.moneySavedSummary, "$8")
         XCTAssertEqual(insights.riskWindows.first?.startHour, 21)
         XCTAssertEqual(insights.topSlipTriggers.first?.name, "Coffee")
         XCTAssertEqual(insights.todayRisk.level, .high)

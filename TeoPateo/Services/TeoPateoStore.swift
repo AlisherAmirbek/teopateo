@@ -1263,7 +1263,8 @@ final class TeoPateoStore: ObservableObject {
     private static func moneySummary(_ amount: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        formatter.locale = .current
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.currencyCode = "USD"
         formatter.minimumFractionDigits = amount.rounded() == amount ? 0 : 2
         formatter.maximumFractionDigits = 2
         return formatter.string(from: NSNumber(value: amount)) ?? "$0"

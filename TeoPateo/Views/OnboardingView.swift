@@ -340,6 +340,8 @@ struct OnboardingView: View {
     private func currency(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.currencyCode = "USD"
         formatter.maximumFractionDigits = 2
         formatter.minimumFractionDigits = value.rounded() == value ? 0 : 2
         return formatter.string(from: NSNumber(value: value)) ?? "$0"

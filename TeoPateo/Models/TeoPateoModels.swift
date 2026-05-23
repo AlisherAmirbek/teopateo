@@ -534,6 +534,16 @@ struct PlanAdjustmentInsight: Equatable {
     let actionTitle: String
 }
 
+struct WeeklyRecap: Equatable {
+    let weekStart: Date
+    let weekEnd: Date
+    let cravingsLogged: Int
+    let cravingsHandled: Int
+    let smokeFreeCheckInDays: Int
+    let topTrigger: String?
+    let planAdjustment: PlanAdjustmentInsight
+}
+
 struct TaperScheduleDay: Identifiable, Equatable {
     let date: Date
     let targetCigarettes: Double

@@ -1086,9 +1086,124 @@ final class TeoPateoStore: ObservableObject {
         }
     }
 
+    func deleteSlipEvent(_ id: UUID) {
+        do {
+            try repository.deleteSlipEvent(id)
+            slipEvents = try repository.recentSlipEvents(limit: 10_000)
+            lastSaveStatus = .saved("Slip record deleted.")
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Slip record could not be deleted.")
+        }
+    }
+
+    func updateDailyCheckInNote(
+        id: UUID,
+        focusNote: String,
+        slipNote: String
+    ) {
+        guard let existing = dailyCheckIns.first(where: { $0.id == id }) else {
+            return
+        }
+
+        let checkIn = DailyCheckIn(
+            id: existing.id,
+            date: existing.date,
+            mood: existing.mood,
+            stress: existing.stress,
+            confidence: existing.confidence,
+            smokedToday: existing.smokedToday,
+            cigarettesSmoked: existing.cigarettesSmoked,
+            taperTargetCigarettes: existing.taperTargetCigarettes,
+            stayedWithinTaperTarget: existing.stayedWithinTaperTarget,
+            focusNote: focusNote.trimmingCharacters(in: .whitespacesAndNewlines),
+            slipNote: existing.smokedToday == true
+                ? slipNote.trimmingCharacters(in: .whitespacesAndNewlines)
+                : "",
+            createdAt: existing.createdAt,
+            updatedAt: now()
+        )
+
+        do {
+            try repository.saveDailyCheckIn(checkIn)
+            dailyCheckIns = try repository.recentCheckIns(limit: 10_000)
+            persistenceError = nil
+            lastSaveStatus = .saved("Check-in note updated.")
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Check-in note could not be updated.")
+        }
+    }
+
+    func updateSlipEventNotes(
+        id: UUID,
+        note: String,
+        recoveryAction: String
+    ) {
+        guard let existing = slipEvents.first(where: { $0.id == id }) else {
+            return
+        }
+
+        let event = SlipEvent(
+            id: existing.id,
+            occurredAt: existing.occurredAt,
+            cigarettesSmoked: existing.cigarettesSmoked,
+            selectedTriggers: existing.selectedTriggers,
+            mood: existing.mood,
+            stress: existing.stress,
+            context: existing.context,
+            note: note.trimmingCharacters(in: .whitespacesAndNewlines),
+            recoveryAction: recoveryAction.trimmingCharacters(in: .whitespacesAndNewlines),
+            createdAt: existing.createdAt,
+            updatedAt: now()
+        )
+
+        do {
+            try repository.saveSlipEvent(event)
+            slipEvents = try repository.recentSlipEvents(limit: 10_000)
+            persistenceError = nil
+            lastSaveStatus = .saved("Slip note updated.")
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Slip note could not be updated.")
+        }
+    }
+
     func clearStatus() {
         lastSaveStatus = .idle
         persistenceError = nil
+    }
+
+    func weeklyRecap(for date: Date? = nil) -> WeeklyRecap {
+        let range = weekRange(containing: date ?? now())
+        let checkInsByDay = Self.latestCheckInsByDay(
+            dailyCheckIns.filter { range.contains($0.date) },
+            calendar: calendar
+        )
+        let weeklyCravings = cravingEvents.filter {
+            range.contains($0.completedAt ?? $0.dismissedAt ?? $0.startedAt) &&
+                $0.outcome != .dismissedWithoutOutcome
+        }
+        let weeklySlips = slipEvents.filter { range.contains($0.occurredAt) }
+        let topTriggers = Self.calculatedTriggerCounts(
+            triggerLists: weeklyCravings.map(\.selectedTriggers) + weeklySlips.map(\.selectedTriggers),
+            total: Double(max(weeklyCravings.count + weeklySlips.count, 1))
+        )
+        let riskWindows = Self.calculatedRiskWindows(from: weeklyCravings, calendar: calendar)
+
+        return WeeklyRecap(
+            weekStart: range.lowerBound,
+            weekEnd: range.upperBound,
+            cravingsLogged: weeklyCravings.count,
+            cravingsHandled: weeklyCravings.filter { $0.outcome == .completedWithoutSmoking }.count,
+            smokeFreeCheckInDays: checkInsByDay.values.filter { $0.smokedToday == false }.count,
+            topTrigger: topTriggers.first?.name,
+            planAdjustment: Self.calculatedPlanAdjustment(
+                topTriggers: topTriggers,
+                riskWindows: riskWindows,
+                triggerRules: triggerRules
+            )
+        )
     }
 
     func historyEntries(range: ClosedRange<Date>? = nil) -> [HistoryEntry] {
@@ -1098,9 +1213,7 @@ final class TeoPateoStore: ObservableObject {
                 kind: .craving,
                 date: event.completedAt ?? event.dismissedAt ?? event.startedAt,
                 title: cravingHistoryTitle(event),
-                detail: event.selectedTriggers.isEmpty
-                    ? "No trigger selected"
-                    : event.selectedTriggers.joined(separator: ", ")
+                detail: cravingHistoryDetail(event)
             )
         }
 
@@ -1110,7 +1223,7 @@ final class TeoPateoStore: ObservableObject {
                 kind: .checkIn,
                 date: checkIn.date,
                 title: checkIn.smokedToday == true ? "Check-in: smoked" : "Check-in: no smoke",
-                detail: "Mood \(Int(checkIn.mood)) / Stress \(Int(checkIn.stress)) / Confidence \(Int(checkIn.confidence))"
+                detail: checkInHistoryDetail(checkIn)
             )
         }
 
@@ -1120,9 +1233,7 @@ final class TeoPateoStore: ObservableObject {
                 kind: .slip,
                 date: event.occurredAt,
                 title: "Slip: \(event.cigarettesSmoked) cigarette\(event.cigarettesSmoked == 1 ? "" : "s")",
-                detail: event.selectedTriggers.isEmpty
-                    ? event.recoveryAction
-                    : event.selectedTriggers.joined(separator: ", ")
+                detail: slipHistoryDetail(event)
             )
         }
 
@@ -1132,6 +1243,10 @@ final class TeoPateoStore: ObservableObject {
                 return range.contains(entry.date)
             }
             .sorted { $0.date > $1.date }
+    }
+
+    func historyEntry(for id: UUID, kind: HistoryEntry.Kind) -> HistoryEntry? {
+        historyEntries().first { $0.id == id && $0.kind == kind }
     }
 
     private func hydrateFromPersistence() {
@@ -1466,6 +1581,63 @@ final class TeoPateoStore: ObservableObject {
         case .dismissedWithoutOutcome:
             return "Craving saved for later"
         }
+    }
+
+    private func cravingHistoryDetail(_ event: CravingEvent) -> String {
+        var details = [durationSummary(event.durationSeconds)]
+        if !event.selectedTriggers.isEmpty {
+            details.append(event.selectedTriggers.joined(separator: ", "))
+        } else {
+            details.append("No trigger selected")
+        }
+        if let activityID = event.helpedActivityID,
+           let activity = replacementActivities.first(where: { $0.id == activityID }) {
+            details.append(activity.title)
+        }
+        return details.joined(separator: " | ")
+    }
+
+    private func checkInHistoryDetail(_ checkIn: DailyCheckIn) -> String {
+        var details = [
+            "Mood \(Int(checkIn.mood))",
+            "Stress \(Int(checkIn.stress))",
+            "Confidence \(Int(checkIn.confidence))"
+        ]
+        if let target = checkIn.taperTargetCigarettes {
+            details.append("Target \(Int(target))")
+        }
+        return details.joined(separator: " | ")
+    }
+
+    private func slipHistoryDetail(_ event: SlipEvent) -> String {
+        var details = [
+            "\(event.cigarettesSmoked) cigarette\(event.cigarettesSmoked == 1 ? "" : "s")"
+        ]
+        if !event.selectedTriggers.isEmpty {
+            details.append(event.selectedTriggers.joined(separator: ", "))
+        }
+        if !event.recoveryAction.isEmpty {
+            details.append(event.recoveryAction)
+        }
+        return details.joined(separator: " | ")
+    }
+
+    private func durationSummary(_ seconds: Int) -> String {
+        let minutes = max(seconds, 0) / 60
+        if minutes <= 0 {
+            return "Under 1 minute"
+        }
+        return minutes == 1 ? "1 minute" : "\(minutes) minutes"
+    }
+
+    private func weekRange(containing date: Date) -> ClosedRange<Date> {
+        if let interval = calendar.dateInterval(of: .weekOfYear, for: date) {
+            return interval.start...interval.end.addingTimeInterval(-1)
+        }
+
+        let start = calendar.startOfDay(for: date)
+        let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
+        return start...end.addingTimeInterval(-1)
     }
 
     private func earnedMilestones(
@@ -2171,6 +2343,10 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
 
     func recentSlipEvents(limit: Int) throws -> [SlipEvent] {
         Array(slipEvents.sorted { $0.occurredAt > $1.occurredAt }.prefix(limit))
+    }
+
+    func deleteSlipEvent(_ id: UUID) throws {
+        slipEvents.removeAll { $0.id == id }
     }
 
     func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws {

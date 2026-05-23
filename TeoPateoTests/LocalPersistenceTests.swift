@@ -608,6 +608,103 @@ final class LocalPersistenceTests: XCTestCase {
         })
     }
 
+    func testStoreBuildsHistoryTimelineRecapAndEditsNotes() throws {
+        let repository = try makeRepository()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let monday = makeDate(year: 2026, month: 5, day: 18, calendar: calendar)
+        let tuesday = makeDate(year: 2026, month: 5, day: 19, hour: 20, calendar: calendar)
+        let wednesday = makeDate(year: 2026, month: 5, day: 20, hour: 21, calendar: calendar)
+
+        try repository.saveQuitPlan(QuitPlan(
+            id: fixedUUID(1),
+            quitDate: monday,
+            quitMode: "Taper",
+            triggerRules: [],
+            medicationNote: "",
+            createdAt: fixedDate(1),
+            updatedAt: fixedDate(2)
+        ))
+        try repository.saveDailyCheckIn(DailyCheckIn(
+            id: fixedUUID(140),
+            date: monday,
+            mood: 8,
+            stress: 4,
+            confidence: 7,
+            smokedToday: false,
+            focusNote: "Keep gum nearby.",
+            slipNote: "",
+            createdAt: fixedDate(140),
+            updatedAt: fixedDate(141)
+        ))
+        try repository.saveDailyCheckIn(DailyCheckIn(
+            id: fixedUUID(141),
+            date: tuesday,
+            mood: 5,
+            stress: 8,
+            confidence: 4,
+            smokedToday: true,
+            cigarettesSmoked: 1,
+            focusNote: "Protect dinner.",
+            slipNote: "Smoked after dinner.",
+            createdAt: fixedDate(142),
+            updatedAt: fixedDate(143)
+        ))
+        try repository.saveCravingEvent(makeCraving(
+            id: 142,
+            startedAt: tuesday,
+            triggers: ["After dinner", "Coffee"],
+            completedWithoutSmoking: true
+        ))
+        try repository.saveSlipEvent(SlipEvent(
+            id: fixedUUID(143),
+            occurredAt: wednesday,
+            cigarettesSmoked: 2,
+            selectedTriggers: ["After dinner"],
+            note: "Smoked outside after dinner.",
+            recoveryAction: "Brush teeth before leaving the table.",
+            createdAt: fixedDate(144),
+            updatedAt: fixedDate(145)
+        ))
+
+        let store = TeoPateoStore(repository: repository, now: { wednesday }, calendar: calendar)
+        let recap = store.weeklyRecap(for: wednesday)
+
+        XCTAssertEqual(store.historyGroups.count, 3)
+        XCTAssertEqual(store.historyEntries().first?.kind, .slip)
+        XCTAssertEqual(recap.cravingsLogged, 1)
+        XCTAssertEqual(recap.cravingsHandled, 1)
+        XCTAssertEqual(recap.smokeFreeCheckInDays, 1)
+        XCTAssertEqual(recap.topTrigger, "After dinner")
+        XCTAssertEqual(recap.planAdjustment.title, "Add a after dinner rule")
+
+        store.updateDailyCheckInNote(
+            id: fixedUUID(141),
+            focusNote: "Brush teeth after dinner.",
+            slipNote: "Dinner was the cue."
+        )
+        XCTAssertEqual(
+            store.dailyCheckIns.first { $0.id == fixedUUID(141) }?.focusNote,
+            "Brush teeth after dinner."
+        )
+        XCTAssertEqual(
+            store.dailyCheckIns.first { $0.id == fixedUUID(141) }?.slipNote,
+            "Dinner was the cue."
+        )
+
+        store.updateSlipEventNotes(
+            id: fixedUUID(143),
+            note: "Updated slip note.",
+            recoveryAction: "Updated recovery action."
+        )
+        XCTAssertEqual(store.slipEvents.first?.note, "Updated slip note.")
+        XCTAssertEqual(store.slipEvents.first?.recoveryAction, "Updated recovery action.")
+
+        let rangedEntries = store.historyEntries(range: monday...tuesday)
+        XCTAssertTrue(rangedEntries.contains { $0.id == fixedUUID(140) })
+        XCTAssertFalse(rangedEntries.contains { $0.id == fixedUUID(143) })
+    }
+
     func testHistoryDeleteRemovesAccidentalRecords() throws {
         let store = TeoPateoStore(repository: try makeRepository())
 
@@ -619,16 +716,27 @@ final class LocalPersistenceTests: XCTestCase {
             completedAt: fixedDate(122),
             durationSeconds: 60
         ))
+        XCTAssertTrue(store.saveSlipEvent(
+            occurredAt: fixedDate(123),
+            cigarettesSmoked: 1,
+            triggers: ["Social"],
+            context: "Dinner",
+            note: "Accidental record.",
+            recoveryAction: "Return to plan."
+        ))
 
         let checkInID = try XCTUnwrap(store.dailyCheckIns.first?.id)
         let cravingID = try XCTUnwrap(store.cravingEvents.first?.id)
-        XCTAssertEqual(store.historyEntries().count, 2)
+        let slipID = try XCTUnwrap(store.slipEvents.first?.id)
+        XCTAssertEqual(store.historyEntries().count, 3)
 
         store.deleteDailyCheckIn(checkInID)
         store.deleteCravingEvent(cravingID)
+        store.deleteSlipEvent(slipID)
 
         XCTAssertTrue(store.dailyCheckIns.isEmpty)
         XCTAssertTrue(store.cravingEvents.isEmpty)
+        XCTAssertTrue(store.slipEvents.isEmpty)
         XCTAssertTrue(store.historyEntries().isEmpty)
     }
 

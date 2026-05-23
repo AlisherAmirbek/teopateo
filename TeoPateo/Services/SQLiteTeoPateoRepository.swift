@@ -25,6 +25,7 @@ protocol TeoPateoRepository {
 
     func saveSlipEvent(_ event: SlipEvent) throws
     func recentSlipEvents(limit: Int) throws -> [SlipEvent]
+    func deleteSlipEvent(_ id: UUID) throws
 
     func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws
     func fetchReplacementActivities() throws -> [ReplacementActivity]
@@ -626,6 +627,12 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     updatedAt: date(row, "updated_at")
                 )
             }
+        }
+    }
+
+    func deleteSlipEvent(_ id: UUID) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: "DELETE FROM slip_events WHERE id = ?;", arguments: [id.uuidString])
         }
     }
 

@@ -40,6 +40,16 @@
                ReferencedContainer = "container:TeoPateo.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "C3D4E5F60718293A200008"
+               BuildableName = "TeoPateoUITests.xctest"
+               BlueprintName = "TeoPateoUITests"
+               ReferencedContainer = "container:TeoPateo.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

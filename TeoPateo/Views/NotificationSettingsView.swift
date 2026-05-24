@@ -27,6 +27,7 @@ struct NotificationSettingsView: View {
                         dismiss()
                     }
                     .foregroundColor(QuitTheme.cocoa)
+                    .accessibilityIdentifier("notification-close-button")
                 }
             }
         }
@@ -84,6 +85,7 @@ struct NotificationSettingsView: View {
                 }
             }
             .toggleStyle(SwitchToggleStyle(tint: QuitTheme.cocoa))
+            .accessibilityIdentifier("notification-\(kind.rawValue)-toggle")
 
             if kind.supportsFixedTime, let time = store.notificationSettings.time(for: kind) {
                 DatePicker(

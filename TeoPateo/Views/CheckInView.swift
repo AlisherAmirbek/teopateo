@@ -31,6 +31,7 @@ struct CheckInView: View {
             .buttonStyle(FilledButtonStyle())
             .disabled(store.smokedToday == nil)
             .opacity(store.smokedToday == nil ? 0.45 : 1)
+            .accessibilityIdentifier("checkin-save-button")
         }
     }
 
@@ -111,13 +112,16 @@ struct CheckInView: View {
 
             TextField("Context, such as commute or after dinner", text: $slipContext)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("checkin-slip-context-field")
             TextEditor(text: $slipNote)
                 .frame(height: 90)
                 .padding(8)
                 .background(QuitTheme.background)
                 .cornerRadius(12)
+                .accessibilityIdentifier("checkin-slip-note-editor")
             TextField("Recovery action", text: $recoveryAction)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("checkin-recovery-action-field")
         }
         .quietCard()
     }
@@ -132,6 +136,7 @@ struct CheckInView: View {
                 .background(selected ? QuitTheme.cocoa : QuitTheme.peach.opacity(0.85))
                 .cornerRadius(12)
         }
+        .accessibilityIdentifier("checkin-choice-\(title)")
     }
 
     private func slider(_ title: String, value: Binding<Double>) -> some View {

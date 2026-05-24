@@ -361,4 +361,67 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         waitForMainQueue()
         XCTAssertEqual(scheduler.replaceScheduledCalls, initialReplaceCount + 1)
     }
+
+    func testHydrationFailureAppliesDefaultsAndReportsPersistenceError() throws {
+        let repository = ThrowingTeoPateoRepository(
+            base: try makeRepository(),
+            failingOperations: [.loadSnapshot]
+        )
+
+        let store = TeoPateoStore(repository: repository)
+
+        XCTAssertTrue(store.isOnboardingPresented)
+        XCTAssertFalse(store.isOnboardingCompleted)
+        XCTAssertEqual(store.persistenceError, TestRepositoryError().localizedDescription)
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertFalse(store.triggerRules.isEmpty)
+    }
+
+    func testCheckInPersistenceFailureDoesNotAddHistory() throws {
+        let repository = ThrowingTeoPateoRepository(base: try makeRepository())
+        let store = TeoPateoStore(repository: repository)
+        repository.failingOperations = [.saveDailyCheckIn]
+
+        store.smokedToday = false
+        let saved = store.saveCheckIn(date: fixedDate(400), slipNote: "")
+
+        XCTAssertFalse(saved)
+        XCTAssertTrue(store.dailyCheckIns.isEmpty)
+        XCTAssertEqual(store.persistenceError, TestRepositoryError().localizedDescription)
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+    }
+
+    func testNotificationPreferenceSaveFailureRollsBackAndDoesNotSchedule() throws {
+        let repository = ThrowingTeoPateoRepository(base: try makeRepository())
+        let scheduler = TestNotificationScheduler(currentStatus: .authorized)
+        let store = TeoPateoStore(repository: repository, notificationScheduler: scheduler)
+        store.refreshNotificationAuthorization()
+        waitForMainQueue()
+        repository.failingOperations = [.saveNotificationSettings]
+
+        store.setNotificationEnabled(.morningPlan, isEnabled: true)
+        waitForMainQueue()
+
+        XCTAssertFalse(store.notificationSettings.morningPlanEnabled)
+        XCTAssertFalse(try XCTUnwrap(repository.fetchNotificationSettings()).morningPlanEnabled)
+        XCTAssertEqual(store.persistenceError, TestRepositoryError().localizedDescription)
+        XCTAssertEqual(scheduler.replaceScheduledCalls, 0)
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+    }
+
+    func testScheduledNotificationFailureKeepsPreferenceAndReportsStatus() throws {
+        let scheduler = TestNotificationScheduler(currentStatus: .authorized)
+        scheduler.replaceResult = .failure(TestSchedulerError())
+        let store = TeoPateoStore(repository: try makeRepository(), notificationScheduler: scheduler)
+        store.refreshNotificationAuthorization()
+        waitForMainQueue()
+
+        store.setNotificationEnabled(.morningPlan, isEnabled: true)
+        waitForMainQueue()
+
+        XCTAssertTrue(store.notificationSettings.morningPlanEnabled)
+        XCTAssertEqual(scheduler.replaceScheduledCalls, 1)
+        XCTAssertNil(store.persistenceError)
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+    }
 }

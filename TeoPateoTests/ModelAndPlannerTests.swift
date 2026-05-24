@@ -1,4 +1,5 @@
 import XCTest
+import UserNotifications
 @testable import TeoPateo
 
 final class ModelAndPlannerTests: TeoPateoTestCase {
@@ -141,5 +142,123 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
         })
         XCTAssertEqual(Set(NotificationPlanner.allManagedIdentifiers).count, NotificationPlanner.allManagedIdentifiers.count)
         XCTAssertEqual(NotificationPlanner.allManagedIdentifiers.count, 28)
+    }
+
+    func testLocalNotificationSchedulerBuildsManagedRequestsForNotificationCenter() {
+        let center = TestUserNotificationCenter(status: .authorized)
+        let scheduler = LocalNotificationScheduler(center: center)
+        let morning = NotificationScheduleItem(
+            identifier: "teopateo.notification.morning_plan",
+            kind: .morningPlan,
+            title: "Review today's quit plan",
+            body: "Protect the first trigger.",
+            time: ReminderTime(hour: 7, minute: 45)
+        )
+        let evening = NotificationScheduleItem(
+            identifier: "teopateo.notification.evening_check_in",
+            kind: .eveningCheckIn,
+            title: "Check in without judgment",
+            body: "Record what happened today.",
+            time: ReminderTime(hour: 20, minute: 5)
+        )
+
+        waitForScheduler("schedule managed request") { done in
+            scheduler.replaceScheduledNotifications(with: [morning, evening]) { result in
+                if case .failure(let error) = result {
+                    XCTFail("Expected scheduling to succeed, got \(error).")
+                }
+                done()
+            }
+        }
+
+        XCTAssertEqual(center.removedIdentifierGroups, [NotificationPlanner.allManagedIdentifiers])
+        XCTAssertEqual(center.addedRequests.map(\.identifier), [morning.identifier, evening.identifier])
+
+        let request = center.addedRequests.first
+        XCTAssertEqual(request?.content.title, morning.title)
+        XCTAssertEqual(request?.content.body, morning.body)
+
+        let trigger = request?.trigger as? UNCalendarNotificationTrigger
+        XCTAssertEqual(trigger?.dateComponents.hour, morning.time.hour)
+        XCTAssertEqual(trigger?.dateComponents.minute, morning.time.minute)
+        XCTAssertEqual(trigger?.repeats, true)
+    }
+
+    func testLocalNotificationSchedulerRequestsPermissionAndMapsStatus() {
+        let center = TestUserNotificationCenter(status: .provisional)
+        let scheduler = LocalNotificationScheduler(center: center)
+
+        waitForScheduler("read authorization status") { done in
+            scheduler.currentAuthorizationStatus { status in
+                XCTAssertEqual(status, .provisional)
+                done()
+            }
+        }
+
+        center.status = .authorized
+        waitForScheduler("request authorization") { done in
+            scheduler.requestAuthorization { result in
+                switch result {
+                case .success(let status):
+                    XCTAssertEqual(status, .authorized)
+                case .failure(let error):
+                    XCTFail("Expected authorization success, got \(error).")
+                }
+                done()
+            }
+        }
+
+        XCTAssertEqual(center.authorizationStatusCalls, 2)
+        XCTAssertTrue(center.requestAuthorizationOptions?.contains(.alert) == true)
+        XCTAssertTrue(center.requestAuthorizationOptions?.contains(.badge) == true)
+        XCTAssertTrue(center.requestAuthorizationOptions?.contains(.sound) == true)
+    }
+
+    func testLocalNotificationSchedulerReportsAddFailuresAfterAttemptingRequests() {
+        let center = TestUserNotificationCenter(status: .authorized)
+        let scheduler = LocalNotificationScheduler(center: center)
+        let morning = NotificationScheduleItem(
+            identifier: "teopateo.notification.morning_plan",
+            kind: .morningPlan,
+            title: "Review today's quit plan",
+            body: "Protect the first trigger.",
+            time: ReminderTime(hour: 7, minute: 45)
+        )
+        let evening = NotificationScheduleItem(
+            identifier: "teopateo.notification.evening_check_in",
+            kind: .eveningCheckIn,
+            title: "Check in without judgment",
+            body: "Record what happened today.",
+            time: ReminderTime(hour: 20, minute: 5)
+        )
+        center.addErrorsByIdentifier[evening.identifier] = TestSchedulerError()
+
+        waitForScheduler("schedule with add failure") { done in
+            scheduler.replaceScheduledNotifications(with: [morning, evening]) { result in
+                switch result {
+                case .success:
+                    XCTFail("Expected scheduling failure.")
+                case .failure:
+                    break
+                }
+                done()
+            }
+        }
+
+        XCTAssertEqual(center.removedIdentifierGroups, [NotificationPlanner.allManagedIdentifiers])
+        XCTAssertEqual(center.addedRequests.map(\.identifier), [morning.identifier, evening.identifier])
+    }
+
+    private func waitForScheduler(
+        _ description: String,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        action: (@escaping () -> Void) -> Void
+    ) {
+        let expectation = expectation(description: description)
+        action {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 3)
     }
 }

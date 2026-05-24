@@ -217,6 +217,7 @@ struct PlanView: View {
             addPlanItemButton(title: "Add trigger rule") {
                 openPlanSheet(.newTriggerRule)
             }
+            .accessibilityIdentifier("plan-add-trigger-rule-button")
         }
         .quietCard()
     }
@@ -239,6 +240,7 @@ struct PlanView: View {
             addPlanItemButton(title: "Add reason") {
                 openPlanSheet(.newReason)
             }
+            .accessibilityIdentifier("plan-add-reason-button")
         }
         .quietCard()
     }
@@ -262,6 +264,7 @@ struct PlanView: View {
             addPlanItemButton(title: "Add activity") {
                 openPlanSheet(.newActivity)
             }
+            .accessibilityIdentifier("plan-add-activity-button")
         }
         .quietCard()
     }
@@ -525,8 +528,10 @@ struct PlanView: View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("When this happens", text: trigger)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("plan-trigger-field")
             TextField("Do this instead", text: action)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("plan-action-field")
             if let isEnabled = isEnabled {
                 Toggle("Turned on", isOn: isEnabled)
                     .font(.rounded(.subheadline, weight: .bold))
@@ -597,6 +602,7 @@ struct PlanView: View {
             VStack(alignment: .leading, spacing: 12) {
                 TextField("Reason for quitting", text: $newReason)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("plan-reason-field")
                 editButtons(
                     saveTitle: "Add reason",
                     save: saveNewReason,
@@ -703,10 +709,13 @@ struct PlanView: View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Activity", text: title)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("plan-activity-title-field")
             TextField("Instruction", text: instruction)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("plan-activity-instruction-field")
             TextField("Linked trigger, optional", text: linkedTrigger)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("plan-activity-trigger-field")
             Picker("Category", selection: category) {
                 ForEach(ReplacementActivityCategory.allCases, id: \.self) { category in
                     Text(category.title).tag(category)
@@ -742,6 +751,7 @@ struct PlanView: View {
             ) {
                 openPlanSheet(.notifications)
             }
+            .accessibilityIdentifier("plan-notification-settings-button")
         }
         .quietCard()
     }
@@ -754,6 +764,7 @@ struct PlanView: View {
         HStack(spacing: 10) {
             Button(saveTitle, action: save)
                 .buttonStyle(QuietButtonStyle())
+                .accessibilityIdentifier("plan-sheet-save-button")
             Button("Cancel", action: cancel)
                 .font(.rounded(.caption, weight: .bold))
                 .foregroundColor(QuitTheme.muted)

@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import UserNotifications
 @testable import TeoPateo
 
 class TeoPateoTestCase: XCTestCase {
@@ -215,3 +216,195 @@ final class TestNotificationScheduler: NotificationScheduling {
 }
 
 struct TestSchedulerError: Error, Equatable {}
+
+final class TestUserNotificationCenter: UserNotificationCentering {
+    var status: UNAuthorizationStatus
+    var requestAuthorizationError: Error?
+    var addErrorsByIdentifier: [String: Error] = [:]
+
+    private(set) var authorizationStatusCalls = 0
+    private(set) var requestAuthorizationOptions: UNAuthorizationOptions?
+    private(set) var addedRequests: [UNNotificationRequest] = []
+    private(set) var removedIdentifierGroups: [[String]] = []
+
+    init(status: UNAuthorizationStatus = .notDetermined) {
+        self.status = status
+    }
+
+    func authorizationStatus(
+        completion: @escaping @Sendable (UNAuthorizationStatus) -> Void
+    ) {
+        authorizationStatusCalls += 1
+        completion(status)
+    }
+
+    func requestAuthorization(
+        options: UNAuthorizationOptions,
+        completionHandler: @escaping @Sendable (Bool, Error?) -> Void
+    ) {
+        requestAuthorizationOptions = options
+        completionHandler(requestAuthorizationError == nil, requestAuthorizationError)
+    }
+
+    func add(
+        _ request: UNNotificationRequest,
+        withCompletionHandler completionHandler: (@Sendable (Error?) -> Void)?
+    ) {
+        addedRequests.append(request)
+        completionHandler?(addErrorsByIdentifier[request.identifier])
+    }
+
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
+        removedIdentifierGroups.append(identifiers)
+    }
+}
+
+struct TestRepositoryError: Error, Equatable, LocalizedError {
+    var errorDescription: String? {
+        "Test repository failure."
+    }
+}
+
+enum TestRepositoryOperation: Hashable {
+    case loadSnapshot
+    case saveNotificationSettings
+    case saveDailyCheckIn
+    case recentCheckIns
+}
+
+final class ThrowingTeoPateoRepository: TeoPateoRepository {
+    var failingOperations: Set<TestRepositoryOperation>
+
+    private let base: TeoPateoRepository
+    private let error = TestRepositoryError()
+
+    init(
+        base: TeoPateoRepository,
+        failingOperations: Set<TestRepositoryOperation> = []
+    ) {
+        self.base = base
+        self.failingOperations = failingOperations
+    }
+
+    func schemaVersion() throws -> Int {
+        try base.schemaVersion()
+    }
+
+    func tableNames() throws -> Set<String> {
+        try base.tableNames()
+    }
+
+    func loadSnapshot() throws -> PersistedTeoPateoSnapshot {
+        try failIfNeeded(.loadSnapshot)
+        return try base.loadSnapshot()
+    }
+
+    func fetchAppSettings() throws -> AppSettings? {
+        try base.fetchAppSettings()
+    }
+
+    func saveAppSettings(_ settings: AppSettings) throws {
+        try base.saveAppSettings(settings)
+    }
+
+    func fetchNotificationSettings() throws -> NotificationSettings? {
+        try base.fetchNotificationSettings()
+    }
+
+    func saveNotificationSettings(_ settings: NotificationSettings) throws {
+        try failIfNeeded(.saveNotificationSettings)
+        try base.saveNotificationSettings(settings)
+    }
+
+    func fetchQuitPlan() throws -> QuitPlan? {
+        try base.fetchQuitPlan()
+    }
+
+    func saveQuitPlan(_ plan: QuitPlan) throws {
+        try base.saveQuitPlan(plan)
+    }
+
+    func saveDailyCheckIn(_ checkIn: DailyCheckIn) throws {
+        try failIfNeeded(.saveDailyCheckIn)
+        try base.saveDailyCheckIn(checkIn)
+    }
+
+    func recentCheckIns(limit: Int) throws -> [DailyCheckIn] {
+        try failIfNeeded(.recentCheckIns)
+        return try base.recentCheckIns(limit: limit)
+    }
+
+    func deleteDailyCheckIn(_ id: UUID) throws {
+        try base.deleteDailyCheckIn(id)
+    }
+
+    func saveCravingEvent(_ event: CravingEvent) throws {
+        try base.saveCravingEvent(event)
+    }
+
+    func recentCravingEvents(limit: Int) throws -> [CravingEvent] {
+        try base.recentCravingEvents(limit: limit)
+    }
+
+    func deleteCravingEvent(_ id: UUID) throws {
+        try base.deleteCravingEvent(id)
+    }
+
+    func saveSlipEvent(_ event: SlipEvent) throws {
+        try base.saveSlipEvent(event)
+    }
+
+    func recentSlipEvents(limit: Int) throws -> [SlipEvent] {
+        try base.recentSlipEvents(limit: limit)
+    }
+
+    func deleteSlipEvent(_ id: UUID) throws {
+        try base.deleteSlipEvent(id)
+    }
+
+    func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws {
+        try base.replaceReplacementActivities(activities)
+    }
+
+    func fetchReplacementActivities() throws -> [ReplacementActivity] {
+        try base.fetchReplacementActivities()
+    }
+
+    func replaceRiskySituations(_ situations: [RiskySituation]) throws {
+        try base.replaceRiskySituations(situations)
+    }
+
+    func fetchRiskySituations() throws -> [RiskySituation] {
+        try base.fetchRiskySituations()
+    }
+
+    func replaceSupportContacts(_ contacts: [SupportContact]) throws {
+        try base.replaceSupportContacts(contacts)
+    }
+
+    func fetchSupportContacts() throws -> [SupportContact] {
+        try base.fetchSupportContacts()
+    }
+
+    func replaceUserReasons(_ reasons: [UserReason]) throws {
+        try base.replaceUserReasons(reasons)
+    }
+
+    func fetchUserReasons() throws -> [UserReason] {
+        try base.fetchUserReasons()
+    }
+
+    func replaceCoachMessages(_ messages: [CoachMessage]) throws {
+        try base.replaceCoachMessages(messages)
+    }
+
+    func fetchCoachMessages() throws -> [CoachMessage] {
+        try base.fetchCoachMessages()
+    }
+
+    private func failIfNeeded(_ operation: TestRepositoryOperation) throws {
+        if failingOperations.contains(operation) {
+            throw error
+        }
+    }
+}

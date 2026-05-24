@@ -26,6 +26,7 @@
 		B2C3D4E5F60718293A100004 /* ModelAndPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */; };
 		B2C3D4E5F60718293A100006 /* RepositoryMutationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */; };
 		B2C3D4E5F60718293A100008 /* StoreBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100007 /* StoreBehaviorTests.swift */; };
+		C3D4E5F60718293A200002 /* TeoPateoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F60718293A200001 /* TeoPateoUITests.swift */; };
 		A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89C40CE62B9B4943A6112508 /* Assets.xcassets */; };
 		B81FD725E89B4B53B10C3A94 /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1341071134E44F28C5467B4 /* PlanView.swift */; };
 		D4A7B8850C9D4A5B97F24A11 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A7B8840C9D4A5B97F24A11 /* OnboardingView.swift */; };
@@ -38,6 +39,13 @@
 
 /* Begin PBXContainerItemProxy section */
 		A1B2C3D4E5F60718293A000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 669341A4D85148CB8E39E2C5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F24BE80E72654506A21C460B;
+			remoteInfo = TeoPateo;
+		};
+		C3D4E5F60718293A20000C /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 669341A4D85148CB8E39E2C5 /* Project object */;
 			proxyType = 1;
@@ -66,6 +74,8 @@
 		B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAndPlannerTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepositoryMutationTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F60718293A100007 /* StoreBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreBehaviorTests.swift; sourceTree = "<group>"; };
+		C3D4E5F60718293A200001 /* TeoPateoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeoPateoUITests.swift; sourceTree = "<group>"; };
+		C3D4E5F60718293A200003 /* TeoPateoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TeoPateoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1341071134E44F28C5467B4 /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
 		A9A0901E1C624D8CB77A502E /* CheckInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInView.swift; sourceTree = "<group>"; };
 		B1CB205C3D214C019BD2E015 /* TeoPateoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeoPateoStore.swift; sourceTree = "<group>"; };
@@ -93,6 +103,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C3D4E5F60718293A200005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -101,6 +118,7 @@
 			children = (
 				6B5D70F821554C54B52E1DA9 /* TeoPateo.app */,
 				A1B2C3D4E5F60718293A0003 /* TeoPateoTests.xctest */,
+				C3D4E5F60718293A200003 /* TeoPateoUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -137,6 +155,7 @@
 				7491E2832FBF57910099630B /* CORE_IDEA.md */,
 				F5DE3F601DC14422BAC2D42F /* TeoPateo */,
 				A1B2C3D4E5F60718293A0007 /* TeoPateoTests */,
+				C3D4E5F60718293A200004 /* TeoPateoUITests */,
 				0B12EE6541FC45919712D55F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -170,6 +189,14 @@
 				B2C3D4E5F60718293A100001 /* TestSupport.swift */,
 			);
 			path = TeoPateoTests;
+			sourceTree = "<group>";
+		};
+		C3D4E5F60718293A200004 /* TeoPateoUITests */ = {
+			isa = PBXGroup;
+			children = (
+				C3D4E5F60718293A200001 /* TeoPateoUITests.swift */,
+			);
+			path = TeoPateoUITests;
 			sourceTree = "<group>";
 		};
 		F5DE3F601DC14422BAC2D42F /* TeoPateo */ = {
@@ -227,6 +254,24 @@
 			productReference = A1B2C3D4E5F60718293A0003 /* TeoPateoTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		C3D4E5F60718293A200008 /* TeoPateoUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C3D4E5F60718293A200009 /* Build configuration list for PBXNativeTarget "TeoPateoUITests" */;
+			buildPhases = (
+				C3D4E5F60718293A200006 /* Sources */,
+				C3D4E5F60718293A200005 /* Frameworks */,
+				C3D4E5F60718293A200007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C3D4E5F60718293A20000D /* PBXTargetDependency */,
+			);
+			name = TeoPateoUITests;
+			productName = TeoPateoUITests;
+			productReference = C3D4E5F60718293A200003 /* TeoPateoUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -238,6 +283,10 @@
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					A1B2C3D4E5F60718293A0008 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = F24BE80E72654506A21C460B;
+					};
+					C3D4E5F60718293A200008 = {
 						CreatedOnToolsVersion = 26.5;
 						TestTargetID = F24BE80E72654506A21C460B;
 					};
@@ -264,6 +313,7 @@
 			targets = (
 				F24BE80E72654506A21C460B /* TeoPateo */,
 				A1B2C3D4E5F60718293A0008 /* TeoPateoTests */,
+				C3D4E5F60718293A200008 /* TeoPateoUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -282,6 +332,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A1B2C3D4E5F60718293A0006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C3D4E5F60718293A200007 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -326,6 +383,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C3D4E5F60718293A200006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3D4E5F60718293A200002 /* TeoPateoUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -333,6 +398,11 @@
 			isa = PBXTargetDependency;
 			target = F24BE80E72654506A21C460B /* TeoPateo */;
 			targetProxy = A1B2C3D4E5F60718293A000C /* PBXContainerItemProxy */;
+		};
+		C3D4E5F60718293A20000D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F24BE80E72654506A21C460B /* TeoPateo */;
+			targetProxy = C3D4E5F60718293A20000C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -394,6 +464,49 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TeoPateo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TeoPateo";
+			};
+			name = Release;
+		};
+		C3D4E5F60718293A20000A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.teopateo.TeoPateoUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TeoPateo;
+			};
+			name = Debug;
+		};
+		C3D4E5F60718293A20000B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.teopateo.TeoPateoUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TeoPateo;
 			};
 			name = Release;
 		};
@@ -587,6 +700,15 @@
 			buildConfigurations = (
 				A1B2C3D4E5F60718293A0009 /* Debug */,
 				A1B2C3D4E5F60718293A000A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C3D4E5F60718293A200009 /* Build configuration list for PBXNativeTarget "TeoPateoUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C3D4E5F60718293A20000A /* Debug */,
+				C3D4E5F60718293A20000B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

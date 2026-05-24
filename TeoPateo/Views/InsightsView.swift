@@ -143,6 +143,7 @@ struct InsightsView: View {
                 isHistoryPresented = true
             }
             .buttonStyle(QuietButtonStyle())
+            .accessibilityIdentifier("open-history-button")
         }
         .quietCard()
     }
@@ -261,6 +262,7 @@ private struct HistoryTimelineView: View {
                                 historyRow(entry)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("history-row-\(entry.kind.rawValue)-\(entry.title)")
                         }
                     }
                     .quietCard()
@@ -490,6 +492,7 @@ private struct HistoryEntryDetailView: View {
                     isEditing ? saveNotes() : beginEditing()
                 }
                 .buttonStyle(FilledButtonStyle())
+                .accessibilityIdentifier("history-edit-save-notes-button")
 
                 if isEditing {
                     Button("Cancel") {
@@ -504,6 +507,7 @@ private struct HistoryEntryDetailView: View {
                 isDeletePresented = true
             }
             .buttonStyle(QuietButtonStyle())
+            .accessibilityIdentifier("history-delete-record-button")
         }
     }
 
@@ -540,6 +544,7 @@ private struct HistoryEntryDetailView: View {
                 .padding(8)
                 .background(QuitTheme.background)
                 .cornerRadius(12)
+                .accessibilityIdentifier(label == "Recovery action" ? "history-recovery-editor" : "history-note-editor")
         }
     }
 

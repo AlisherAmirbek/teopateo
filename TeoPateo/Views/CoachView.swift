@@ -56,6 +56,7 @@ struct CoachView: View {
                 .frame(height: 52)
                 .background(QuitTheme.paper)
                 .cornerRadius(14)
+                .accessibilityIdentifier("coach-input-field")
 
             Button {
                 store.sendCoachMessage(input)
@@ -69,6 +70,7 @@ struct CoachView: View {
                     .cornerRadius(14)
             }
             .accessibilityLabel("Send message")
+            .accessibilityIdentifier("coach-send-button")
         }
     }
 
@@ -82,5 +84,6 @@ struct CoachView: View {
         .padding(.horizontal, 12)
         .background(QuitTheme.peach.opacity(0.7))
         .cornerRadius(18)
+        .accessibilityIdentifier("coach-prompt-\(title)")
     }
 }

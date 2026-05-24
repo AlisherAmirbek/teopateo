@@ -17,18 +17,43 @@ protocol NotificationScheduling {
     )
 }
 
-final class LocalNotificationScheduler: NotificationScheduling {
-    private let center: UNUserNotificationCenter
+protocol UserNotificationCentering {
+    func authorizationStatus(
+        completion: @escaping @Sendable (UNAuthorizationStatus) -> Void
+    )
+    func requestAuthorization(
+        options: UNAuthorizationOptions,
+        completionHandler: @escaping @Sendable (Bool, Error?) -> Void
+    )
+    func add(
+        _ request: UNNotificationRequest,
+        withCompletionHandler completionHandler: (@Sendable (Error?) -> Void)?
+    )
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String])
+}
 
-    init(center: UNUserNotificationCenter = .current()) {
+extension UNUserNotificationCenter: UserNotificationCentering {
+    func authorizationStatus(
+        completion: @escaping @Sendable (UNAuthorizationStatus) -> Void
+    ) {
+        getNotificationSettings { settings in
+            completion(settings.authorizationStatus)
+        }
+    }
+}
+
+final class LocalNotificationScheduler: NotificationScheduling {
+    private let center: UserNotificationCentering
+
+    init(center: UserNotificationCentering = UNUserNotificationCenter.current()) {
         self.center = center
     }
 
     func currentAuthorizationStatus(
         completion: @escaping (NotificationPermissionStatus) -> Void
     ) {
-        center.getNotificationSettings { settings in
-            completion(Self.permissionStatus(from: settings.authorizationStatus))
+        center.authorizationStatus { status in
+            completion(Self.permissionStatus(from: status))
         }
     }
 
@@ -61,25 +86,20 @@ final class LocalNotificationScheduler: NotificationScheduling {
         }
 
         let group = DispatchGroup()
-        var firstError: Error?
-        let lock = NSLock()
+        let errorRecorder = NotificationSchedulingErrorRecorder()
 
         for item in items {
             group.enter()
             center.add(request(for: item)) { error in
                 if let error {
-                    lock.lock()
-                    if firstError == nil {
-                        firstError = error
-                    }
-                    lock.unlock()
+                    errorRecorder.record(error)
                 }
                 group.leave()
             }
         }
 
         group.notify(queue: .main) {
-            if let firstError {
+            if let firstError = errorRecorder.firstError {
                 completion(.failure(firstError))
             } else {
                 completion(.success(()))
@@ -133,6 +153,25 @@ final class LocalNotificationScheduler: NotificationScheduling {
             return .ephemeral
         @unknown default:
             return .unknown
+        }
+    }
+}
+
+private final class NotificationSchedulingErrorRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedError: Error?
+
+    var firstError: Error? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedError
+    }
+
+    func record(_ error: Error) {
+        lock.lock()
+        defer { lock.unlock() }
+        if storedError == nil {
+            storedError = error
         }
     }
 }

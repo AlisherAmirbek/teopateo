@@ -147,6 +147,7 @@ struct CravingModeView: View {
                     Text(formattedTime)
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
                         .foregroundColor(QuitTheme.ink)
+                        .accessibilityIdentifier("craving-timer-label")
                     Text(isRunning ? "Running" : "Ready")
                         .font(.rounded(.caption, weight: .bold))
                         .foregroundColor(QuitTheme.muted)
@@ -159,11 +160,13 @@ struct CravingModeView: View {
                     toggleTimer()
                 }
                 .buttonStyle(FilledButtonStyle())
+                .accessibilityIdentifier("craving-start-pause-button")
 
                 Button("Reset") {
                     resetTimer()
                 }
                 .buttonStyle(QuietButtonStyle())
+                .accessibilityIdentifier("craving-reset-button")
             }
         }
         .quietCard()
@@ -267,6 +270,7 @@ struct CravingModeView: View {
                 .font(.rounded(.headline, weight: .bold))
             TextField(placeholder, text: text)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityIdentifier("craving-note-field")
         }
         .quietCard()
     }
@@ -278,11 +282,13 @@ struct CravingModeView: View {
                     moveToRecovered()
                 }
                 .buttonStyle(FilledButtonStyle())
+                .accessibilityIdentifier("craving-recovered-button")
 
                 Button("I smoked") {
                     moveToSlipped()
                 }
                 .buttonStyle(QuietButtonStyle())
+                .accessibilityIdentifier("craving-smoked-button")
             }
 
             Button("Save for later") {
@@ -292,6 +298,7 @@ struct CravingModeView: View {
             .foregroundColor(QuitTheme.muted)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
+            .accessibilityIdentifier("craving-save-later-button")
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)
@@ -305,6 +312,7 @@ struct CravingModeView: View {
                 primaryAction()
             }
             .buttonStyle(FilledButtonStyle())
+            .accessibilityIdentifier("craving-outcome-save-button")
 
             Button("Back to rescue") {
                 step = .rescue

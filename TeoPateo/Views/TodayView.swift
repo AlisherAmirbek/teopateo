@@ -57,6 +57,7 @@ struct TodayView: View {
                 store.presentOnboarding()
             }
             .buttonStyle(QuietButtonStyle())
+            .accessibilityIdentifier("continue-setup-button")
         }
         .quietCard()
         .padding(.top, 14)
@@ -79,6 +80,7 @@ struct TodayView: View {
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel("Notifications")
+            .accessibilityIdentifier("notifications-button")
         }
     }
 
@@ -123,6 +125,7 @@ struct TodayView: View {
             .clipShape(Capsule())
         }
         .padding(.top, 28)
+        .accessibilityIdentifier("start-rescue-button")
     }
 
     private var riskCard: some View {

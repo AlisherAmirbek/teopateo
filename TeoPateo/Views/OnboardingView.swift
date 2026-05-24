@@ -222,6 +222,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 14) {
                 TextField("Reason for quitting", text: $primaryReason)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("onboarding-reason-field")
             }
             .quietCard()
 
@@ -268,6 +269,7 @@ struct OnboardingView: View {
             .buttonStyle(FilledButtonStyle())
             .disabled(!canAdvance)
             .opacity(canAdvance ? 1 : 0.45)
+            .accessibilityIdentifier("onboarding-next-button")
         }
         .padding(.horizontal, 24)
         .padding(.top, 12)

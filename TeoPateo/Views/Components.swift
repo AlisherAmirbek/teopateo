@@ -26,6 +26,7 @@ struct FlexibleTags: View {
                         .background(selected.contains(item) ? QuitTheme.cocoa : QuitTheme.peach.opacity(0.62))
                         .cornerRadius(18)
                 }
+                .accessibilityIdentifier("tag-\(item)")
             }
         }
     }

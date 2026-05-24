@@ -22,6 +22,10 @@
 		A1B2C3D4E5F60718293A0104 /* SQLiteTeoPateoRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */; };
 		A1B2C3D4E5F60718293A0302 /* NotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */; };
 		A1B2C3D4E5F60718293A0304 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */; };
+		B2C3D4E5F60718293A100002 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100001 /* TestSupport.swift */; };
+		B2C3D4E5F60718293A100004 /* ModelAndPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */; };
+		B2C3D4E5F60718293A100006 /* RepositoryMutationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */; };
+		B2C3D4E5F60718293A100008 /* StoreBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100007 /* StoreBehaviorTests.swift */; };
 		A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89C40CE62B9B4943A6112508 /* Assets.xcassets */; };
 		B81FD725E89B4B53B10C3A94 /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1341071134E44F28C5467B4 /* PlanView.swift */; };
 		D4A7B8850C9D4A5B97F24A11 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A7B8840C9D4A5B97F24A11 /* OnboardingView.swift */; };
@@ -58,6 +62,10 @@
 		A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteTeoPateoRepository.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
+		B2C3D4E5F60718293A100001 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
+		B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAndPlannerTests.swift; sourceTree = "<group>"; };
+		B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepositoryMutationTests.swift; sourceTree = "<group>"; };
+		B2C3D4E5F60718293A100007 /* StoreBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreBehaviorTests.swift; sourceTree = "<group>"; };
 		A1341071134E44F28C5467B4 /* PlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanView.swift; sourceTree = "<group>"; };
 		A9A0901E1C624D8CB77A502E /* CheckInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInView.swift; sourceTree = "<group>"; };
 		B1CB205C3D214C019BD2E015 /* TeoPateoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeoPateoStore.swift; sourceTree = "<group>"; };
@@ -156,6 +164,10 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60718293A0001 /* LocalPersistenceTests.swift */,
+				B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */,
+				B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */,
+				B2C3D4E5F60718293A100007 /* StoreBehaviorTests.swift */,
+				B2C3D4E5F60718293A100001 /* TestSupport.swift */,
 			);
 			path = TeoPateoTests;
 			sourceTree = "<group>";
@@ -306,6 +318,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B2C3D4E5F60718293A100002 /* TestSupport.swift in Sources */,
+				B2C3D4E5F60718293A100004 /* ModelAndPlannerTests.swift in Sources */,
+				B2C3D4E5F60718293A100006 /* RepositoryMutationTests.swift in Sources */,
+				B2C3D4E5F60718293A100008 /* StoreBehaviorTests.swift in Sources */,
 				A1B2C3D4E5F60718293A0002 /* LocalPersistenceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

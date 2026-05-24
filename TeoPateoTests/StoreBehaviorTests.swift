@@ -1,0 +1,364 @@
+import XCTest
+@testable import TeoPateo
+
+final class StoreBehaviorTests: TeoPateoTestCase {
+    func testPlanUpdatesClampPersistAndAffectTaperSchedule() throws {
+        let repository = try makeRepository()
+        let calendar = makeCalendar()
+        let now = makeDate(year: 2026, month: 5, day: 23, calendar: calendar)
+        try repository.saveQuitPlan(makeQuitPlan(
+            quitDate: makeDate(year: 2026, month: 5, day: 20, calendar: calendar),
+            attemptStartedAt: makeDate(year: 2026, month: 5, day: 20, calendar: calendar)
+        ))
+
+        let store = TeoPateoStore(repository: repository, now: { now }, calendar: calendar)
+        let nextQuitDate = makeDate(year: 2026, month: 5, day: 30, calendar: calendar)
+
+        store.updateQuitDate(nextQuitDate)
+        store.updateProgressBaseline(cigarettesPerDay: -4, costPerPack: -8, cigarettesPerPack: 0)
+        store.updateTaperSettings(targetCigarettesPerDay: 20, reductionStep: -2, reductionIntervalDays: 0)
+
+        XCTAssertEqual(store.currentQuitPlan.quitDate, nextQuitDate)
+        XCTAssertEqual(store.currentQuitPlan.baselineCigarettesPerDay, 0)
+        XCTAssertEqual(store.currentQuitPlan.costPerPack, 0)
+        XCTAssertEqual(store.currentQuitPlan.cigarettesPerPack, 1)
+        XCTAssertEqual(store.currentQuitPlan.taperTargetCigarettesPerDay, 0)
+        XCTAssertEqual(store.currentQuitPlan.taperReductionStep, 0)
+        XCTAssertEqual(store.currentQuitPlan.taperReductionIntervalDays, 1)
+        XCTAssertEqual(store.taperSchedule(days: 2).map(\.targetCigarettes), [0, 0])
+
+        store.quitMode = "Cold turkey"
+        XCTAssertNil(store.todayTaperTarget)
+        XCTAssertTrue(store.taperSchedule(days: 2).isEmpty)
+        XCTAssertEqual(try repository.fetchQuitPlan()?.quitMode, "Cold turkey")
+    }
+
+    func testInvalidPlanLibraryInputsSetFailureAndDoNotMutateCollections() throws {
+        let store = TeoPateoStore(repository: try makeRepository())
+        let triggerCount = store.triggerRules.count
+        let contactCount = store.supportContacts.count
+        let reasonCount = store.userReasons.count
+        let activityCount = store.replacementActivities.count
+        let riskyCount = store.riskySituations.count
+
+        store.addTriggerRule(trigger: "   ", action: "Do something")
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.triggerRules.count, triggerCount)
+
+        store.addSupportContact(name: " ", detail: "Available")
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.supportContacts.count, contactCount)
+
+        store.addUserReason(" ")
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.userReasons.count, reasonCount)
+
+        store.addReplacementActivity(title: "Gum", instruction: " ", category: .sensory)
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.replacementActivities.count, activityCount)
+
+        store.addRiskySituation(title: " ", expectedContext: "", preventionPlan: "Keep distance.", backupAction: "")
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.riskySituations.count, riskyCount)
+    }
+
+    func testCravingWrapperDismissalAndSessionResetPaths() throws {
+        let repository = try makeRepository()
+        let store = TeoPateoStore(repository: repository)
+
+        store.selectedTriggers = ["Coffee"]
+        store.draftSupportMessage()
+        XCTAssertFalse(store.supportMessageDraft.isEmpty)
+        store.startCravingSession()
+        XCTAssertTrue(store.selectedTriggers.isEmpty)
+        XCTAssertTrue(store.supportMessageDraft.isEmpty)
+        XCTAssertEqual(store.lastSaveStatus, .idle)
+
+        store.selectedTriggers = ["Coffee"]
+        XCTAssertTrue(store.completeCraving(
+            startedAt: fixedDate(10),
+            completedAt: fixedDate(11),
+            durationSeconds: 120,
+            completedWithoutSmoking: true
+        ))
+        XCTAssertEqual(store.cravingEvents.first?.outcome, .completedWithoutSmoking)
+
+        store.selectedTriggers = ["Work stress"]
+        XCTAssertTrue(store.completeCraving(
+            startedAt: fixedDate(20),
+            completedAt: fixedDate(21),
+            durationSeconds: 90,
+            completedWithoutSmoking: false
+        ))
+        XCTAssertEqual(store.cravingEvents.first?.outcome, .smokedAfterCraving)
+        XCTAssertEqual(store.slipEvents.first?.context, "Craving mode")
+
+        XCTAssertTrue(store.dismissCravingSession(
+            startedAt: fixedDate(30),
+            dismissedAt: fixedDate(31),
+            durationSeconds: -30,
+            initialIntensity: 7
+        ))
+        let dismissed = try XCTUnwrap(store.cravingEvents.first)
+        XCTAssertEqual(dismissed.outcome, .dismissedWithoutOutcome)
+        XCTAssertEqual(dismissed.durationSeconds, 0)
+        XCTAssertEqual(dismissed.initialIntensity, 7)
+    }
+
+    func testOnboardingRejectsBlankReasonAndFallsBackToDefaultTriggers() throws {
+        let repository = try makeRepository()
+        let store = TeoPateoStore(repository: repository)
+
+        XCTAssertFalse(store.completeOnboarding(OnboardingPlanInput(
+            cigarettesPerDay: 10,
+            costPerPack: 12,
+            quitDate: fixedDate(50),
+            quitMode: "Taper",
+            selectedTriggers: ["Coffee"],
+            primaryReason: "   "
+        )))
+        XCTAssertFalse(store.isOnboardingCompleted)
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+
+        XCTAssertTrue(store.completeOnboarding(OnboardingPlanInput(
+            cigarettesPerDay: -5,
+            costPerPack: -1,
+            quitDate: fixedDate(60),
+            quitMode: "Unexpected mode",
+            selectedTriggers: ["Unknown", "Coffee", "Unknown", "Coffee"],
+            primaryReason: "My breathing"
+        )))
+
+        XCTAssertEqual(store.currentQuitPlan.quitMode, "Taper")
+        XCTAssertEqual(store.currentQuitPlan.baselineCigarettesPerDay, 0)
+        XCTAssertEqual(store.currentQuitPlan.costPerPack, 0)
+        XCTAssertEqual(store.triggerRules.map(\.trigger), ["Coffee"])
+
+        let reloaded = TeoPateoStore(repository: repository)
+        XCTAssertTrue(reloaded.isOnboardingCompleted)
+        XCTAssertEqual(reloaded.triggerRules.map(\.trigger), ["Coffee"])
+    }
+
+    func testOnboardingUsesDefaultTriggerSetWhenNoValidTriggersAreSelected() throws {
+        let store = TeoPateoStore(repository: try makeRepository())
+
+        XCTAssertTrue(store.completeOnboarding(OnboardingPlanInput(
+            cigarettesPerDay: 6,
+            costPerPack: 10,
+            quitDate: fixedDate(70),
+            quitMode: "Cold turkey",
+            selectedTriggers: ["Unknown"],
+            primaryReason: "My family"
+        )))
+
+        XCTAssertEqual(store.triggerRules.map(\.trigger), ["Coffee", "After meals", "Work stress"])
+        XCTAssertTrue(store.replacementActivities.contains { $0.linkedTrigger == "After meals" })
+        XCTAssertEqual(store.currentQuitPlan.taperTargetCigarettesPerDay, 0)
+    }
+
+    func testCoachMessagesIgnoreBlankInputAndPersistReplies() throws {
+        let repository = try makeRepository()
+        let store = TeoPateoStore(repository: repository)
+        let originalCount = store.coachMessages.count
+
+        store.sendCoachMessage("   ")
+        XCTAssertEqual(store.coachMessages.count, originalCount)
+
+        store.sendCoachMessage("I am about to smoke after coffee.")
+        XCTAssertEqual(store.coachMessages.count, originalCount + 2)
+        XCTAssertEqual(store.coachMessages.suffix(2).first?.text, "I am about to smoke after coffee.")
+        XCTAssertFalse(try repository.fetchCoachMessages().isEmpty)
+
+        let reloaded = TeoPateoStore(repository: repository)
+        XCTAssertEqual(reloaded.coachMessages.map(\.text), store.coachMessages.map(\.text))
+        XCTAssertEqual(reloaded.coachMessages.map(\.isUser), store.coachMessages.map(\.isUser))
+    }
+
+    func testSupportDraftFallbackWhenCompletedPlanHasNoContacts() throws {
+        let repository = try makeRepository()
+        try repository.saveAppSettings(AppSettings(onboardingCompleted: true, updatedAt: fixedDate(1)))
+        try repository.replaceSupportContacts([])
+
+        let store = TeoPateoStore(repository: repository)
+
+        XCTAssertTrue(store.supportContacts.isEmpty)
+        XCTAssertNil(store.supportContactForCraving())
+        store.draftSupportMessage()
+        XCTAssertEqual(store.supportMessageDraft, "Add a support contact in your plan first.")
+    }
+
+    func testInsightEdgesCoverSparseModerateAndStrongHistory() throws {
+        let repository = try makeRepository()
+        let calendar = makeCalendar()
+        let now = makeDate(year: 2026, month: 5, day: 28, hour: 10, calendar: calendar)
+        try repository.saveQuitPlan(makeQuitPlan(
+            baselineCigarettesPerDay: 5,
+            costPerPack: 10,
+            cigarettesPerPack: 20
+        ))
+
+        let emptyStore = TeoPateoStore(repository: repository, now: { now }, calendar: calendar)
+        XCTAssertEqual(emptyStore.calculatedInsights.smokeFreeDays, 0)
+        XCTAssertEqual(emptyStore.calculatedInsights.todayRisk.level, .low)
+        XCTAssertEqual(
+            emptyStore.calculatedInsights.planAdjustment.title,
+            "Build the pattern map"
+        )
+        XCTAssertEqual(
+            emptyStore.calculatedInsights.dataConfidenceSummary,
+            "Early pattern. Log a few more cravings before trusting percentages."
+        )
+
+        try repository.saveDailyCheckIn(makeCheckIn(
+            id: 100,
+            date: makeDate(year: 2026, month: 5, day: 28, calendar: calendar),
+            smokedToday: false,
+            stress: 9,
+            confidence: 8
+        ))
+        try repository.saveCravingEvent(makeCraving(
+            id: 101,
+            startedAt: makeDate(year: 2026, month: 5, day: 28, hour: 10, calendar: calendar),
+            triggers: ["Coffee"]
+        ))
+        let moderateStore = TeoPateoStore(repository: repository, now: { now }, calendar: calendar)
+        XCTAssertEqual(moderateStore.calculatedInsights.todayRisk.level, .moderate)
+
+        for offset in 0..<7 {
+            try repository.saveCravingEvent(makeCraving(
+                id: 200 + offset,
+                startedAt: makeDate(
+                    year: 2026,
+                    month: 5,
+                    day: 21 + offset,
+                    hour: 21,
+                    calendar: calendar
+                ),
+                triggers: ["Evening"]
+            ))
+        }
+        let strongStore = TeoPateoStore(repository: repository, now: { now }, calendar: calendar)
+        XCTAssertEqual(strongStore.calculatedInsights.dataConfidenceSummary, "Strong signal from repeated logged patterns.")
+        XCTAssertEqual(strongStore.calculatedInsights.heatMapDays.count, 28)
+        XCTAssertEqual(strongStore.calculatedInsights.topTriggers.first?.name, "Evening")
+    }
+
+    func testHistoryLookupAndNoteUpdatesIgnoreMissingOrNoSmokeRecords() throws {
+        let store = TeoPateoStore(repository: try makeRepository())
+
+        store.smokedToday = false
+        XCTAssertTrue(store.saveCheckIn(date: fixedDate(90), slipNote: "Ignored"))
+        let checkInID = try XCTUnwrap(store.dailyCheckIns.first?.id)
+
+        store.updateDailyCheckInSlipNote(id: checkInID, slipNote: "Still ignored")
+        XCTAssertEqual(store.dailyCheckIns.first?.slipNote, "")
+        store.updateDailyCheckInSlipNote(id: fixedUUID(999), slipNote: "Missing")
+        store.updateSlipEventNotes(id: fixedUUID(998), note: "Missing", recoveryAction: "Missing")
+
+        XCTAssertNotNil(store.historyEntry(for: checkInID, kind: .checkIn))
+        XCTAssertNil(store.historyEntry(for: checkInID, kind: .slip))
+    }
+
+    func testRefreshAuthorizationSyncsExistingEnabledReminders() throws {
+        let repository = try makeRepository()
+        try repository.saveQuitPlan(makeQuitPlan())
+        try repository.saveNotificationSettings(NotificationSettings(
+            morningPlanEnabled: true,
+            riskyWindowEnabled: true,
+            updatedAt: fixedDate(1)
+        ))
+        try repository.saveCravingEvent(makeCraving(
+            id: 20,
+            startedAt: fixedDate(20),
+            triggers: ["After coffee"]
+        ))
+        let scheduler = TestNotificationScheduler(currentStatus: .authorized)
+        let store = TeoPateoStore(repository: repository, notificationScheduler: scheduler)
+
+        store.refreshNotificationAuthorization()
+        waitForMainQueue()
+
+        XCTAssertEqual(store.notificationPermissionStatus, .authorized)
+        XCTAssertEqual(scheduler.currentAuthorizationCalls, 1)
+        XCTAssertEqual(scheduler.replaceScheduledCalls, 1)
+        XCTAssertTrue(scheduler.scheduledItems.contains { $0.kind == .morningPlan })
+        XCTAssertTrue(scheduler.scheduledItems.contains { $0.kind == .riskyWindow })
+    }
+
+    func testEnablingNotificationRequestsPermissionPersistsAndSchedules() throws {
+        let repository = try makeRepository()
+        let scheduler = TestNotificationScheduler(
+            currentStatus: .notDetermined,
+            requestResult: .success(.authorized)
+        )
+        let store = TeoPateoStore(repository: repository, notificationScheduler: scheduler)
+
+        store.setNotificationEnabled(.morningPlan, isEnabled: true)
+        waitForMainQueue()
+
+        XCTAssertEqual(store.notificationPermissionStatus, .authorized)
+        XCTAssertTrue(store.notificationSettings.morningPlanEnabled)
+        XCTAssertTrue(try XCTUnwrap(repository.fetchNotificationSettings()).morningPlanEnabled)
+        XCTAssertEqual(scheduler.requestAuthorizationCalls, 1)
+        XCTAssertEqual(scheduler.replaceScheduledCalls, 1)
+        XCTAssertEqual(scheduler.scheduledItems.map(\.kind), [.morningPlan])
+    }
+
+    func testDeniedNotificationPermissionDoesNotPersistEnabledReminder() throws {
+        let repository = try makeRepository()
+        let scheduler = TestNotificationScheduler(currentStatus: .denied)
+        let store = TeoPateoStore(repository: repository, notificationScheduler: scheduler)
+
+        store.refreshNotificationAuthorization()
+        waitForMainQueue()
+        store.setNotificationEnabled(.eveningCheckIn, isEnabled: true)
+
+        XCTAssertFalse(store.notificationSettings.eveningCheckInEnabled)
+        XCTAssertFalse(try XCTUnwrap(repository.fetchNotificationSettings()).eveningCheckInEnabled)
+        XCTAssertEqual(scheduler.requestAuthorizationCalls, 0)
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+    }
+
+    func testDisablingLastReminderCancelsScheduledNotifications() throws {
+        let repository = try makeRepository()
+        try repository.saveNotificationSettings(NotificationSettings(
+            morningPlanEnabled: true,
+            updatedAt: fixedDate(1)
+        ))
+        let scheduler = TestNotificationScheduler(currentStatus: .authorized)
+        let store = TeoPateoStore(repository: repository, notificationScheduler: scheduler)
+
+        store.refreshNotificationAuthorization()
+        waitForMainQueue()
+        store.setNotificationEnabled(.morningPlan, isEnabled: false)
+        waitForMainQueue()
+
+        XCTAssertFalse(store.notificationSettings.hasEnabledReminders)
+        XCTAssertEqual(scheduler.cancelScheduledCalls, 1)
+        XCTAssertFalse(try XCTUnwrap(repository.fetchNotificationSettings()).morningPlanEnabled)
+    }
+
+    func testNotificationTimeUpdatePersistsAndReschedulesOnlyFixedTimeKinds() throws {
+        let repository = try makeRepository()
+        try repository.saveNotificationSettings(NotificationSettings(
+            morningPlanEnabled: true,
+            updatedAt: fixedDate(1)
+        ))
+        let scheduler = TestNotificationScheduler(currentStatus: .authorized)
+        let store = TeoPateoStore(repository: repository, notificationScheduler: scheduler)
+
+        store.refreshNotificationAuthorization()
+        waitForMainQueue()
+        let initialReplaceCount = scheduler.replaceScheduledCalls
+
+        store.updateNotificationTime(.morningPlan, time: ReminderTime(hour: 6, minute: 5))
+        waitForMainQueue()
+        XCTAssertEqual(store.notificationSettings.morningPlanTime, ReminderTime(hour: 6, minute: 5))
+        XCTAssertEqual(try repository.fetchNotificationSettings()?.morningPlanTime, ReminderTime(hour: 6, minute: 5))
+        XCTAssertEqual(scheduler.replaceScheduledCalls, initialReplaceCount + 1)
+
+        store.updateNotificationTime(.riskyWindow, time: ReminderTime(hour: 3, minute: 3))
+        waitForMainQueue()
+        XCTAssertEqual(scheduler.replaceScheduledCalls, initialReplaceCount + 1)
+    }
+}

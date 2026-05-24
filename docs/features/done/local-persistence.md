@@ -2,7 +2,7 @@
 
 ## Goal
 
-Create a mature local-first persistence layer so the app can reliably save the user's quit plan, check-ins, cravings, triggers, support context, and personal reasons on device.
+Create a mature local-first persistence layer so the app can reliably save the user's quit plan, check-ins, cravings, triggers, replacement activities, and personal reasons on device.
 
 ## Recommended Approach
 
@@ -25,7 +25,7 @@ This gives the MVP a real data foundation with migrations, indexes, queryable hi
 - Daily check-ins.
 - Craving events.
 - Trigger selections.
-- Support contact.
+- Replacement activities.
 - User reasons for quitting.
 - Coach messages.
 
@@ -36,7 +36,7 @@ This gives the MVP a real data foundation with migrations, indexes, queryable hi
 - `daily_check_ins`
 - `craving_events`
 - `craving_event_triggers`
-- `support_contacts`
+- `replacement_activities`
 - `user_reasons`
 - `coach_messages`
 

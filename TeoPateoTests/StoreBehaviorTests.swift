@@ -36,7 +36,6 @@ final class StoreBehaviorTests: TeoPateoTestCase {
     func testInvalidPlanLibraryInputsSetFailureAndDoNotMutateCollections() throws {
         let store = TeoPateoStore(repository: try makeRepository())
         let triggerCount = store.triggerRules.count
-        let contactCount = store.supportContacts.count
         let reasonCount = store.userReasons.count
         let activityCount = store.replacementActivities.count
         let riskyCount = store.riskySituations.count
@@ -44,10 +43,6 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         store.addTriggerRule(trigger: "   ", action: "Do something")
         XCTAssertTrue(store.lastSaveStatus.isFailure)
         XCTAssertEqual(store.triggerRules.count, triggerCount)
-
-        store.addSupportContact(name: " ", detail: "Available")
-        XCTAssertTrue(store.lastSaveStatus.isFailure)
-        XCTAssertEqual(store.supportContacts.count, contactCount)
 
         store.addUserReason(" ")
         XCTAssertTrue(store.lastSaveStatus.isFailure)
@@ -67,11 +62,8 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         let store = TeoPateoStore(repository: repository)
 
         store.selectedTriggers = ["Coffee"]
-        store.draftSupportMessage()
-        XCTAssertFalse(store.supportMessageDraft.isEmpty)
         store.startCravingSession()
         XCTAssertTrue(store.selectedTriggers.isEmpty)
-        XCTAssertTrue(store.supportMessageDraft.isEmpty)
         XCTAssertEqual(store.lastSaveStatus, .idle)
 
         store.selectedTriggers = ["Coffee"]
@@ -296,21 +288,40 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(store.coachMessages.last?.isUser, true)
         XCTAssertEqual(
             store.coachResponseState.message,
-            "The coach could not respond. Check your connection and try again."
+            "The coach is unavailable right now. Your message was saved."
         )
     }
 
-    func testSupportDraftFallbackWhenCompletedPlanHasNoContacts() throws {
-        let repository = try makeRepository()
-        try repository.saveAppSettings(AppSettings(onboardingCompleted: true, updatedAt: fixedDate(1)))
-        try repository.replaceSupportContacts([])
+    func testCoachOfflineFailureKeepsUserMessageAndShowsFriendlyState() async throws {
+        let store = TeoPateoStore(
+            repository: try makeRepository(),
+            coachClient: TestCoachClient(response: .failure(URLError(.notConnectedToInternet)))
+        )
 
-        let store = TeoPateoStore(repository: repository)
+        await store.sendCoachMessage("I am craving after coffee.")
 
-        XCTAssertTrue(store.supportContacts.isEmpty)
-        XCTAssertNil(store.supportContactForCraving())
-        store.draftSupportMessage()
-        XCTAssertEqual(store.supportMessageDraft, "Add a support contact in your plan first.")
+        XCTAssertEqual(store.coachMessages.count, 1)
+        XCTAssertEqual(store.coachMessages.last?.text, "I am craving after coffee.")
+        XCTAssertEqual(
+            store.coachResponseState.message,
+            "You appear to be offline. Your message was saved; try again when you're connected."
+        )
+    }
+
+    func testCoachRateLimitFailureKeepsUserMessageAndShowsFriendlyState() async throws {
+        let store = TeoPateoStore(
+            repository: try makeRepository(),
+            coachClient: TestCoachClient(response: .failure(CoachClientError.requestFailed(statusCode: 429)))
+        )
+
+        await store.sendCoachMessage("I am craving after dinner.")
+
+        XCTAssertEqual(store.coachMessages.count, 1)
+        XCTAssertEqual(store.coachMessages.last?.text, "I am craving after dinner.")
+        XCTAssertEqual(
+            store.coachResponseState.message,
+            "The coach is getting too many requests. Try again in a minute."
+        )
     }
 
     func testInsightEdgesCoverSparseModerateAndStrongHistory() throws {

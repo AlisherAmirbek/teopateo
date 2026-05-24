@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import json
 import os
+import socket
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -20,18 +22,55 @@ REFERER = os.getenv("OPENROUTER_REFERER", "")
 PROXY_TOKEN = os.getenv("TEOPATEO_COACH_PROXY_TOKEN", "")
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "20"))
+UPSTREAM_TIMEOUT_SECONDS = int(os.getenv("UPSTREAM_TIMEOUT_SECONDS", "45"))
+MAX_CONTEXT_CHARS = 6000
+MAX_MESSAGE_CHARS = 4000
+MAX_MESSAGES = 12
 
 SYSTEM_PROMPT = """You are TeoPateo's quit-smoking coach. Help the user get through high-risk smoking moments, refine their quit plan, reflect on check-ins, recover from slips, and understand patterns.
 
-Keep the tone calm, specific, and non-shaming. Treat slips as data, not failure. Prioritize the next 10 minutes: name the trigger, choose one replacement action, lower intensity, and use support if needed.
+Keep the tone calm, specific, and non-shaming. Treat slips as data, not failure. Prioritize the next 10 minutes: name the trigger, choose one replacement action, and lower intensity.
 
-Keep replies concise and practical. Do not diagnose, guarantee outcomes, or make strong medical claims. For medication, withdrawal symptoms, mental health concerns, or urgent safety concerns, direct the user to a doctor, pharmacist, quitline counselor, local emergency service, or trusted support person as appropriate."""
+Keep replies concise and practical. The coach is not medical care, emergency care, or a replacement for a clinician. Do not diagnose, guarantee outcomes, make strong medical claims, or tell users to start, stop, or change medications. For cessation medication questions, direct users to a doctor, pharmacist, or quitline counselor.
+
+If the user describes immediate danger, self-harm, suicidal intent, severe withdrawal symptoms, chest pain, trouble breathing, or another emergency, tell them to contact local emergency services now. For US users, mention 988 for emotional crisis, 911 for immediate danger, and 1-800-QUIT-NOW for quitline support."""
 
 
 def system_prompt(context_summary):
-    return f"{SYSTEM_PROMPT}\n\nCurrent TeoPateo user context:\n{context_summary[:6000]}"
+    return f"{SYSTEM_PROMPT}\n\nCurrent TeoPateo user context:\n{context_summary[:MAX_CONTEXT_CHARS]}"
 
 REQUEST_TIMES = defaultdict(deque)
+
+
+class UpstreamServiceError(RuntimeError):
+    pass
+
+
+def health_payload():
+    return {"ok": True}
+
+
+def validate_configuration():
+    errors = []
+    if not os.getenv("OPENROUTER_API_KEY", "").strip():
+        errors.append("OPENROUTER_API_KEY is required")
+    if not OPENROUTER_MODEL.strip():
+        errors.append("OPENROUTER_MODEL is required")
+    if not OPENROUTER_URL.startswith("https://"):
+        errors.append("OPENROUTER_URL must use https")
+    if not PROXY_TOKEN.strip():
+        errors.append("TEOPATEO_COACH_PROXY_TOKEN is required")
+    if RATE_LIMIT_WINDOW_SECONDS < 1:
+        errors.append("RATE_LIMIT_WINDOW_SECONDS must be positive")
+    if RATE_LIMIT_REQUESTS < 1:
+        errors.append("RATE_LIMIT_REQUESTS must be positive")
+    if UPSTREAM_TIMEOUT_SECONDS < 1:
+        errors.append("UPSTREAM_TIMEOUT_SECONDS must be positive")
+
+    if errors:
+        for error in errors:
+            print(f"configuration error: {error}", file=sys.stderr, flush=True)
+        raise SystemExit(1)
 
 
 def json_response(handler, status, body):
@@ -69,14 +108,19 @@ def authorized(handler):
 
 def normalized_messages(messages):
     normalized = []
-    for item in messages[:12]:
+    if not isinstance(messages, list):
+        return normalized
+
+    for item in messages[:MAX_MESSAGES]:
+        if not isinstance(item, dict):
+            continue
         role = item.get("role")
         content = str(item.get("content", "")).strip()
         if role not in ("user", "assistant") or not content:
             continue
         normalized.append({
             "role": role,
-            "content": content[:4000],
+            "content": content[:MAX_MESSAGE_CHARS],
         })
     return normalized
 
@@ -84,7 +128,7 @@ def normalized_messages(messages):
 def openrouter_reply(context_summary, messages):
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY is not configured on the coach proxy.")
+        raise UpstreamServiceError("OPENROUTER_API_KEY is not configured on the coach proxy.")
 
     body = {
         "model": OPENROUTER_MODEL,
@@ -111,11 +155,13 @@ def openrouter_reply(context_summary, messages):
         request.add_header("HTTP-Referer", REFERER)
 
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
+        with urllib.request.urlopen(request, timeout=UPSTREAM_TIMEOUT_SECONDS) as response:
             response_body = response.read()
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"OpenRouter returned {error.code}: {detail}") from error
+        raise UpstreamServiceError(f"OpenRouter returned {error.code}: {detail}") from error
+    except (urllib.error.URLError, TimeoutError, socket.timeout) as error:
+        raise UpstreamServiceError(f"OpenRouter request failed: {error}") from error
 
     decoded = json.loads(response_body.decode("utf-8"))
     reply = (
@@ -125,14 +171,14 @@ def openrouter_reply(context_summary, messages):
         .strip()
     )
     if not reply:
-        raise RuntimeError("OpenRouter returned an empty coach reply.")
+        raise UpstreamServiceError("OpenRouter returned an empty coach reply.")
     return reply
 
 
 def openrouter_stream_reply(handler, context_summary, messages):
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY is not configured on the coach proxy.")
+        raise UpstreamServiceError("OPENROUTER_API_KEY is not configured on the coach proxy.")
 
     body = {
         "model": OPENROUTER_MODEL,
@@ -160,48 +206,53 @@ def openrouter_stream_reply(handler, context_summary, messages):
         request.add_header("HTTP-Referer", REFERER)
 
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
+        with urllib.request.urlopen(request, timeout=UPSTREAM_TIMEOUT_SECONDS) as response:
             handler.send_response(200)
             handler.send_header("Content-Type", "text/event-stream")
             handler.send_header("Cache-Control", "no-cache")
-            handler.send_header("Connection", "keep-alive")
             handler.end_headers()
 
             received_content = False
-            while True:
-                raw_line = response.readline()
-                if not raw_line:
-                    break
-                line = raw_line.decode("utf-8", errors="replace").strip()
-                if not line.startswith("data:"):
-                    continue
+            try:
+                while True:
+                    raw_line = response.readline()
+                    if not raw_line:
+                        break
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line.startswith("data:"):
+                        continue
 
-                payload = line[len("data:"):].strip()
-                if payload == "[DONE]":
-                    break
+                    payload = line[len("data:"):].strip()
+                    if payload == "[DONE]":
+                        break
 
-                try:
-                    decoded = json.loads(payload)
-                except json.JSONDecodeError:
-                    continue
-                delta = (
-                    decoded.get("choices", [{}])[0]
-                    .get("delta", {})
-                    .get("content", "")
-                )
-                if not delta:
-                    continue
+                    try:
+                        decoded = json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+                    delta = (
+                        decoded.get("choices", [{}])[0]
+                        .get("delta", {})
+                        .get("content", "")
+                    )
+                    if not delta:
+                        continue
 
-                received_content = True
-                event = json.dumps({"delta": delta}).encode("utf-8")
-                handler.wfile.write(b"data: " + event + b"\n\n")
-                handler.wfile.flush()
+                    received_content = True
+                    event = json.dumps({"delta": delta}).encode("utf-8")
+                    handler.wfile.write(b"data: " + event + b"\n\n")
+                    handler.wfile.flush()
+            except (TimeoutError, socket.timeout) as error:
+                print(f"upstream stream timeout: {error}", file=sys.stderr, flush=True)
 
             handler.wfile.write(b"data: [DONE]\n\n")
             handler.wfile.flush()
+            handler.close_connection = True
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"OpenRouter returned {error.code}: {detail}") from error
+        raise UpstreamServiceError(f"OpenRouter returned {error.code}: {detail}") from error
+    except (urllib.error.URLError, TimeoutError, socket.timeout) as error:
+        raise UpstreamServiceError(f"OpenRouter request failed: {error}") from error
 
 
 class CoachProxyHandler(BaseHTTPRequestHandler):
@@ -219,12 +270,7 @@ class CoachProxyHandler(BaseHTTPRequestHandler):
             json_response(self, 404, {"error": "Not found"})
             return
 
-        json_response(self, 200, {
-            "ok": True,
-            "model": OPENROUTER_MODEL,
-            "openrouterKeyConfigured": bool(os.getenv("OPENROUTER_API_KEY", "").strip()),
-            "authRequired": bool(PROXY_TOKEN),
-        })
+        json_response(self, 200, health_payload())
 
     def do_POST(self):
         if self.path != "/v1/coach/reply":
@@ -261,13 +307,16 @@ class CoachProxyHandler(BaseHTTPRequestHandler):
             json_response(self, 200, {"reply": reply})
         except json.JSONDecodeError:
             json_response(self, 400, {"error": "Invalid JSON"})
-        except RuntimeError as error:
-            json_response(self, 502, {"error": str(error)})
-        except Exception:
-            json_response(self, 500, {"error": "Coach proxy failed unexpectedly"})
+        except UpstreamServiceError as error:
+            print(f"upstream error: {error}", file=sys.stderr, flush=True)
+            json_response(self, 502, {"error": "Coach service unavailable"})
+        except Exception as error:
+            print(f"proxy error: {error}", file=sys.stderr, flush=True)
+            json_response(self, 500, {"error": "Coach service unavailable"})
 
 
 def main():
+    validate_configuration()
     server = ThreadingHTTPServer((HOST, PORT), CoachProxyHandler)
     print(f"TeoPateo coach proxy listening on {HOST}:{PORT}", flush=True)
     server.serve_forever()

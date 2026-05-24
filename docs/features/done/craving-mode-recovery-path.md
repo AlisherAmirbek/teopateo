@@ -4,7 +4,7 @@
 
 Make craving mode a complete intervention flow for the exact high-risk moment, not only a success logger.
 
-The user should be able to enter craving mode, choose relevant support, ride out the urge, and record what actually happened without shame.
+The user should be able to enter craving mode, choose a relevant replacement action, ride out the urge, and record what actually happened without shame.
 
 Full craving mode is part of the paid package. Free users should see a calm locked-state screen with upgrade context and still have access to quitline or professional support prompts.
 
@@ -16,7 +16,6 @@ Full craving mode is part of the paid package. Free users should see a calm lock
 - Trigger options are hard-coded in `CravingModeView`.
 - Replacement activities are hard-coded.
 - Personal motivation copy is hard-coded.
-- "Text Maya" is display-only.
 - There is no craving intensity before or after the intervention.
 - The app does not distinguish between a completed 10-minute rescue and an early tap on the success button.
 - There is no post-craving reflection.
@@ -35,7 +34,6 @@ Full craving mode is part of the paid package. Free users should see a calm lock
 - Keep the 10-minute timer as the main anchor.
 - Add one guided breathing card.
 - Show replacement activities from the saved activity library or enabled trigger rules.
-- Show one support option from the support circle when available.
 - Keep all copy calm and direct; the user is in a high-risk moment.
 
 ### Outcomes
@@ -67,7 +65,6 @@ Extend `CravingEvent` with:
 - `initialIntensity`
 - `finalIntensity`
 - `helpedActivityID`
-- `supportContactID`
 - `reflectionNote`
 - `dismissedAt`
 

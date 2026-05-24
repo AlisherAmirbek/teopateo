@@ -37,7 +37,6 @@ The free product should help the user understand the app, create a basic quit pl
 - Personalized risky-window reminders.
 - Pattern insights based on real craving and check-in history.
 - AI coach for cravings, planning, reflection, and relapse prevention.
-- Support-circle actions and preset messages.
 - Motivation vault and richer quit history.
 
 The subscription promise should be a continuing quit journey, not a pass/fail challenge. If the user smokes, the paid experience should adapt the plan and keep the journey alive rather than making the user feel like they wasted money.
@@ -54,7 +53,6 @@ Capture the user's baseline and quitting context:
 - Stress level
 - Previous quit attempts
 - Reasons for quitting
-- Support people
 - Quit date
 - Interest in professional support
 
@@ -67,7 +65,6 @@ Help the user turn their quit intention into a practical plan:
 - Trigger plan
 - Craving plan
 - Substitute activities
-- Support contacts
 - "What I'll do instead" rules
 
 ### Craving Emergency Mode
@@ -78,7 +75,6 @@ Provide a one-tap "I want to smoke" button for the exact high-risk moment. This 
 - Breathing exercise
 - Distraction task
 - Motivational reason
-- Support contact
 - Quick trigger logging
 
 ### Trigger Mapping
@@ -147,18 +143,8 @@ Offer fast alternatives for cravings:
 - Chewing gum
 - Shower
 - Journaling
-- Texting someone
 - Games
 - Timed distractions
-
-### Support Circle
-
-Help users get support without needing to compose a message under stress:
-
-- Invite friends or family
-- Send "I'm craving" alerts
-- Share milestones
-- Ask for help from preset messages
 
 ### Quitline And Professional Support
 

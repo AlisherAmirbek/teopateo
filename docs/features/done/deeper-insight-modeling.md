@@ -79,7 +79,6 @@ Every insight should point to a concrete next step:
 
 - Add a trigger rule.
 - Rehearse an existing rule.
-- Pick a support contact.
 - Prepare for a time window.
 - Add a replacement activity.
 

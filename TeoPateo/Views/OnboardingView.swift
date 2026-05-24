@@ -186,7 +186,7 @@ struct OnboardingView: View {
 
                 Text(quitMode == "Taper"
                     ? "Your first taper target will be \(Int(max(cigarettesPerDay - 2, 0))) cigarettes per day."
-                    : "Craving mode will focus on substitutes and support before the quit date.")
+                    : "Craving mode will focus on substitutes before the quit date.")
                     .font(.rounded(.subheadline))
                     .foregroundColor(QuitTheme.muted)
             }

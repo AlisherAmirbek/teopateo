@@ -57,7 +57,6 @@ Add useful empty states for:
 
 - No cravings logged.
 - No check-ins yet.
-- No support contact.
 - No personal reason.
 - No insight history.
 

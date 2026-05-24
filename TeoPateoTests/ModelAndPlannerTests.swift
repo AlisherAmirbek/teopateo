@@ -61,11 +61,10 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
         XCTAssertTrue(NotificationPermissionStatus.provisional.canScheduleNotifications)
         XCTAssertTrue(NotificationPermissionStatus.ephemeral.canScheduleNotifications)
 
-        XCTAssertEqual(ReplacementActivityCategory.allCases.map(\.title), [
+        XCTAssertEqual(ReplacementActivityCategory.userVisibleCases.map(\.title), [
             "Movement",
             "Breathing",
             "Sensory",
-            "Support",
             "Journaling",
             "Distraction"
         ])
@@ -106,6 +105,48 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
         XCTAssertEqual(makeQuitPlan(costPerPack: 15, cigarettesPerPack: 20).costPerCigarette, 0.75)
         XCTAssertEqual(makeQuitPlan(costPerPack: 15, cigarettesPerPack: 0).costPerCigarette, 0)
     }
+
+    func testCoachProxyRequestDoesNotContainProviderSecrets() throws {
+        let client = CoachProxyClient(configuration: CoachProxyConfiguration(
+            endpointURL: URL(string: "https://coach.example.test/v1/coach/reply")!,
+            accessToken: "proxy-token"
+        ))
+
+        let request = try client.makeURLRequest(for: CoachRequest(
+            contextSummary: "Quit mode: Taper",
+            messages: [
+                CoachChatMessage(role: .user, content: "I am craving after coffee."),
+                CoachChatMessage(role: .assistant, content: "Start with cold water.")
+            ]
+        ))
+        let body = try XCTUnwrap(String(data: try XCTUnwrap(request.httpBody), encoding: .utf8))
+
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer proxy-token")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-TeoPateo-Client"), "TeoPateo-iOS")
+        XCTAssertTrue(body.contains("Quit mode: Taper"))
+        XCTAssertTrue(body.contains("I am craving after coffee."))
+        XCTAssertFalse(body.contains("OPENROUTER_API_KEY"))
+        XCTAssertFalse(body.contains("sk-or-v1"))
+        XCTAssertFalse(body.contains("Authorization"))
+    }
+
+    #if !DEBUG
+    func testReleaseBuildWithoutProxyCannotUseDirectOpenRouter() async {
+        let client = LiveCoachClient(proxyConfiguration: nil)
+
+        do {
+            for try await _ in client.reply(to: CoachRequest(
+                contextSummary: "Release proxy-only check",
+                messages: [CoachChatMessage(role: .user, content: "I am craving.")]
+            )) {
+                XCTFail("Release builds should not produce direct OpenRouter chunks.")
+            }
+            XCTFail("Expected release client without proxy configuration to fail.")
+        } catch {
+            XCTAssertEqual(error as? CoachClientError, .missingProxyConfiguration)
+        }
+    }
+    #endif
 
     func testNotificationPlannerBuildsSortedIdentifiersAndFallbackBodies() {
         var settings = NotificationSettings(updatedAt: fixedDate(1))

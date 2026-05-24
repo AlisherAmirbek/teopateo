@@ -32,7 +32,6 @@ final class TeoPateoStore: ObservableObject {
     @Published private(set) var isOnboardingCompleted = false
     @Published private(set) var persistenceError: String?
     @Published private(set) var lastSaveStatus: SaveStatus = .idle
-    @Published private(set) var supportMessageDraft = ""
 
     private let repository: TeoPateoRepository
     private let notificationScheduler: NotificationScheduling
@@ -357,16 +356,7 @@ final class TeoPateoStore: ObservableObject {
 
     func startCravingSession() {
         selectedTriggers = []
-        supportMessageDraft = ""
         lastSaveStatus = .idle
-    }
-
-    func draftSupportMessage(for contact: SupportContact? = nil) {
-        guard let contact = contact ?? supportContactForCraving() else {
-            supportMessageDraft = "Add a support contact in your plan first."
-            return
-        }
-        supportMessageDraft = supportMessageTemplate(for: contact)
     }
 
     var isCoachResponding: Bool {
@@ -702,30 +692,6 @@ final class TeoPateoStore: ObservableObject {
         persistQuitPlan(successMessage: "Trigger rules reordered.")
     }
 
-    func addSupportContact(
-        name: String,
-        detail: String,
-        phoneNumber: String = "",
-        preferredRole: SupportRole = .cravingAlert,
-        defaultMessage: String = ""
-    ) {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else {
-            lastSaveStatus = .failed("Support contact needs a name.")
-            return
-        }
-        supportContacts.append(
-            SupportContact(
-                name: trimmedName,
-                detail: detail,
-                phoneNumber: phoneNumber,
-                preferredRole: preferredRole,
-                defaultMessage: defaultMessage
-            )
-        )
-        persistSupportContacts(successMessage: "Support contact saved.")
-    }
-
     func addUserReason(_ text: String, isPrimary: Bool = false) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -986,7 +952,9 @@ final class TeoPateoStore: ObservableObject {
     }
 
     func activitiesForCurrentCraving(triggers: Set<String>) -> [ReplacementActivity] {
-        let enabled = replacementActivities.filter(\.isEnabled)
+        let enabled = replacementActivities.filter { activity in
+            activity.isEnabled && activity.category != .support
+        }
         guard !enabled.isEmpty else {
             return []
         }
@@ -999,24 +967,11 @@ final class TeoPateoStore: ObservableObject {
             }
         }
 
-        let categoryFallbacks = ReplacementActivityCategory.allCases.compactMap { category in
+        let categoryFallbacks = ReplacementActivityCategory.userVisibleCases.compactMap { category in
             enabled.first { $0.category == category }
         }
 
         return Array((matched + categoryFallbacks).uniquedByID().prefix(4))
-    }
-
-    func supportContactForCraving() -> SupportContact? {
-        supportContacts.first { $0.preferredRole == .cravingAlert } ?? supportContacts.first
-    }
-
-    func supportMessageTemplate(for contact: SupportContact) -> String {
-        let trimmed = contact.defaultMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            return trimmed
-        }
-
-        return "I am having a craving. Can you stay with me for 10 minutes?"
     }
 
     func reasonsForCravingMode() -> [UserReason] {
@@ -1352,9 +1307,7 @@ final class TeoPateoStore: ObservableObject {
             quitMode = loadedPlan.quitMode
             triggerRules = loadedPlan.triggerRules
 
-            supportContacts = snapshot.supportContacts.isEmpty && !isOnboardingCompleted
-                ? Self.defaultSupportContacts()
-                : snapshot.supportContacts
+            supportContacts = snapshot.supportContacts
             let shouldSeedDefaultData = Self.shouldSeedDefaultData(appSettings: snapshot.appSettings)
             userReasons = snapshot.userReasons.isEmpty && shouldSeedDefaultData
                 ? Self.defaultUserReasons()
@@ -1388,7 +1341,7 @@ final class TeoPateoStore: ObservableObject {
         quitPlan = plan
         quitMode = plan.quitMode
         triggerRules = plan.triggerRules
-        supportContacts = Self.defaultSupportContacts()
+        supportContacts = []
         userReasons = Self.defaultUserReasons()
         replacementActivities = Self.defaultReplacementActivities()
         riskySituations = []
@@ -1412,9 +1365,6 @@ final class TeoPateoStore: ObservableObject {
         }
         if snapshot.quitPlan == nil {
             try repository.saveQuitPlan(quitPlan)
-        }
-        if snapshot.supportContacts.isEmpty && !isOnboardingCompleted {
-            try repository.replaceSupportContacts(supportContacts)
         }
         if snapshot.userReasons.isEmpty && shouldSeedDefaultData {
             try repository.replaceUserReasons(userReasons)
@@ -1447,17 +1397,6 @@ final class TeoPateoStore: ObservableObject {
         } catch {
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Quit plan could not be saved.")
-        }
-    }
-
-    private func persistSupportContacts(successMessage: String) {
-        do {
-            try repository.replaceSupportContacts(supportContacts)
-            persistenceError = nil
-            lastSaveStatus = .saved(successMessage)
-        } catch {
-            persistenceError = error.localizedDescription
-            lastSaveStatus = .failed("Support contacts could not be saved.")
         }
     }
 
@@ -1649,12 +1588,6 @@ final class TeoPateoStore: ObservableObject {
             )
         }
 
-        if let supportContact = supportContactForCraving() {
-            lines.append(
-                "Support contact: \(supportContact.name) (\(supportContact.preferredRole.title)); default message: \(supportMessageTemplate(for: supportContact))"
-            )
-        }
-
         if let cravingSummary = coachRecentCravingSummary() {
             lines.append(cravingSummary)
         }
@@ -1694,6 +1627,15 @@ final class TeoPateoStore: ObservableObject {
     }
 
     private static func coachErrorMessage(for error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .timedOut:
+                return "You appear to be offline. Your message was saved; try again when you're connected."
+            default:
+                return "The coach is unavailable right now. Your message was saved."
+            }
+        }
+
         if
             let coachError = error as? CoachClientError,
             let description = coachError.errorDescription
@@ -1701,7 +1643,7 @@ final class TeoPateoStore: ObservableObject {
             return description
         }
 
-        return "The coach could not respond. Check your connection and try again."
+        return "The coach is unavailable right now. Your message was saved."
     }
 
     private static func coachDateLabel(_ date: Date) -> String {
@@ -2409,7 +2351,7 @@ final class TeoPateoStore: ObservableObject {
         case "Driving or commute":
             return "Keep cigarettes out of reach and start a short breathing reset before the trip."
         case "Alcohol":
-            return "Keep a drink in hand, avoid stepping outside with smokers, and text support if the urge spikes."
+            return "Keep a drink in hand, avoid stepping outside with smokers, and start the rescue timer if the urge spikes."
         case "Boredom":
             return "Start a five-minute reset task before making any smoking decision."
         case "Social smoking":
@@ -2438,7 +2380,7 @@ final class TeoPateoStore: ObservableObject {
         case "Boredom":
             return "Five-minute reset"
         case "Social smoking":
-            return "Text before stepping out"
+            return "Stay with the room"
         case "Morning routine":
             return "Change the first 10"
         case "Evening wind-down":
@@ -2459,11 +2401,11 @@ final class TeoPateoStore: ObservableObject {
         case "Driving or commute":
             return "Take five slow breaths before starting the car or leaving transit."
         case "Alcohol":
-            return "Move away from the smoking cue and text support before going outside."
+            return "Move away from the smoking cue and keep both hands busy before going outside."
         case "Boredom":
             return "Tidy one small area or start one quick errand until the urge changes."
         case "Social smoking":
-            return "Send the craving message before following anyone to smoke."
+            return "Stay inside for 10 minutes and choose one hands-busy reset."
         case "Morning routine":
             return "Drink water and move for two minutes before coffee or phone checks."
         case "Evening wind-down":
@@ -2481,8 +2423,10 @@ final class TeoPateoStore: ObservableObject {
             return .breathing
         case "Coffee", "After meals", "Evening wind-down":
             return .sensory
-        case "Social smoking", "Alcohol":
-            return .support
+        case "Alcohol":
+            return .sensory
+        case "Social smoking":
+            return .distraction
         default:
             return .distraction
         }
@@ -2511,23 +2455,6 @@ final class TeoPateoStore: ObservableObject {
             createdAt: now,
             updatedAt: now
         )
-    }
-
-    private static func defaultSupportContacts() -> [SupportContact] {
-        [
-            SupportContact(
-                name: "Maya",
-                detail: "Craving alert and evening check-in",
-                preferredRole: .cravingAlert,
-                defaultMessage: "I am having a craving. Can you stay with me for 10 minutes?"
-            ),
-            SupportContact(
-                name: "1-800-QUIT-NOW",
-                detail: "US quitline support",
-                phoneNumber: "18007848669",
-                preferredRole: .quitline
-            )
-        ]
     }
 
     private static func defaultUserReasons() -> [UserReason] {

@@ -384,6 +384,14 @@ enum ReplacementActivityCategory: String, Codable, CaseIterable, Equatable {
     case journaling
     case distraction
 
+    static let userVisibleCases: [ReplacementActivityCategory] = [
+        .movement,
+        .breathing,
+        .sensory,
+        .journaling,
+        .distraction
+    ]
+
     var title: String {
         switch self {
         case .movement:
@@ -393,7 +401,7 @@ enum ReplacementActivityCategory: String, Codable, CaseIterable, Equatable {
         case .sensory:
             return "Sensory"
         case .support:
-            return "Support"
+            return "Distraction"
         case .journaling:
             return "Journaling"
         case .distraction:

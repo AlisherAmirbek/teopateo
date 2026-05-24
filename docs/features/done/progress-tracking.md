@@ -64,7 +64,7 @@ Recognize meaningful milestones:
 - First slip recovery.
 - First week.
 - Money saved threshold.
-- Repeated use of support plan.
+- Repeated use of the rescue plan.
 
 Achievements should be quiet and adult, not game-like.
 

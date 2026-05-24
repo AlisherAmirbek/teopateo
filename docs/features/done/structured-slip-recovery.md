@@ -41,7 +41,6 @@ After saving a slip, show a recovery card:
 - "This does not erase the quit attempt."
 - One immediate stabilizing action.
 - One plan adjustment suggestion.
-- One support option if available.
 
 Avoid copy that implies failure, streak punishment, or starting over by default.
 

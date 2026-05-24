@@ -27,7 +27,6 @@ Free users should still receive basic quit support and trustworthy external reso
 - Personalized trigger insights.
 - Risky-window reminders.
 - AI coach for craving support and plan refinement.
-- Support-circle actions and preset messages.
 - Motivation vault.
 - Full craving, slip, and check-in history.
 

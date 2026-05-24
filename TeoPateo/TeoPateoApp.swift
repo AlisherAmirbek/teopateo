@@ -75,16 +75,6 @@ struct TeoPateoApp: App {
 
         try repository.saveQuitPlan(plan)
         try repository.saveAppSettings(AppSettings(onboardingCompleted: true, updatedAt: now))
-        try repository.replaceSupportContacts([
-            SupportContact(
-                name: "Maya",
-                detail: "Craving alert",
-                preferredRole: .cravingAlert,
-                defaultMessage: "Can you stay with me for 10 minutes?",
-                createdAt: now,
-                updatedAt: now
-            )
-        ])
         try repository.replaceUserReasons([
             UserReason(
                 text: "I want mornings without chest tightness.",

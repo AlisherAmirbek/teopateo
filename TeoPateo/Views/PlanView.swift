@@ -717,7 +717,7 @@ struct PlanView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("plan-activity-trigger-field")
             Picker("Category", selection: category) {
-                ForEach(ReplacementActivityCategory.allCases, id: \.self) { category in
+                ForEach(ReplacementActivityCategory.userVisibleCases, id: \.self) { category in
                     Text(category.title).tag(category)
                 }
             }
@@ -931,7 +931,7 @@ private extension ReplacementActivityCategory {
         case .sensory:
             return "drop.fill"
         case .support:
-            return "person.2.fill"
+            return "sparkles"
         case .journaling:
             return "square.and.pencil"
         case .distraction:

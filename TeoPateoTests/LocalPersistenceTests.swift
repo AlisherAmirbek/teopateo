@@ -124,15 +124,15 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(try repository.loadSnapshot().selectedCoachChatID, fixedUUID(83))
     }
 
-    func testQuitPlanSupportReasonsAndActivitiesRoundTrip() throws {
+    func testQuitPlanLegacyContactsReasonsAndActivitiesRoundTrip() throws {
         let repository = try makeRepository()
         let contactID = fixedUUID(20)
         let plan = makeQuitPlan(quitMode: "Cold turkey", supportContactID: contactID)
         let contacts = [
             SupportContact(
                 id: contactID,
-                name: "Maya",
-                detail: "Craving alert",
+                name: "Legacy contact",
+                detail: "Legacy alert",
                 phoneNumber: "5551234567",
                 preferredRole: .cravingAlert,
                 defaultMessage: "Stay with me for 10 minutes.",
@@ -212,7 +212,7 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(try repository.recentCheckIns(limit: 10), [checkIn])
     }
 
-    func testCravingRecoveryPathPersistsOutcomeIntensityActivityAndSupport() throws {
+    func testCravingRecoveryPathPersistsOutcomeIntensityActivityAndLegacyContact() throws {
         let repository = try makeRepository()
         let activityID = fixedUUID(35)
         let supportID = fixedUUID(20)
@@ -248,7 +248,7 @@ final class LocalPersistenceTests: XCTestCase {
             stress: 8,
             context: "Dinner with friends",
             note: "Smoked when others went outside.",
-            recoveryAction: "Text support before the next drink.",
+            recoveryAction: "Start rescue before the next drink.",
             createdAt: fixedDate(61),
             updatedAt: fixedDate(62)
         )
@@ -258,21 +258,8 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(try repository.recentSlipEvents(limit: 10), [event])
     }
 
-    func testStoreSupportMotivationAndActivityLibrary() throws {
+    func testStoreMotivationAndActivityLibrary() throws {
         let store = TeoPateoStore(repository: try makeRepository())
-
-        store.addSupportContact(
-            name: "Sam",
-            detail: "Backup for late cravings",
-            phoneNumber: "5550001111",
-            preferredRole: .backup,
-            defaultMessage: "Can you check in with me tonight?"
-        )
-        XCTAssertTrue(store.supportContacts.contains { $0.name == "Sam" })
-
-        let firstContact = try XCTUnwrap(store.supportContacts.first)
-        store.draftSupportMessage(for: firstContact)
-        XCTAssertFalse(store.supportMessageDraft.isEmpty)
 
         store.addUserReason("I want to hike without wheezing.", isPrimary: true)
         XCTAssertEqual(store.reasonForCravingMode(), "I want to hike without wheezing.")
@@ -483,7 +470,6 @@ final class LocalPersistenceTests: XCTestCase {
     func testStoreRecordsCravingSlipAndHistory() throws {
         let store = TeoPateoStore(repository: try makeRepository())
         let activityID = try XCTUnwrap(store.replacementActivities.first?.id)
-        let supportID = try XCTUnwrap(store.supportContactForCraving()?.id)
 
         store.startCravingSession()
         store.selectedTriggers = ["Coffee"]
@@ -494,7 +480,7 @@ final class LocalPersistenceTests: XCTestCase {
             initialIntensity: 8,
             finalIntensity: 2,
             helpedActivityID: activityID,
-            supportContactID: supportID,
+            supportContactID: nil,
             reflectionNote: "Water helped."
         ))
 

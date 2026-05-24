@@ -19,7 +19,7 @@ Implemented today:
 - SwiftUI app shell with tab navigation.
 - Today dashboard with mascot, progress facts, and a craving rescue entry point.
 - Full-screen craving mode with a 10-minute timer, replacement activities, motivational copy, and trigger selection.
-- Quit plan screen with quit date, taper/cold-turkey mode, trigger rules, support circle, and medication note.
+- Quit plan screen with quit date, taper/cold-turkey mode, trigger rules, replacement activities, reasons, and notification settings.
 - Daily check-in screen with mood, stress, confidence, smoke/no-smoke choice, slip recovery notes, and daily focus.
 - Insights screen with static risk patterns, trigger contribution bars, heat map, and suggested plan adjustment.
 - Basic coach mock with quick prompts and canned responses.
@@ -31,7 +31,6 @@ Not implemented yet:
 - Real craving/check-in history.
 - Calculated insights.
 - Notification scheduling.
-- Support contact messaging.
 - Real AI coach integration.
 - Production tests.
 

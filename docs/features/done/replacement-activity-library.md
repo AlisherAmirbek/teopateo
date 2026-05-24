@@ -14,7 +14,7 @@ Activities should help the user get through the 10-minute risk window with optio
 - Activities are not linked to triggers.
 - Activity completion is not tracked.
 - Insights cannot tell which activities help.
-- There are no categories such as movement, breathing, social, distraction, journaling, or sensory reset.
+- There are no categories such as movement, breathing, distraction, journaling, or sensory reset.
 
 ## MVP Scope
 
@@ -36,7 +36,6 @@ Seed the app with practical defaults:
 - Brush teeth.
 - Chew gum.
 - Box breathing.
-- Text support.
 - Five-minute tidy.
 - Write one sentence.
 
@@ -47,7 +46,6 @@ Craving mode should show:
 - One activity matched to selected trigger when possible.
 - One short physical activity.
 - One calm/low-effort activity.
-- One support activity when a contact exists.
 
 The user should be able to mark which activity they tried.
 

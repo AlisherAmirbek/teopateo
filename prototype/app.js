@@ -144,7 +144,7 @@ function renderPlan() {
   const rules = [
     ["After coffee", "Drink water first, wait 10 minutes, log the urge."],
     ["Leaving work", "Walk one block before checking messages."],
-    ["Alcohol", "Use a support contact before the first drink."],
+    ["Alcohol", "Keep a drink in hand and stay away from the smoking spot."],
     ["After meals", "Brush teeth or chew gum immediately."],
   ];
 
@@ -175,7 +175,7 @@ function renderPlan() {
             <button class="${state.quitMode === mode ? "is-active" : ""}" onclick="state.quitMode='${mode}'; render()">${mode}</button>
           `).join("")}
         </div>
-        <p>${state.quitMode === "Taper" ? "Reduce by two cigarettes every three days until quit date." : "Prepare substitutes and support alerts before quit date."}</p>
+        <p>${state.quitMode === "Taper" ? "Reduce by two cigarettes every three days until quit date." : "Prepare substitutes before quit date."}</p>
       </section>
 
       <section class="panel">
@@ -192,14 +192,6 @@ function renderPlan() {
             <button class="switch" aria-label="Rule enabled"><span></span></button>
           </div>
         `).join("")}
-      </section>
-
-      <section class="panel">
-        <h2>Support circle</h2>
-        <div class="list">
-          <div class="list-row"><span class="row-icon">${icons.phone}</span><div><strong>Maya</strong><span>Craving alert and evening check-in</span></div><span class="badge">Text</span></div>
-          <div class="list-row"><span class="row-icon">${icons.phone}</span><div><strong>1-800-QUIT-NOW</strong><span>US quitline support</span></div><span class="badge">Call</span></div>
-        </div>
       </section>
 
     </div>
@@ -250,7 +242,7 @@ function renderCraving() {
         <div class="list">
           <div class="list-row"><span class="row-icon">${icons.water}</span><div><strong>Drink cold water</strong><span>Finish one full glass before deciding anything.</span></div><span class="badge">2m</span></div>
           <div class="list-row"><span class="row-icon">${icons.walk}</span><div><strong>Walk outside</strong><span>Move until the timer drops below 6:00.</span></div><span class="badge">4m</span></div>
-          <div class="list-row"><span class="row-icon">${icons.phone}</span><div><strong>Text Maya</strong><span>Send the preset craving alert.</span></div><span class="badge">Now</span></div>
+          <div class="list-row"><span class="row-icon">${icons.check}</span><div><strong>Five-minute reset</strong><span>Tidy one small area until the urge changes.</span></div><span class="badge">5m</span></div>
         </div>
       </section>
 

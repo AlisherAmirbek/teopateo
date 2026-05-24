@@ -41,25 +41,36 @@ protocol CoachResponding {
 }
 
 enum CoachClientError: LocalizedError, Equatable {
+    case missingProxyConfiguration
+    #if DEBUG
     case missingAPIKey
+    #endif
     case invalidHTTPResponse
-    case requestFailed(statusCode: Int, message: String)
+    case requestFailed(statusCode: Int)
     case emptyResponse
 
     var errorDescription: String? {
         switch self {
+        case .missingProxyConfiguration:
+            return "The coach is unavailable right now. Your message was saved."
+        #if DEBUG
         case .missingAPIKey:
-            return "Set TEOPATEO_COACH_PROXY_URL and TEOPATEO_COACH_PROXY_TOKEN for the VPS proxy, or set OPENROUTER_API_KEY for direct development."
+            return "The coach is unavailable right now. Your message was saved."
+        #endif
         case .invalidHTTPResponse:
-            return "The coach service returned an unreadable response."
-        case .requestFailed(let statusCode, let message):
-            return "OpenRouter request failed (\(statusCode)): \(message)"
+            return "The coach is unavailable right now. Your message was saved."
+        case .requestFailed(let statusCode):
+            if statusCode == 429 {
+                return "The coach is getting too many requests. Try again in a minute."
+            }
+            return "The coach is unavailable right now. Your message was saved."
         case .emptyResponse:
-            return "The coach did not return a reply. Try again in a minute."
+            return "The coach is unavailable right now. Your message was saved."
         }
     }
 }
 
+#if DEBUG
 struct OpenRouterConfiguration: Equatable {
     let apiKey: String
     let model: String
@@ -139,6 +150,7 @@ struct OpenRouterConfiguration: Equatable {
         return trimmed
     }
 }
+#endif
 
 struct CoachProxyConfiguration: Equatable {
     let endpointURL: URL
@@ -184,6 +196,8 @@ struct CoachProxyConfiguration: Equatable {
 
 struct LiveCoachClient: CoachResponding {
     private let proxyConfiguration: CoachProxyConfiguration?
+
+    #if DEBUG
     private let openRouterConfiguration: OpenRouterConfiguration?
 
     init(
@@ -193,13 +207,24 @@ struct LiveCoachClient: CoachResponding {
         self.proxyConfiguration = proxyConfiguration
         self.openRouterConfiguration = openRouterConfiguration
     }
+    #else
+    init(proxyConfiguration: CoachProxyConfiguration? = CoachProxyConfiguration.live()) {
+        self.proxyConfiguration = proxyConfiguration
+    }
+    #endif
 
     func reply(to request: CoachRequest) -> AsyncThrowingStream<String, Error> {
         if let proxyConfiguration {
             return CoachProxyClient(configuration: proxyConfiguration).reply(to: request)
         }
 
+        #if DEBUG
         return OpenRouterCoachClient(configuration: openRouterConfiguration).reply(to: request)
+        #else
+        return AsyncThrowingStream { continuation in
+            continuation.finish(throwing: CoachClientError.missingProxyConfiguration)
+        }
+        #endif
     }
 }
 
@@ -235,32 +260,15 @@ struct CoachProxyClient: CoachResponding {
         to request: CoachRequest,
         continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
-        var urlRequest = URLRequest(url: configuration.endpointURL)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let accessToken = configuration.accessToken {
-            urlRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        }
-
-        urlRequest.httpBody = try encoder.encode(CoachProxyRequest(
-            contextSummary: request.contextSummary,
-            stream: true,
-            messages: request.messages.map {
-                CoachProxyMessage(role: $0.role, content: $0.content)
-            }
-        ))
-
+        let urlRequest = try makeURLRequest(for: request)
         let (bytes, response) = try await bytesTask(urlRequest)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw CoachClientError.invalidHTTPResponse
         }
         let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
         guard 200..<300 ~= httpResponse.statusCode else {
-            let data = try await Self.collectData(from: bytes)
-            throw CoachClientError.requestFailed(
-                statusCode: httpResponse.statusCode,
-                message: proxyErrorMessage(from: data)
-            )
+            _ = try await Self.collectData(from: bytes)
+            throw CoachClientError.requestFailed(statusCode: httpResponse.statusCode)
         }
 
         guard contentType.contains("text/event-stream") else {
@@ -312,21 +320,6 @@ struct CoachProxyClient: CoachResponding {
         continuation.finish()
     }
 
-    private func proxyErrorMessage(from data: Data) -> String {
-        if
-            let response = try? decoder.decode(CoachProxyErrorResponse.self, from: data),
-            !response.error.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        {
-            return response.error
-        }
-
-        if let text = String(data: data, encoding: .utf8), !text.isEmpty {
-            return text
-        }
-
-        return "No error details were returned."
-    }
-
     private static func collectData(from bytes: URLSession.AsyncBytes) async throws -> Data {
         var data = Data()
         for try await byte in bytes {
@@ -334,8 +327,31 @@ struct CoachProxyClient: CoachResponding {
         }
         return data
     }
+
+    func makeURLRequest(for request: CoachRequest) throws -> URLRequest {
+        var urlRequest = URLRequest(url: configuration.endpointURL)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("TeoPateo-iOS", forHTTPHeaderField: "X-TeoPateo-Client")
+        if let bundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
+            urlRequest.setValue(bundleVersion, forHTTPHeaderField: "X-TeoPateo-App-Version")
+        }
+        if let accessToken = configuration.accessToken {
+            urlRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        urlRequest.httpBody = try encoder.encode(CoachProxyRequest(
+            contextSummary: request.contextSummary,
+            stream: true,
+            messages: request.messages.map {
+                CoachProxyMessage(role: $0.role, content: $0.content)
+            }
+        ))
+        return urlRequest
+    }
 }
 
+#if DEBUG
 struct OpenRouterCoachClient: CoachResponding {
     private let configuration: OpenRouterConfiguration?
     private let bytesTask: (URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse)
@@ -398,10 +414,9 @@ struct OpenRouterCoachClient: CoachResponding {
         }
         let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
         guard 200..<300 ~= httpResponse.statusCode else {
-            let data = try await Self.collectData(from: bytes)
+            _ = try await Self.collectData(from: bytes)
             throw CoachClientError.requestFailed(
-                statusCode: httpResponse.statusCode,
-                message: errorMessage(from: data)
+                statusCode: httpResponse.statusCode
             )
         }
 
@@ -501,11 +516,12 @@ struct OpenRouterCoachClient: CoachResponding {
     private static let baseSystemPrompt = """
     You are TeoPateo's quit-smoking coach. Help the user get through high-risk smoking moments, refine their quit plan, reflect on check-ins, recover from slips, and understand patterns.
 
-    Keep the tone calm, specific, and non-shaming. Treat slips as data, not failure. Prioritize the next 10 minutes: name the trigger, choose one replacement action, lower intensity, and use support if needed.
+    Keep the tone calm, specific, and non-shaming. Treat slips as data, not failure. Prioritize the next 10 minutes: name the trigger, choose one replacement action, and lower intensity.
 
     Keep replies concise and practical. Do not diagnose, guarantee outcomes, or make strong medical claims. For medication, withdrawal symptoms, mental health concerns, or urgent safety concerns, direct the user to a doctor, pharmacist, quitline counselor, local emergency service, or trusted support person as appropriate.
     """
 }
+#endif
 
 private struct CoachProxyRequest: Encodable {
     let contextSummary: String
@@ -522,10 +538,7 @@ private struct CoachProxyResponse: Decodable {
     let reply: String
 }
 
-private struct CoachProxyErrorResponse: Decodable {
-    let error: String
-}
-
+#if DEBUG
 private struct OpenRouterChatRequest: Encodable {
     let model: String
     let messages: [OpenRouterMessage]
@@ -558,6 +571,7 @@ private struct OpenRouterChatResponse: Decodable {
 
     let choices: [Choice]
 }
+#endif
 
 private enum CoachStreamEvent {
     case delta(String)
@@ -590,6 +604,7 @@ private enum CoachStreamParser {
             return .delta(text)
         }
 
+        #if DEBUG
         if
             let openRouterDelta = try? JSONDecoder().decode(OpenRouterStreamResponse.self, from: data),
             let text = openRouterDelta.choices.compactMap(\.delta?.content).first,
@@ -597,6 +612,7 @@ private enum CoachStreamParser {
         {
             return .delta(text)
         }
+        #endif
 
         return .ignored
     }
@@ -606,6 +622,7 @@ private struct CoachProxyStreamDelta: Decodable {
     let delta: String?
 }
 
+#if DEBUG
 private struct OpenRouterStreamResponse: Decodable {
     struct Choice: Decodable {
         struct Delta: Decodable {
@@ -625,3 +642,4 @@ private struct OpenRouterErrorResponse: Decodable {
 
     let error: Detail?
 }
+#endif

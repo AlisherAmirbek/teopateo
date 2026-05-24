@@ -429,29 +429,35 @@ final class TeoPateoStore: ObservableObject {
         coachResponseState = .sending
         persistCoachChats()
 
+        var assistantMessageID: UUID?
         do {
             let coachRequest = makeCoachRequest(for: chatID)
-            let assistantMessageID = UUID()
+            let pendingAssistantMessageID = UUID()
+            assistantMessageID = pendingAssistantMessageID
             appendCoachMessage(
-                CoachMessage(id: assistantMessageID, text: "", isUser: false, createdAt: now()),
+                CoachMessage(id: pendingAssistantMessageID, text: "", isUser: false, createdAt: now()),
                 to: chatID
             )
 
             var reply = ""
             for try await chunk in coachClient.reply(to: coachRequest) {
                 reply += chunk
-                updateCoachMessage(assistantMessageID, in: chatID, text: reply)
+                updateCoachMessage(pendingAssistantMessageID, in: chatID, text: reply)
             }
 
             let trimmedReply = reply.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedReply.isEmpty else {
-                deleteCoachMessage(assistantMessageID, from: chatID)
+                deleteCoachMessage(pendingAssistantMessageID, from: chatID)
                 throw CoachClientError.emptyResponse
             }
-            updateCoachMessage(assistantMessageID, in: chatID, text: trimmedReply)
+            updateCoachMessage(pendingAssistantMessageID, in: chatID, text: trimmedReply)
             coachResponseState = .ready
             persistCoachChats()
         } catch {
+            if let assistantMessageID {
+                deleteCoachMessage(assistantMessageID, from: chatID)
+                persistCoachChats()
+            }
             coachResponseState = .failed(Self.coachErrorMessage(for: error))
         }
     }

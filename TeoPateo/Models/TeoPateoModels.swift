@@ -557,7 +557,7 @@ struct TriggerRule: Identifiable, Codable, Equatable {
 
 struct CoachMessage: Identifiable, Codable, Equatable {
     let id: UUID
-    let text: String
+    var text: String
     let isUser: Bool
     let createdAt: Date
 
@@ -566,6 +566,33 @@ struct CoachMessage: Identifiable, Codable, Equatable {
         self.text = text
         self.isUser = isUser
         self.createdAt = createdAt
+    }
+}
+
+struct CoachChat: Identifiable, Codable, Equatable {
+    let id: UUID
+    var title: String
+    var messages: [CoachMessage]
+    let createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        messages: [CoachMessage] = [],
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.title = title
+        self.messages = messages
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    var displayTitle: String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "New chat" : trimmed
     }
 }
 
@@ -983,7 +1010,8 @@ struct PersistedTeoPateoSnapshot: Equatable {
     var riskySituations: [RiskySituation]
     var supportContacts: [SupportContact]
     var userReasons: [UserReason]
-    var coachMessages: [CoachMessage]
+    var coachChats: [CoachChat]
+    var selectedCoachChatID: UUID?
 
     init(
         appSettings: AppSettings? = nil,
@@ -996,7 +1024,8 @@ struct PersistedTeoPateoSnapshot: Equatable {
         riskySituations: [RiskySituation] = [],
         supportContacts: [SupportContact] = [],
         userReasons: [UserReason] = [],
-        coachMessages: [CoachMessage] = []
+        coachChats: [CoachChat] = [],
+        selectedCoachChatID: UUID? = nil
     ) {
         self.appSettings = appSettings
         self.notificationSettings = notificationSettings
@@ -1008,6 +1037,7 @@ struct PersistedTeoPateoSnapshot: Equatable {
         self.riskySituations = riskySituations
         self.supportContacts = supportContacts
         self.userReasons = userReasons
-        self.coachMessages = coachMessages
+        self.coachChats = coachChats
+        self.selectedCoachChatID = selectedCoachChatID
     }
 }

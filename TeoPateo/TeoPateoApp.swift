@@ -28,7 +28,8 @@ struct TeoPateoApp: App {
             try seedUITestDataIfNeeded(repository)
             return TeoPateoStore(
                 repository: repository,
-                notificationScheduler: UITestNotificationScheduler()
+                notificationScheduler: UITestNotificationScheduler(),
+                coachClient: UITestCoachClient()
             )
         } catch {
             return TeoPateoStore()
@@ -187,6 +188,15 @@ private final class UITestNotificationScheduler: NotificationScheduling {
         completion: @escaping (Result<Void, Error>) -> Void
     ) {
         completion(.success(()))
+    }
+}
+
+private struct UITestCoachClient: CoachResponding {
+    func reply(to request: CoachRequest) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield("Name the trigger, start one 10-minute substitute, and decide who gets the alert if the urge spikes.")
+            continuation.finish()
+        }
     }
 }
 #endif

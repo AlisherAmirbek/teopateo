@@ -22,6 +22,7 @@
 		A1B2C3D4E5F60718293A0104 /* SQLiteTeoPateoRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */; };
 		A1B2C3D4E5F60718293A0302 /* NotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */; };
 		A1B2C3D4E5F60718293A0304 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */; };
+		A1B2C3D4E5F60718293A0402 /* CoachService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0401 /* CoachService.swift */; };
 		B2C3D4E5F60718293A100002 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100001 /* TestSupport.swift */; };
 		B2C3D4E5F60718293A100004 /* ModelAndPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */; };
 		B2C3D4E5F60718293A100006 /* RepositoryMutationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */; };
@@ -70,6 +71,7 @@
 		A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteTeoPateoRepository.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0401 /* CoachService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachService.swift; sourceTree = "<group>"; };
 		B2C3D4E5F60718293A100001 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAndPlannerTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepositoryMutationTests.swift; sourceTree = "<group>"; };
@@ -166,6 +168,7 @@
 				B1CB205C3D214C019BD2E015 /* TeoPateoStore.swift */,
 				A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */,
 				A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */,
+				A1B2C3D4E5F60718293A0401 /* CoachService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -366,6 +369,7 @@
 				ECE9921C7C56492F9D87D763 /* TeoPateoModels.swift in Sources */,
 				A1B2C3D4E5F60718293A0104 /* SQLiteTeoPateoRepository.swift in Sources */,
 				A1B2C3D4E5F60718293A0302 /* NotificationScheduler.swift in Sources */,
+				A1B2C3D4E5F60718293A0402 /* CoachService.swift in Sources */,
 				8E77AD628A294124A8F14B9A /* TeoPateoStore.swift in Sources */,
 				A1B2C3D4E5F60718293A0304 /* NotificationSettingsView.swift in Sources */,
 			);

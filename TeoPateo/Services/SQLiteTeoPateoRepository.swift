@@ -39,8 +39,9 @@ protocol TeoPateoRepository {
     func replaceUserReasons(_ reasons: [UserReason]) throws
     func fetchUserReasons() throws -> [UserReason]
 
-    func replaceCoachMessages(_ messages: [CoachMessage]) throws
-    func fetchCoachMessages() throws -> [CoachMessage]
+    func replaceCoachChats(_ chats: [CoachChat], selectedChatID: UUID?) throws
+    func fetchCoachChats() throws -> [CoachChat]
+    func fetchSelectedCoachChatID() throws -> UUID?
 }
 
 enum TeoPateoRepositoryError: Error, LocalizedError {
@@ -113,7 +114,8 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
             riskySituations: try fetchRiskySituations(),
             supportContacts: try fetchSupportContacts(),
             userReasons: try fetchUserReasons(),
-            coachMessages: try fetchCoachMessages()
+            coachChats: try fetchCoachChats(),
+            selectedCoachChatID: try fetchSelectedCoachChatID()
         )
     }
 
@@ -841,45 +843,104 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         }
     }
 
-    func replaceCoachMessages(_ messages: [CoachMessage]) throws {
+    func replaceCoachChats(_ chats: [CoachChat], selectedChatID: UUID?) throws {
         try dbQueue.write { db in
             try db.execute(sql: "DELETE FROM coach_messages;")
-            for (position, message) in messages.enumerated() {
+            try db.execute(sql: "DELETE FROM coach_chats;")
+
+            for (chatPosition, chat) in chats.enumerated() {
                 try db.execute(literal: """
-                    INSERT INTO coach_messages (
-                        id, text, is_user, created_at, position
+                    INSERT INTO coach_chats (
+                        id, title, is_selected, created_at, updated_at, position
                     )
                     VALUES (
-                        \(message.id.uuidString),
-                        \(message.text),
-                        \(message.isUser ? 1 : 0),
-                        \(message.createdAt.timeIntervalSince1970),
-                        \(position)
+                        \(chat.id.uuidString),
+                        \(chat.title),
+                        \(chat.id == selectedChatID ? 1 : 0),
+                        \(chat.createdAt.timeIntervalSince1970),
+                        \(chat.updatedAt.timeIntervalSince1970),
+                        \(chatPosition)
                     );
                     """)
+
+                for (messagePosition, message) in chat.messages.enumerated() {
+                    try db.execute(literal: """
+                        INSERT INTO coach_messages (
+                            id, chat_id, text, is_user, created_at, position
+                        )
+                        VALUES (
+                            \(message.id.uuidString),
+                            \(chat.id.uuidString),
+                            \(message.text),
+                            \(message.isUser ? 1 : 0),
+                            \(message.createdAt.timeIntervalSince1970),
+                            \(messagePosition)
+                        );
+                        """)
+                }
             }
         }
     }
 
-    func fetchCoachMessages() throws -> [CoachMessage] {
+    func fetchCoachChats() throws -> [CoachChat] {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
-                SELECT id, text, is_user, created_at
-                FROM coach_messages
-                ORDER BY position ASC, created_at ASC;
+                SELECT id, title, created_at, updated_at
+                FROM coach_chats
+                ORDER BY position ASC, updated_at DESC;
                 """
             )
 
             return try rows.map { row in
-                CoachMessage(
-                    id: try uuid(row, "id"),
-                    text: row["text"],
-                    isUser: bool(row, "is_user"),
-                    createdAt: date(row, "created_at")
+                let chatID = try uuid(row, "id")
+                return CoachChat(
+                    id: chatID,
+                    title: row["title"],
+                    messages: try fetchCoachMessages(db: db, chatID: chatID),
+                    createdAt: date(row, "created_at"),
+                    updatedAt: date(row, "updated_at")
                 )
             }
+        }
+    }
+
+    func fetchSelectedCoachChatID() throws -> UUID? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT id
+                FROM coach_chats
+                WHERE is_selected = 1
+                ORDER BY position ASC
+                LIMIT 1;
+                """
+            )
+            return try row.map { try uuid($0, "id") }
+        }
+    }
+
+    private func fetchCoachMessages(db: Database, chatID: UUID) throws -> [CoachMessage] {
+        let rows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT id, text, is_user, created_at
+            FROM coach_messages
+            WHERE chat_id = ?
+            ORDER BY position ASC, created_at ASC;
+            """,
+            arguments: [chatID.uuidString]
+        )
+
+        return try rows.map { row in
+            CoachMessage(
+                id: try uuid(row, "id"),
+                text: row["text"],
+                isUser: bool(row, "is_user"),
+                createdAt: date(row, "created_at")
+            )
         }
     }
 
@@ -1120,6 +1181,46 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     ON risky_situations(is_enabled);
 
                 PRAGMA user_version = 5;
+                """)
+        }
+
+        migrator.registerMigration("v6") { db in
+            let migratedChatID = UUID().uuidString
+            try db.execute(literal: """
+                CREATE TABLE IF NOT EXISTS coach_chats (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    title TEXT NOT NULL,
+                    is_selected INTEGER NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    position INTEGER NOT NULL
+                );
+
+                ALTER TABLE coach_messages ADD COLUMN chat_id TEXT NOT NULL DEFAULT '';
+
+                INSERT INTO coach_chats (
+                    id, title, is_selected, created_at, updated_at, position
+                )
+                SELECT
+                    \(migratedChatID),
+                    'First chat',
+                    1,
+                    COALESCE(MIN(created_at), 0),
+                    COALESCE(MAX(created_at), 0),
+                    0
+                FROM coach_messages
+                HAVING COUNT(*) > 0;
+
+                UPDATE coach_messages
+                SET chat_id = \(migratedChatID)
+                WHERE chat_id = '';
+
+                CREATE INDEX IF NOT EXISTS coach_chats_selected_index
+                    ON coach_chats(is_selected);
+                CREATE INDEX IF NOT EXISTS coach_messages_chat_index
+                    ON coach_messages(chat_id, position);
+
+                PRAGMA user_version = 6;
                 """)
         }
 

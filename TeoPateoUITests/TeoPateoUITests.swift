@@ -145,10 +145,10 @@ final class TeoPateoUITests: XCTestCase {
         launchApp()
 
         app.tabBars.buttons["Coach"].tap()
-        XCTAssertTrue(app.staticTexts["Ask for the next move."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Get help before you smoke."].waitForExistence(timeout: 5))
 
-        app.buttons["coach-prompt-After work"].tap()
-        XCTAssertTrue(app.staticTexts["After work"].waitForExistence(timeout: 3))
+        app.buttons["coach-prompt-I want to smoke now"].tap()
+        XCTAssertTrue(app.staticTexts["I want to smoke now. Help me get through the next 10 minutes."].waitForExistence(timeout: 3))
 
         let input = app.textFields["coach-input-field"]
         input.tap()

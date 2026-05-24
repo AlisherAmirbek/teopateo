@@ -24,7 +24,9 @@ final class TeoPateoStore: ObservableObject {
     @Published private(set) var slipEvents: [SlipEvent] = []
     @Published private(set) var replacementActivities: [ReplacementActivity] = []
     @Published private(set) var riskySituations: [RiskySituation] = []
-    @Published private(set) var coachMessages: [CoachMessage] = []
+    @Published private(set) var coachChats: [CoachChat] = []
+    @Published private(set) var selectedCoachChatID: UUID?
+    @Published private(set) var coachResponseState: CoachResponseState = .ready
     @Published private(set) var notificationSettings = NotificationSettings()
     @Published private(set) var notificationPermissionStatus: NotificationPermissionStatus = .unknown
     @Published private(set) var isOnboardingCompleted = false
@@ -34,6 +36,7 @@ final class TeoPateoStore: ObservableObject {
 
     private let repository: TeoPateoRepository
     private let notificationScheduler: NotificationScheduling
+    private let coachClient: CoachResponding
     private let now: () -> Date
     private let calendar: Calendar
     private var quitPlan = TeoPateoStore.defaultQuitPlan()
@@ -52,11 +55,13 @@ final class TeoPateoStore: ObservableObject {
     init(
         repository: TeoPateoRepository,
         notificationScheduler: NotificationScheduling = LocalNotificationScheduler(),
+        coachClient: CoachResponding = LiveCoachClient(),
         now: @escaping () -> Date = Date.init,
         calendar: Calendar = .current
     ) {
         self.repository = repository
         self.notificationScheduler = notificationScheduler
+        self.coachClient = coachClient
         self.now = now
         self.calendar = calendar
         hydrateFromPersistence()
@@ -64,6 +69,23 @@ final class TeoPateoStore: ObservableObject {
 
     var currentQuitPlan: QuitPlan {
         quitPlan
+    }
+
+    var selectedCoachChat: CoachChat? {
+        guard let selectedCoachChatID else { return coachChats.first }
+        return coachChats.first { $0.id == selectedCoachChatID } ?? coachChats.first
+    }
+
+    var coachMessages: [CoachMessage] {
+        selectedCoachChat?.messages ?? []
+    }
+
+    var canStartNewCoachChat: Bool {
+        !isCoachResponding && coachMessages.contains { $0.isUser }
+    }
+
+    var canDeleteSelectedCoachChat: Bool {
+        !isCoachResponding && selectedCoachChat != nil
     }
 
     var todayTaperTarget: Double? {
@@ -347,18 +369,91 @@ final class TeoPateoStore: ObservableObject {
         supportMessageDraft = supportMessageTemplate(for: contact)
     }
 
-    func sendCoachMessage(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+    var isCoachResponding: Bool {
+        coachResponseState.isSending
+    }
 
-        coachMessages.append(CoachMessage(text: trimmed, isUser: true))
-        coachMessages.append(
-            CoachMessage(
-                text: "Name the trigger, choose one 10-minute substitute, then decide who gets the alert if the urge spikes.",
-                isUser: false
-            )
+    func startNewCoachChat() {
+        guard canStartNewCoachChat else { return }
+
+        let chat = makeEmptyCoachChat()
+        coachChats.insert(chat, at: 0)
+        selectedCoachChatID = chat.id
+        coachResponseState = .ready
+        persistCoachChats()
+    }
+
+    func deleteCoachChat(_ chatID: UUID) {
+        guard !isCoachResponding,
+              let deletedIndex = coachChats.firstIndex(where: { $0.id == chatID })
+        else { return }
+
+        let wasSelected = selectedCoachChat?.id == chatID
+        coachChats.remove(at: deletedIndex)
+
+        if coachChats.isEmpty {
+            let chat = makeEmptyCoachChat()
+            coachChats = [chat]
+            selectedCoachChatID = chat.id
+        } else if wasSelected {
+            let nextIndex = min(deletedIndex, coachChats.count - 1)
+            selectedCoachChatID = coachChats[nextIndex].id
+        } else {
+            selectedCoachChatID = Self.validSelectedCoachChatID(selectedCoachChatID, in: coachChats)
+        }
+
+        coachResponseState = .ready
+        persistCoachChats()
+    }
+
+    func selectCoachChat(_ chatID: UUID) {
+        guard coachChats.contains(where: { $0.id == chatID }) else { return }
+        guard selectedCoachChatID != chatID else { return }
+
+        selectedCoachChatID = chatID
+        coachResponseState = .ready
+        persistCoachChats()
+    }
+
+    @MainActor
+    func sendCoachMessage(_ text: String) async {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isCoachResponding else { return }
+
+        let chatID = ensureSelectedCoachChat()
+        appendCoachMessage(
+            CoachMessage(text: trimmed, isUser: true, createdAt: now()),
+            to: chatID,
+            updateTitleFromUserText: trimmed
         )
-        persistCoachMessages()
+        coachResponseState = .sending
+        persistCoachChats()
+
+        do {
+            let coachRequest = makeCoachRequest(for: chatID)
+            let assistantMessageID = UUID()
+            appendCoachMessage(
+                CoachMessage(id: assistantMessageID, text: "", isUser: false, createdAt: now()),
+                to: chatID
+            )
+
+            var reply = ""
+            for try await chunk in coachClient.reply(to: coachRequest) {
+                reply += chunk
+                updateCoachMessage(assistantMessageID, in: chatID, text: reply)
+            }
+
+            let trimmedReply = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedReply.isEmpty else {
+                deleteCoachMessage(assistantMessageID, from: chatID)
+                throw CoachClientError.emptyResponse
+            }
+            updateCoachMessage(assistantMessageID, in: chatID, text: trimmedReply)
+            coachResponseState = .ready
+            persistCoachChats()
+        } catch {
+            coachResponseState = .failed(Self.coachErrorMessage(for: error))
+        }
     }
 
     func updateQuitDate(_ date: Date) {
@@ -1262,9 +1357,13 @@ final class TeoPateoStore: ObservableObject {
                 ? Self.defaultReplacementActivities()
                 : snapshot.replacementActivities
             riskySituations = snapshot.riskySituations
-            coachMessages = snapshot.coachMessages.isEmpty
-                ? Self.defaultCoachMessages()
-                : snapshot.coachMessages
+            coachChats = snapshot.coachChats.isEmpty
+                ? Self.defaultCoachChats()
+                : snapshot.coachChats
+            selectedCoachChatID = Self.validSelectedCoachChatID(
+                snapshot.selectedCoachChatID,
+                in: coachChats
+            )
             dailyCheckIns = snapshot.dailyCheckIns
             cravingEvents = snapshot.cravingEvents
             slipEvents = snapshot.slipEvents
@@ -1287,7 +1386,8 @@ final class TeoPateoStore: ObservableObject {
         userReasons = Self.defaultUserReasons()
         replacementActivities = Self.defaultReplacementActivities()
         riskySituations = []
-        coachMessages = Self.defaultCoachMessages()
+        coachChats = Self.defaultCoachChats()
+        selectedCoachChatID = coachChats.first?.id
         notificationSettings = NotificationSettings()
         isOnboardingCompleted = false
         isOnboardingPresented = true
@@ -1319,8 +1419,8 @@ final class TeoPateoStore: ObservableObject {
         if !riskySituations.isEmpty && snapshot.riskySituations.isEmpty {
             try repository.replaceRiskySituations(riskySituations)
         }
-        if snapshot.coachMessages.isEmpty {
-            try repository.replaceCoachMessages(coachMessages)
+        if snapshot.coachChats.isEmpty {
+            try repository.replaceCoachChats(coachChats, selectedChatID: selectedCoachChatID)
         }
     }
 
@@ -1388,13 +1488,240 @@ final class TeoPateoStore: ObservableObject {
         }
     }
 
-    private func persistCoachMessages() {
+    private func persistCoachChats() {
         do {
-            try repository.replaceCoachMessages(coachMessages)
+            try repository.replaceCoachChats(coachChats, selectedChatID: selectedCoachChatID)
             persistenceError = nil
         } catch {
             persistenceError = error.localizedDescription
-            lastSaveStatus = .failed("Coach messages could not be saved.")
+            lastSaveStatus = .failed("Coach chats could not be saved.")
+        }
+    }
+
+    @discardableResult
+    private func ensureSelectedCoachChat() -> UUID {
+        if let selectedCoachChatID,
+           coachChats.contains(where: { $0.id == selectedCoachChatID }) {
+            return selectedCoachChatID
+        }
+
+        let chat = makeEmptyCoachChat()
+        coachChats.insert(chat, at: 0)
+        selectedCoachChatID = chat.id
+        return chat.id
+    }
+
+    private func makeEmptyCoachChat() -> CoachChat {
+        let createdAt = now()
+        return CoachChat(
+            title: "New chat",
+            messages: [],
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
+    }
+
+    private func appendCoachMessage(
+        _ message: CoachMessage,
+        to chatID: UUID,
+        updateTitleFromUserText userText: String? = nil
+    ) {
+        guard let index = coachChats.firstIndex(where: { $0.id == chatID }) else {
+            return
+        }
+
+        var chat = coachChats[index]
+        chat.messages.append(message)
+        chat.updatedAt = message.createdAt
+        if let userText, Self.shouldReplaceCoachChatTitle(chat.title) {
+            chat.title = Self.coachChatTitle(from: userText)
+        }
+        coachChats[index] = chat
+    }
+
+    private func updateCoachMessage(_ messageID: UUID, in chatID: UUID, text: String) {
+        guard let chatIndex = coachChats.firstIndex(where: { $0.id == chatID }),
+              let messageIndex = coachChats[chatIndex].messages.firstIndex(where: { $0.id == messageID })
+        else {
+            return
+        }
+
+        var chat = coachChats[chatIndex]
+        chat.messages[messageIndex].text = text
+        chat.updatedAt = now()
+        coachChats[chatIndex] = chat
+    }
+
+    private func deleteCoachMessage(_ messageID: UUID, from chatID: UUID) {
+        guard let chatIndex = coachChats.firstIndex(where: { $0.id == chatID }) else {
+            return
+        }
+
+        var chat = coachChats[chatIndex]
+        chat.messages.removeAll { $0.id == messageID }
+        chat.updatedAt = now()
+        coachChats[chatIndex] = chat
+    }
+
+    private static func shouldReplaceCoachChatTitle(_ title: String) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed == "New chat"
+    }
+
+    private static func coachChatTitle(from text: String) -> String {
+        let collapsed = text
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+        guard collapsed.count > 36 else { return collapsed }
+
+        let endIndex = collapsed.index(collapsed.startIndex, offsetBy: 36)
+        return String(collapsed[..<endIndex])
+            .trimmingCharacters(in: .whitespacesAndNewlines) + "..."
+    }
+
+    private func makeCoachRequest(for chatID: UUID) -> CoachRequest {
+        let messages = coachChats.first { $0.id == chatID }?.messages ?? []
+        return CoachRequest(
+            contextSummary: coachContextSummary(),
+            messages: messages.suffix(12).map { message in
+                CoachChatMessage(
+                    role: message.isUser ? .user : .assistant,
+                    content: message.text
+                )
+            }
+        )
+    }
+
+    private func coachContextSummary() -> String {
+        let insights = calculatedInsights
+        var lines = [
+            "Quit mode: \(quitPlan.quitMode)",
+            "Quit date: \(Self.coachDateLabel(quitPlan.quitDate))",
+            "Primary reason: \(reasonForCravingMode())",
+            "Today risk: \(insights.todayRisk.level.rawValue) - \(insights.todayRisk.summary)",
+            "Progress: \(insights.smokeFreeSummary), \(insights.cravingsHandled) cravings handled, \(insights.moneySavedSummary) saved."
+        ]
+
+        if let taperTarget = todayTaperTarget {
+            lines.append("Today's taper target: \(Self.coachCigaretteLabel(taperTarget)).")
+        }
+
+        if let checkIn = todayCheckIn {
+            lines.append(
+                "Today check-in: mood \(Self.coachScoreLabel(checkIn.mood)), stress \(Self.coachScoreLabel(checkIn.stress)), confidence \(Self.coachScoreLabel(checkIn.confidence)), smoked today: \(Self.coachSmokeStatus(checkIn))."
+            )
+        }
+
+        let enabledRules = triggerRules.filter(\.isEnabled).prefix(5)
+        if !enabledRules.isEmpty {
+            lines.append(
+                "Trigger rules: " + enabledRules
+                    .map { "\($0.trigger) -> \($0.action)" }
+                    .joined(separator: "; ")
+            )
+        }
+
+        if !insights.topTriggers.isEmpty {
+            lines.append(
+                "Top craving triggers: " + insights.topTriggers
+                    .prefix(3)
+                    .map { "\($0.name) (\($0.shareSummary))" }
+                    .joined(separator: ", ")
+            )
+        }
+
+        if let riskWindow = insights.riskWindows.first {
+            lines.append("Highest-risk window: \(riskWindow.title) with \(riskWindow.cravingCount) logged cravings.")
+        }
+
+        let enabledActivities = replacementActivities.filter(\.isEnabled).prefix(4)
+        if !enabledActivities.isEmpty {
+            lines.append(
+                "Replacement activities: " + enabledActivities
+                    .map { "\($0.title): \($0.instruction)" }
+                    .joined(separator: "; ")
+            )
+        }
+
+        if let supportContact = supportContactForCraving() {
+            lines.append(
+                "Support contact: \(supportContact.name) (\(supportContact.preferredRole.title)); default message: \(supportMessageTemplate(for: supportContact))"
+            )
+        }
+
+        if let cravingSummary = coachRecentCravingSummary() {
+            lines.append(cravingSummary)
+        }
+
+        if let slipSummary = coachRecentSlipSummary() {
+            lines.append(slipSummary)
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private func coachRecentCravingSummary() -> String? {
+        let recent = cravingEvents.prefix(3)
+        guard !recent.isEmpty else { return nil }
+
+        return "Recent cravings: " + recent.map { event in
+            let triggers = event.selectedTriggers.isEmpty
+                ? "no trigger logged"
+                : event.selectedTriggers.joined(separator: ", ")
+            return "\(Self.coachDateLabel(event.startedAt)) - \(triggers), \(event.outcome.rawValue)"
+        }
+        .joined(separator: "; ")
+    }
+
+    private func coachRecentSlipSummary() -> String? {
+        let recent = slipEvents.prefix(2)
+        guard !recent.isEmpty else { return nil }
+
+        return "Recent slips: " + recent.map { event in
+            let triggers = event.selectedTriggers.isEmpty
+                ? "no trigger logged"
+                : event.selectedTriggers.joined(separator: ", ")
+            let recovery = event.recoveryAction.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "\(Self.coachDateLabel(event.occurredAt)) - \(triggers), recovery: \(recovery.isEmpty ? "not recorded" : recovery)"
+        }
+        .joined(separator: "; ")
+    }
+
+    private static func coachErrorMessage(for error: Error) -> String {
+        if
+            let coachError = error as? CoachClientError,
+            let description = coachError.errorDescription
+        {
+            return description
+        }
+
+        return "The coach could not respond. Check your connection and try again."
+    }
+
+    private static func coachDateLabel(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private static func coachScoreLabel(_ value: Double) -> String {
+        "\(Int(value.rounded()))/10"
+    }
+
+    private static func coachCigaretteLabel(_ value: Double) -> String {
+        let rounded = value.rounded()
+        let label = abs(value - rounded) < 0.01
+            ? "\(Int(rounded))"
+            : String(format: "%.1f", value)
+        return "\(label) cigarette\(abs(value - 1) < 0.01 ? "" : "s")"
+    }
+
+    private static func coachSmokeStatus(_ checkIn: DailyCheckIn) -> String {
+        switch checkIn.smokedToday {
+        case .some(true):
+            return "yes, \(checkIn.cigarettesSmoked) cigarette\(checkIn.cigarettesSmoked == 1 ? "" : "s")"
+        case .some(false):
+            return "no"
+        case .none:
+            return "not answered"
         }
     }
 
@@ -2218,13 +2545,24 @@ final class TeoPateoStore: ObservableObject {
         ]
     }
 
-    private static func defaultCoachMessages() -> [CoachMessage] {
-        [
-            CoachMessage(
-                text: "After work is your highest-risk pattern. Want to plan the first 10 minutes after you leave?",
-                isUser: false
+    private static func defaultCoachChats() -> [CoachChat] {
+        let createdAt = Date()
+
+        return [
+            CoachChat(
+                title: "New chat",
+                messages: [],
+                createdAt: createdAt,
+                updatedAt: createdAt
             )
         ]
+    }
+
+    private static func validSelectedCoachChatID(_ chatID: UUID?, in chats: [CoachChat]) -> UUID? {
+        if let chatID, chats.contains(where: { $0.id == chatID }) {
+            return chatID
+        }
+        return chats.first?.id
     }
 }
 
@@ -2247,7 +2585,8 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
     private var riskySituations: [RiskySituation] = []
     private var supportContacts: [SupportContact] = []
     private var userReasons: [UserReason] = []
-    private var coachMessages: [CoachMessage] = []
+    private var coachChats: [CoachChat] = []
+    private var selectedCoachChatID: UUID?
 
     func schemaVersion() throws -> Int { 0 }
     func tableNames() throws -> Set<String> { [] }
@@ -2264,7 +2603,8 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
             riskySituations: riskySituations,
             supportContacts: supportContacts,
             userReasons: userReasons,
-            coachMessages: coachMessages
+            coachChats: coachChats,
+            selectedCoachChatID: selectedCoachChatID
         )
     }
 
@@ -2363,12 +2703,17 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
         userReasons
     }
 
-    func replaceCoachMessages(_ messages: [CoachMessage]) throws {
-        coachMessages = messages
+    func replaceCoachChats(_ chats: [CoachChat], selectedChatID: UUID?) throws {
+        coachChats = chats
+        selectedCoachChatID = selectedChatID
     }
 
-    func fetchCoachMessages() throws -> [CoachMessage] {
-        coachMessages
+    func fetchCoachChats() throws -> [CoachChat] {
+        coachChats
+    }
+
+    func fetchSelectedCoachChatID() throws -> UUID? {
+        selectedCoachChatID
     }
 }
 

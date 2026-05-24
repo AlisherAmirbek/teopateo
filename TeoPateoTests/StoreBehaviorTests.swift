@@ -156,22 +156,148 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(store.currentQuitPlan.taperTargetCigarettesPerDay, 0)
     }
 
-    func testCoachMessagesIgnoreBlankInputAndPersistReplies() throws {
+    func testCoachMessagesIgnoreBlankInputAndPersistReplies() async throws {
         let repository = try makeRepository()
-        let store = TeoPateoStore(repository: repository)
+        let coachClient = TestCoachClient()
+        let store = TeoPateoStore(repository: repository, coachClient: coachClient)
         let originalCount = store.coachMessages.count
+        XCTAssertEqual(originalCount, 0)
+        XCTAssertEqual(store.coachChats.count, 1)
 
-        store.sendCoachMessage("   ")
+        await store.sendCoachMessage("   ")
         XCTAssertEqual(store.coachMessages.count, originalCount)
 
-        store.sendCoachMessage("I am about to smoke after coffee.")
+        await store.sendCoachMessage("I am about to smoke after coffee.")
         XCTAssertEqual(store.coachMessages.count, originalCount + 2)
         XCTAssertEqual(store.coachMessages.suffix(2).first?.text, "I am about to smoke after coffee.")
-        XCTAssertFalse(try repository.fetchCoachMessages().isEmpty)
+        XCTAssertEqual(
+            store.coachMessages.last?.text,
+            "Take one slow breath, name the trigger, and start water before deciding."
+        )
+        XCTAssertEqual(coachClient.requests.count, 1)
+        XCTAssertTrue(coachClient.requests[0].contextSummary.contains("Quit mode"))
+        XCTAssertFalse(try repository.fetchCoachChats().flatMap(\.messages).isEmpty)
 
-        let reloaded = TeoPateoStore(repository: repository)
+        let reloaded = TeoPateoStore(repository: repository, coachClient: coachClient)
         XCTAssertEqual(reloaded.coachMessages.map(\.text), store.coachMessages.map(\.text))
         XCTAssertEqual(reloaded.coachMessages.map(\.isUser), store.coachMessages.map(\.isUser))
+    }
+
+    func testCoachStreamingChunksBuildOneAssistantMessage() async throws {
+        let coachClient = TestCoachClient(response: .successChunks([
+            "Take one slow breath, ",
+            "name the trigger, ",
+            "and drink water first."
+        ]))
+        let store = TeoPateoStore(repository: try makeRepository(), coachClient: coachClient)
+
+        await store.sendCoachMessage("I want to smoke now.")
+
+        XCTAssertEqual(store.coachMessages.count, 2)
+        XCTAssertEqual(store.coachMessages.last?.isUser, false)
+        XCTAssertEqual(
+            store.coachMessages.last?.text,
+            "Take one slow breath, name the trigger, and drink water first."
+        )
+    }
+
+    func testNewCoachChatStartsWithCleanRequestHistory() async throws {
+        let repository = try makeRepository()
+        let coachClient = TestCoachClient()
+        let store = TeoPateoStore(repository: repository, coachClient: coachClient)
+
+        await store.sendCoachMessage("I want to smoke after coffee.")
+        let firstChatID = try XCTUnwrap(store.selectedCoachChatID)
+
+        store.startNewCoachChat()
+        let secondChatID = try XCTUnwrap(store.selectedCoachChatID)
+        XCTAssertNotEqual(firstChatID, secondChatID)
+        XCTAssertTrue(store.coachMessages.isEmpty)
+
+        await store.sendCoachMessage("Now I am leaving work.")
+
+        XCTAssertEqual(store.coachChats.count, 2)
+        XCTAssertEqual(coachClient.requests.count, 2)
+        XCTAssertTrue(coachClient.requests[0].messages.map(\.content).contains("I want to smoke after coffee."))
+        XCTAssertFalse(coachClient.requests[1].messages.map(\.content).contains("I want to smoke after coffee."))
+        XCTAssertTrue(coachClient.requests[1].messages.map(\.content).contains("Now I am leaving work."))
+
+        let reloaded = TeoPateoStore(repository: repository, coachClient: coachClient)
+        XCTAssertEqual(reloaded.selectedCoachChatID, secondChatID)
+        XCTAssertEqual(reloaded.coachMessages.map(\.text), store.coachMessages.map(\.text))
+    }
+
+    func testNewCoachChatRequiresCurrentUserInput() async throws {
+        let repository = try makeRepository()
+        let store = TeoPateoStore(repository: repository, coachClient: TestCoachClient())
+        let initialChatID = try XCTUnwrap(store.selectedCoachChatID)
+        let initialChatCount = store.coachChats.count
+
+        XCTAssertFalse(store.canStartNewCoachChat)
+        store.startNewCoachChat()
+
+        XCTAssertEqual(store.selectedCoachChatID, initialChatID)
+        XCTAssertEqual(store.coachChats.count, initialChatCount)
+
+        await store.sendCoachMessage("I am tense after lunch.")
+
+        XCTAssertTrue(store.canStartNewCoachChat)
+        store.startNewCoachChat()
+        let emptyChatID = try XCTUnwrap(store.selectedCoachChatID)
+        XCTAssertNotEqual(emptyChatID, initialChatID)
+        XCTAssertFalse(store.canStartNewCoachChat)
+
+        store.startNewCoachChat()
+
+        XCTAssertEqual(store.selectedCoachChatID, emptyChatID)
+        XCTAssertEqual(store.coachChats.count, initialChatCount + 1)
+    }
+
+    func testDeletingCoachChatSelectsNextAndKeepsOneBlankChat() async throws {
+        let repository = try makeRepository()
+        let store = TeoPateoStore(repository: repository, coachClient: TestCoachClient())
+
+        await store.sendCoachMessage("I want to smoke after coffee.")
+        let firstChatID = try XCTUnwrap(store.selectedCoachChatID)
+
+        store.startNewCoachChat()
+        await store.sendCoachMessage("I am leaving work.")
+        let secondChatID = try XCTUnwrap(store.selectedCoachChatID)
+
+        store.deleteCoachChat(secondChatID)
+
+        XCTAssertEqual(store.selectedCoachChatID, firstChatID)
+        XCTAssertEqual(store.coachChats.map(\.id), [firstChatID])
+        XCTAssertTrue(store.coachMessages.contains { $0.text == "I want to smoke after coffee." })
+
+        let reloaded = TeoPateoStore(repository: repository, coachClient: TestCoachClient())
+        XCTAssertEqual(reloaded.selectedCoachChatID, firstChatID)
+        XCTAssertEqual(reloaded.coachChats.map(\.id), [firstChatID])
+
+        store.deleteCoachChat(firstChatID)
+
+        XCTAssertEqual(store.coachChats.count, 1)
+        XCTAssertTrue(store.coachMessages.isEmpty)
+        XCTAssertFalse(store.canStartNewCoachChat)
+        XCTAssertNotEqual(store.selectedCoachChatID, firstChatID)
+    }
+
+    func testCoachFailureKeepsUserMessageAndSetsFailureState() async throws {
+        let store = TeoPateoStore(
+            repository: try makeRepository(),
+            coachClient: TestCoachClient(response: .failure(TestCoachError()))
+        )
+        let originalCount = store.coachMessages.count
+
+        await store.sendCoachMessage("I slipped after dinner.")
+
+        XCTAssertEqual(store.coachMessages.count, originalCount + 1)
+        XCTAssertEqual(store.coachMessages.last?.text, "I slipped after dinner.")
+        XCTAssertEqual(store.coachMessages.last?.isUser, true)
+        XCTAssertEqual(
+            store.coachResponseState.message,
+            "The coach could not respond. Check your connection and try again."
+        )
     }
 
     func testSupportDraftFallbackWhenCompletedPlanHasNoContacts() throws {

@@ -37,13 +37,14 @@ final class LocalPersistenceTests: XCTestCase {
             "replacement_activities",
             "support_contacts",
             "user_reasons",
+            "coach_chats",
             "coach_messages",
             "app_settings",
             "notification_settings",
             "risky_situations"
         ]
 
-        XCTAssertEqual(try repository.schemaVersion(), 5)
+        XCTAssertEqual(try repository.schemaVersion(), 6)
         XCTAssertTrue(try repository.tableNames().isSuperset(of: expectedTables))
     }
 
@@ -81,6 +82,46 @@ final class LocalPersistenceTests: XCTestCase {
 
         XCTAssertEqual(try repository.fetchNotificationSettings(), settings)
         XCTAssertEqual(try repository.loadSnapshot().notificationSettings, settings)
+    }
+
+    func testCoachChatsRoundTripWithSelectedChat() throws {
+        let repository = try makeRepository()
+        let chats = [
+            CoachChat(
+                id: fixedUUID(80),
+                title: "Coffee craving",
+                messages: [
+                    CoachMessage(
+                        id: fixedUUID(81),
+                        text: "I want to smoke after coffee.",
+                        isUser: true,
+                        createdAt: fixedDate(81)
+                    ),
+                    CoachMessage(
+                        id: fixedUUID(82),
+                        text: "**Start water first**, then walk for 10 minutes.",
+                        isUser: false,
+                        createdAt: fixedDate(82)
+                    )
+                ],
+                createdAt: fixedDate(80),
+                updatedAt: fixedDate(82)
+            ),
+            CoachChat(
+                id: fixedUUID(83),
+                title: "Slip recovery",
+                messages: [],
+                createdAt: fixedDate(83),
+                updatedAt: fixedDate(83)
+            )
+        ]
+
+        try repository.replaceCoachChats(chats, selectedChatID: fixedUUID(83))
+
+        XCTAssertEqual(try repository.fetchCoachChats(), chats)
+        XCTAssertEqual(try repository.fetchSelectedCoachChatID(), fixedUUID(83))
+        XCTAssertEqual(try repository.loadSnapshot().coachChats, chats)
+        XCTAssertEqual(try repository.loadSnapshot().selectedCoachChatID, fixedUUID(83))
     }
 
     func testQuitPlanSupportReasonsAndActivitiesRoundTrip() throws {

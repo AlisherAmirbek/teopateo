@@ -1,0 +1,21 @@
+[Unit]
+Description=TeoPateo AI coach proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/teopateo-coach
+EnvironmentFile=/etc/teopateo-coach.env
+ExecStart=/usr/bin/python3 /opt/teopateo-coach/coach_proxy.py
+Restart=always
+RestartSec=5
+User=teopateo-coach
+Group=teopateo-coach
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

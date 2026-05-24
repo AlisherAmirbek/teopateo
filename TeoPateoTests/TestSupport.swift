@@ -217,6 +217,43 @@ final class TestNotificationScheduler: NotificationScheduling {
 
 struct TestSchedulerError: Error, Equatable {}
 
+struct TestCoachError: Error, Equatable {}
+
+final class TestCoachClient: CoachResponding {
+    enum Response {
+        case success(String)
+        case successChunks([String])
+        case failure(Error)
+    }
+
+    private let response: Response
+    private(set) var requests: [CoachRequest] = []
+
+    init(response: Response = .success("Take one slow breath, name the trigger, and start water before deciding.")) {
+        self.response = response
+    }
+
+    func reply(to request: CoachRequest) -> AsyncThrowingStream<String, Error> {
+        requests.append(request)
+        let response = response
+
+        return AsyncThrowingStream { continuation in
+            switch response {
+            case .success(let message):
+                continuation.yield(message)
+                continuation.finish()
+            case .successChunks(let chunks):
+                for chunk in chunks {
+                    continuation.yield(chunk)
+                }
+                continuation.finish()
+            case .failure(let error):
+                continuation.finish(throwing: error)
+            }
+        }
+    }
+}
+
 final class TestUserNotificationCenter: UserNotificationCentering {
     var status: UNAuthorizationStatus
     var requestAuthorizationError: Error?
@@ -394,12 +431,16 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
         try base.fetchUserReasons()
     }
 
-    func replaceCoachMessages(_ messages: [CoachMessage]) throws {
-        try base.replaceCoachMessages(messages)
+    func replaceCoachChats(_ chats: [CoachChat], selectedChatID: UUID?) throws {
+        try base.replaceCoachChats(chats, selectedChatID: selectedChatID)
     }
 
-    func fetchCoachMessages() throws -> [CoachMessage] {
-        try base.fetchCoachMessages()
+    func fetchCoachChats() throws -> [CoachChat] {
+        try base.fetchCoachChats()
+    }
+
+    func fetchSelectedCoachChatID() throws -> UUID? {
+        try base.fetchSelectedCoachChatID()
     }
 
     private func failIfNeeded(_ operation: TestRepositoryOperation) throws {

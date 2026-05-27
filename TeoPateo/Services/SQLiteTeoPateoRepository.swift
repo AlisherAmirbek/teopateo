@@ -12,6 +12,18 @@ protocol TeoPateoRepository {
     func fetchNotificationSettings() throws -> NotificationSettings?
     func saveNotificationSettings(_ settings: NotificationSettings) throws
 
+    func fetchUserProfile() throws -> UserProfile?
+    func saveUserProfile(_ profile: UserProfile) throws
+
+    func fetchQuitReadiness() throws -> QuitReadiness?
+    func saveQuitReadiness(_ readiness: QuitReadiness) throws
+
+    func fetchSmokingBackground() throws -> SmokingBackground?
+    func saveSmokingBackground(_ background: SmokingBackground) throws
+
+    func fetchSavingsGoal() throws -> SavingsGoal?
+    func saveSavingsGoal(_ goal: SavingsGoal) throws
+
     func fetchQuitPlan() throws -> QuitPlan?
     func saveQuitPlan(_ plan: QuitPlan) throws
 
@@ -106,6 +118,10 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         PersistedTeoPateoSnapshot(
             appSettings: try fetchAppSettings(),
             notificationSettings: try fetchNotificationSettings(),
+            userProfile: try fetchUserProfile(),
+            quitReadiness: try fetchQuitReadiness(),
+            smokingBackground: try fetchSmokingBackground(),
+            savingsGoal: try fetchSavingsGoal(),
             quitPlan: try fetchQuitPlan(),
             dailyCheckIns: try recentCheckIns(limit: 10_000),
             cravingEvents: try recentCravingEvents(limit: 10_000),
@@ -254,12 +270,201 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         }
     }
 
+    func fetchUserProfile() throws -> UserProfile? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT nickname, age, created_at, updated_at
+                FROM user_profile
+                WHERE id = 0;
+                """
+            )
+
+            guard let row else { return nil }
+            return UserProfile(
+                nickname: row["nickname"],
+                age: row["age"],
+                createdAt: date(row, "created_at"),
+                updatedAt: date(row, "updated_at")
+            )
+        }
+    }
+
+    func saveUserProfile(_ profile: UserProfile) throws {
+        try dbQueue.write { db in
+            try db.execute(literal: """
+                INSERT INTO user_profile (
+                    id, nickname, age, created_at, updated_at
+                )
+                VALUES (
+                    0,
+                    \(profile.nickname),
+                    \(profile.age),
+                    \(profile.createdAt.timeIntervalSince1970),
+                    \(profile.updatedAt.timeIntervalSince1970)
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    nickname = excluded.nickname,
+                    age = excluded.age,
+                    updated_at = excluded.updated_at;
+                """)
+        }
+    }
+
+    func fetchQuitReadiness() throws -> QuitReadiness? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT status, confidence, opened_app_reason, created_at, updated_at
+                FROM quit_readiness
+                WHERE id = 0;
+                """
+            )
+
+            guard let row else { return nil }
+            return QuitReadiness(
+                status: QuitStatus(rawValue: row["status"]) ?? .readyToQuit,
+                confidence: row["confidence"],
+                openedAppReason: row["opened_app_reason"],
+                createdAt: date(row, "created_at"),
+                updatedAt: date(row, "updated_at")
+            )
+        }
+    }
+
+    func saveQuitReadiness(_ readiness: QuitReadiness) throws {
+        try dbQueue.write { db in
+            try db.execute(literal: """
+                INSERT INTO quit_readiness (
+                    id, status, confidence, opened_app_reason, created_at, updated_at
+                )
+                VALUES (
+                    0,
+                    \(readiness.status.rawValue),
+                    \(readiness.confidence),
+                    \(readiness.openedAppReason),
+                    \(readiness.createdAt.timeIntervalSince1970),
+                    \(readiness.updatedAt.timeIntervalSince1970)
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    status = excluded.status,
+                    confidence = excluded.confidence,
+                    opened_app_reason = excluded.opened_app_reason,
+                    updated_at = excluded.updated_at;
+                """)
+        }
+    }
+
+    func fetchSmokingBackground() throws -> SmokingBackground? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT age_started_smoking, years_smoking, first_cigarette_timing,
+                       previous_quit_attempt_count, longest_quit_attempt,
+                       main_challenge, created_at, updated_at
+                FROM smoking_background
+                WHERE id = 0;
+                """
+            )
+
+            guard let row else { return nil }
+            return SmokingBackground(
+                ageStartedSmoking: row["age_started_smoking"],
+                yearsSmoking: row["years_smoking"],
+                firstCigaretteTiming: FirstCigaretteTiming(rawValue: row["first_cigarette_timing"]) ?? .withinThirtyMinutes,
+                previousQuitAttemptCount: PreviousQuitAttemptCount(rawValue: row["previous_quit_attempt_count"]) ?? .none,
+                longestQuitAttempt: LongestQuitAttempt(rawValue: row["longest_quit_attempt"]) ?? .lessThanDay,
+                mainChallenge: SmokingChallenge(rawValue: row["main_challenge"]) ?? .cravings,
+                createdAt: date(row, "created_at"),
+                updatedAt: date(row, "updated_at")
+            )
+        }
+    }
+
+    func saveSmokingBackground(_ background: SmokingBackground) throws {
+        try dbQueue.write { db in
+            try db.execute(literal: """
+                INSERT INTO smoking_background (
+                    id, age_started_smoking, years_smoking, first_cigarette_timing,
+                    previous_quit_attempt_count, longest_quit_attempt,
+                    main_challenge, created_at, updated_at
+                )
+                VALUES (
+                    0,
+                    \(background.ageStartedSmoking),
+                    \(background.yearsSmoking),
+                    \(background.firstCigaretteTiming.rawValue),
+                    \(background.previousQuitAttemptCount.rawValue),
+                    \(background.longestQuitAttempt.rawValue),
+                    \(background.mainChallenge.rawValue),
+                    \(background.createdAt.timeIntervalSince1970),
+                    \(background.updatedAt.timeIntervalSince1970)
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    age_started_smoking = excluded.age_started_smoking,
+                    years_smoking = excluded.years_smoking,
+                    first_cigarette_timing = excluded.first_cigarette_timing,
+                    previous_quit_attempt_count = excluded.previous_quit_attempt_count,
+                    longest_quit_attempt = excluded.longest_quit_attempt,
+                    main_challenge = excluded.main_challenge,
+                    updated_at = excluded.updated_at;
+                """)
+        }
+    }
+
+    func fetchSavingsGoal() throws -> SavingsGoal? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT title, custom_text, created_at, updated_at
+                FROM savings_goal
+                WHERE id = 0;
+                """
+            )
+
+            guard let row else { return nil }
+            return SavingsGoal(
+                title: row["title"],
+                customText: row["custom_text"],
+                createdAt: date(row, "created_at"),
+                updatedAt: date(row, "updated_at")
+            )
+        }
+    }
+
+    func saveSavingsGoal(_ goal: SavingsGoal) throws {
+        try dbQueue.write { db in
+            try db.execute(literal: """
+                INSERT INTO savings_goal (
+                    id, title, custom_text, created_at, updated_at
+                )
+                VALUES (
+                    0,
+                    \(goal.title),
+                    \(goal.customText),
+                    \(goal.createdAt.timeIntervalSince1970),
+                    \(goal.updatedAt.timeIntervalSince1970)
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    title = excluded.title,
+                    custom_text = excluded.custom_text,
+                    updated_at = excluded.updated_at;
+                """)
+        }
+    }
+
     func fetchQuitPlan() throws -> QuitPlan? {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(
                 db,
                 sql: """
                 SELECT id, quit_date, quit_mode, medication_note,
+                       quit_status, readiness_stage, generated_daily_focus,
+                       generated_plan_summary,
                        baseline_cigarettes_per_day, cost_per_pack, cigarettes_per_pack,
                        taper_target_cigarettes_per_day, taper_reduction_step,
                        taper_reduction_interval_days, attempt_started_at,
@@ -279,6 +484,10 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 id: id,
                 quitDate: date(row, "quit_date"),
                 quitMode: row["quit_mode"],
+                quitStatus: QuitStatus(rawValue: row["quit_status"]) ?? .readyToQuit,
+                readinessStage: row["readiness_stage"],
+                generatedDailyFocus: row["generated_daily_focus"],
+                generatedPlanSummary: row["generated_plan_summary"],
                 triggerRules: try fetchTriggerRules(db: db, quitPlanID: id),
                 medicationNote: row["medication_note"],
                 baselineCigarettesPerDay: row["baseline_cigarettes_per_day"],
@@ -299,6 +508,8 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
             try db.execute(literal: """
                 INSERT INTO quit_plans (
                     id, quit_date, quit_mode, medication_note,
+                    quit_status, readiness_stage, generated_daily_focus,
+                    generated_plan_summary,
                     baseline_cigarettes_per_day, cost_per_pack, cigarettes_per_pack,
                     taper_target_cigarettes_per_day, taper_reduction_step,
                     taper_reduction_interval_days, attempt_started_at,
@@ -309,6 +520,10 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     \(plan.quitDate.timeIntervalSince1970),
                     \(plan.quitMode),
                     \(plan.medicationNote),
+                    \(plan.quitStatus.rawValue),
+                    \(plan.readinessStage),
+                    \(plan.generatedDailyFocus),
+                    \(plan.generatedPlanSummary),
                     \(plan.baselineCigarettesPerDay),
                     \(plan.costPerPack),
                     \(plan.cigarettesPerPack),
@@ -323,6 +538,10 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     quit_date = excluded.quit_date,
                     quit_mode = excluded.quit_mode,
                     medication_note = excluded.medication_note,
+                    quit_status = excluded.quit_status,
+                    readiness_stage = excluded.readiness_stage,
+                    generated_daily_focus = excluded.generated_daily_focus,
+                    generated_plan_summary = excluded.generated_plan_summary,
                     baseline_cigarettes_per_day = excluded.baseline_cigarettes_per_day,
                     cost_per_pack = excluded.cost_per_pack,
                     cigarettes_per_pack = excluded.cigarettes_per_pack,
@@ -1221,6 +1440,54 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     ON coach_messages(chat_id, position);
 
                 PRAGMA user_version = 6;
+                """)
+        }
+
+        migrator.registerMigration("v7") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS user_profile (
+                    id INTEGER PRIMARY KEY CHECK (id = 0),
+                    nickname TEXT NOT NULL,
+                    age INTEGER NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS quit_readiness (
+                    id INTEGER PRIMARY KEY CHECK (id = 0),
+                    status TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    opened_app_reason TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS smoking_background (
+                    id INTEGER PRIMARY KEY CHECK (id = 0),
+                    age_started_smoking INTEGER,
+                    years_smoking INTEGER,
+                    first_cigarette_timing TEXT NOT NULL,
+                    previous_quit_attempt_count TEXT NOT NULL,
+                    longest_quit_attempt TEXT NOT NULL,
+                    main_challenge TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS savings_goal (
+                    id INTEGER PRIMARY KEY CHECK (id = 0),
+                    title TEXT NOT NULL,
+                    custom_text TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
+                ALTER TABLE quit_plans ADD COLUMN quit_status TEXT NOT NULL DEFAULT 'ready_to_quit';
+                ALTER TABLE quit_plans ADD COLUMN readiness_stage TEXT NOT NULL DEFAULT 'Quit-date preparation';
+                ALTER TABLE quit_plans ADD COLUMN generated_daily_focus TEXT NOT NULL DEFAULT 'Rehearse the 10-minute rescue before the quit date.';
+                ALTER TABLE quit_plans ADD COLUMN generated_plan_summary TEXT NOT NULL DEFAULT '';
+
+                PRAGMA user_version = 7;
                 """)
         }
 

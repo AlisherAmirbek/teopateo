@@ -32,6 +32,7 @@ struct PlanView: View {
             ScreenHeader(eyebrow: "Quit plan", title: "Your plan stays specific.")
             StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
 
+            planProfile
             quitDate
             progressBaseline
             approach
@@ -43,6 +44,30 @@ struct PlanView: View {
         .sheet(item: $selectedPlanSheet, onDismiss: resetPlanSheetState) { sheet in
             planSheet(sheet)
         }
+    }
+
+    private var planProfile: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Plan profile")
+                .font(.rounded(.headline, weight: .bold))
+
+            detailLine("Status", store.currentQuitPlan.quitStatus.title)
+            detailLine("Readiness", store.currentQuitPlan.readinessStage)
+            detailLine("Daily focus", store.dailyFocus)
+
+            if let profile = store.userProfile {
+                detailLine("Profile", "\(profile.nickname), age \(profile.age)")
+            }
+
+            if let background = store.smokingBackground {
+                detailLine("Main challenge", background.mainChallenge.title)
+            }
+
+            if let savingsGoal = store.savingsGoalSummary {
+                detailLine("Savings", savingsGoal)
+            }
+        }
+        .quietCard()
     }
 
     private var quitDate: some View {

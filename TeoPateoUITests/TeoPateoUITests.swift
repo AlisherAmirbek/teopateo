@@ -11,17 +11,24 @@ final class TeoPateoUITests: XCTestCase {
     func testOnboardingCreatesPlanAndDismissesToToday() {
         launchApp(seedCompleted: false)
 
-        XCTAssertTrue(app.staticTexts["Build the plan for your hardest 10 minutes."].waitForExistence(timeout: 5))
-        for _ in 0..<4 {
-            app.buttons["onboarding-next-button"].tap()
-        }
+        XCTAssertTrue(app.staticTexts["What should TeoPateo call you?"].waitForExistence(timeout: 5))
+        let nicknameField = app.textFields["onboarding-nickname-field"]
+        XCTAssertTrue(nicknameField.waitForExistence(timeout: 3))
+        nicknameField.tap()
+        nicknameField.typeText("Alex")
+        app.staticTexts["What should TeoPateo call you?"].tap()
+        app.buttons["onboarding-next-button"].tap()
 
         let reasonField = app.textFields["onboarding-reason-field"]
         XCTAssertTrue(reasonField.waitForExistence(timeout: 3))
         reasonField.tap()
         reasonField.typeText("I want clear mornings")
 
-        app.staticTexts["Add the reason that should interrupt a craving."].tap()
+        app.staticTexts["Where are you in the quit journey?"].tap()
+        app.buttons["onboarding-next-button"].tap()
+        app.buttons["onboarding-next-button"].tap()
+        app.buttons["onboarding-next-button"].tap()
+        app.buttons["onboarding-next-button"].tap()
         app.buttons["onboarding-next-button"].tap()
         XCTAssertTrue(app.staticTexts["TeoPateo will start with this rescue setup."].waitForExistence(timeout: 3))
         app.buttons["onboarding-next-button"].tap()

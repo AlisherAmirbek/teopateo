@@ -17,7 +17,6 @@ struct TodayView: View {
                         onboardingPrompt
                     }
                     mascot
-                    copy
                     rescueButton
                     riskCard
                     facts
@@ -89,42 +88,20 @@ struct TodayView: View {
             .frame(height: 278)
     }
 
-    private var copy: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("Pause before the cigarette.")
-                .font(.system(size: 34, weight: .heavy, design: .rounded))
-                .foregroundColor(QuitTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("Your 10-minute rescue plan is ready when the urge shows up.")
-                .font(.rounded(.subheadline))
-                .foregroundColor(QuitTheme.muted)
-                .lineSpacing(2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     private var rescueButton: some View {
         Button {
             store.isCravingModePresented = true
         } label: {
-            HStack {
-                Text("I want to smoke")
-                    .font(.rounded(.caption, weight: .bold))
-                    .foregroundColor(Color.white.opacity(0.72))
-
-                Spacer()
-
-                Text("Start rescue")
-                    .font(.rounded(.headline, weight: .bold))
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal, 18)
-            .frame(height: 72)
-            .background(QuitTheme.cocoa)
-            .clipShape(Capsule())
+            Text("I want to smoke")
+                .font(.rounded(.title3, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 30)
+                .padding(.vertical, 17)
+                .background(QuitTheme.cocoa)
+                .clipShape(Capsule())
         }
         .padding(.top, 28)
+        .frame(maxWidth: .infinity)
         .accessibilityIdentifier("start-rescue-button")
     }
 
@@ -227,11 +204,7 @@ private struct MascotRoomView: View {
                     .frame(width: 112, height: 12)
                     .position(x: cornerX, y: floorY + 26)
 
-                Image("Mascot")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 164, height: 164)
-                    .opacity(0.98)
+                AnimatedMascotView(size: 164)
                     .position(x: cornerX, y: floorY - 27)
             }
             .frame(width: width, height: height)

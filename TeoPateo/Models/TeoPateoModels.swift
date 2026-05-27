@@ -411,17 +411,348 @@ enum ReplacementActivityCategory: String, Codable, CaseIterable, Equatable {
 }
 
 enum QuitTriggerCatalog {
-    static let onboardingTriggers = [
-        "Coffee",
+    static let commonSmokingTimes = [
+        "Morning",
+        "After coffee",
         "After meals",
-        "Work stress",
-        "Driving or commute",
-        "Alcohol",
-        "Boredom",
-        "Social smoking",
-        "Morning routine",
-        "Evening wind-down"
+        "Work breaks",
+        "Driving",
+        "Evening",
+        "Before bed"
     ]
+
+    static let emotionalTriggers = [
+        "Stress",
+        "Anger",
+        "Anxiety",
+        "Loneliness",
+        "Boredom",
+        "Celebration"
+    ]
+
+    static let situationalTriggers = [
+        "Alcohol",
+        "Friends who smoke",
+        "Work pressure",
+        "Being outside",
+        "Phone scrolling",
+        "Waiting"
+    ]
+
+    static var onboardingTriggers: [String] {
+        (commonSmokingTimes + emotionalTriggers + situationalTriggers).uniqued()
+    }
+}
+
+enum QuitStatus: String, Codable, CaseIterable, Equatable, Identifiable {
+    case alreadyQuit = "already_quit"
+    case readyToQuit = "ready_to_quit"
+    case cuttingDown = "cutting_down"
+    case thinkingAboutIt = "thinking_about_it"
+    case unsure
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .alreadyQuit:
+            return "Already quit"
+        case .readyToQuit:
+            return "Ready to quit"
+        case .cuttingDown:
+            return "Cutting down"
+        case .thinkingAboutIt:
+            return "Thinking about it"
+        case .unsure:
+            return "Unsure"
+        }
+    }
+
+    var readinessStage: String {
+        switch self {
+        case .alreadyQuit:
+            return "Relapse prevention"
+        case .readyToQuit:
+            return "Quit-date preparation"
+        case .cuttingDown:
+            return "Taper planning"
+        case .thinkingAboutIt:
+            return "Motivation and preparation"
+        case .unsure:
+            return "Awareness and motivation"
+        }
+    }
+
+    var defaultDailyFocus: String {
+        switch self {
+        case .alreadyQuit:
+            return "Protect the riskiest craving window before it starts."
+        case .readyToQuit:
+            return "Rehearse the 10-minute rescue before the quit date."
+        case .cuttingDown:
+            return "Protect one cigarette you can delay today."
+        case .thinkingAboutIt:
+            return "Notice one cue and try one replacement without pressure."
+        case .unsure:
+            return "Track one smoking moment and what it was trying to solve."
+        }
+    }
+}
+
+enum FirstCigaretteTiming: String, Codable, CaseIterable, Equatable, Identifiable {
+    case withinFiveMinutes = "within_5_minutes"
+    case withinThirtyMinutes = "within_30_minutes"
+    case laterMorning = "later_morning"
+    case afternoonOrEvening = "afternoon_or_evening"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .withinFiveMinutes:
+            return "Within 5 minutes"
+        case .withinThirtyMinutes:
+            return "Within 30 minutes"
+        case .laterMorning:
+            return "Later in the morning"
+        case .afternoonOrEvening:
+            return "Afternoon or evening"
+        }
+    }
+}
+
+enum PreviousQuitAttemptCount: String, Codable, CaseIterable, Equatable, Identifiable {
+    case none
+    case one
+    case twoToThree = "two_to_three"
+    case fourOrMore = "four_or_more"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .none:
+            return "None"
+        case .one:
+            return "1"
+        case .twoToThree:
+            return "2-3"
+        case .fourOrMore:
+            return "4 or more"
+        }
+    }
+}
+
+enum LongestQuitAttempt: String, Codable, CaseIterable, Equatable, Identifiable {
+    case lessThanDay = "less_than_day"
+    case fewDays = "few_days"
+    case fewWeeks = "few_weeks"
+    case fewMonths = "few_months"
+    case yearOrMore = "year_or_more"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .lessThanDay:
+            return "Less than a day"
+        case .fewDays:
+            return "A few days"
+        case .fewWeeks:
+            return "A few weeks"
+        case .fewMonths:
+            return "A few months"
+        case .yearOrMore:
+            return "A year or more"
+        }
+    }
+}
+
+enum SmokingChallenge: String, Codable, CaseIterable, Equatable, Identifiable {
+    case cravings
+    case stress
+    case habitRoutine = "habit_routine"
+    case alcohol
+    case socialPressure = "social_pressure"
+    case boredom
+    case withdrawal
+    case weightGain = "weight_gain"
+    case other
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .cravings:
+            return "Cravings"
+        case .stress:
+            return "Stress"
+        case .habitRoutine:
+            return "Habit or routine"
+        case .alcohol:
+            return "Alcohol"
+        case .socialPressure:
+            return "Social pressure"
+        case .boredom:
+            return "Boredom"
+        case .withdrawal:
+            return "Withdrawal"
+        case .weightGain:
+            return "Weight gain"
+        case .other:
+            return "Other"
+        }
+    }
+
+    var triggerLabel: String {
+        switch self {
+        case .habitRoutine:
+            return "Routine"
+        case .socialPressure:
+            return "Social pressure"
+        case .weightGain:
+            return "Weight concern"
+        default:
+            return title
+        }
+    }
+}
+
+enum QuitDatePreference: String, Codable, CaseIterable, Equatable, Identifiable {
+    case chooseDate = "choose_date"
+    case alreadyQuit = "already_quit"
+    case helpMeChoose = "help_me_choose"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .chooseDate:
+            return "Choose date"
+        case .alreadyQuit:
+            return "Already quit"
+        case .helpMeChoose:
+            return "Help me choose"
+        }
+    }
+}
+
+enum QuitApproachPreference: String, Codable, CaseIterable, Equatable, Identifiable {
+    case taper
+    case coldTurkey = "cold_turkey"
+    case notSure = "not_sure"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .taper:
+            return "Taper"
+        case .coldTurkey:
+            return "Cold turkey"
+        case .notSure:
+            return "Not sure"
+        }
+    }
+}
+
+struct UserProfile: Codable, Equatable {
+    var nickname: String
+    var age: Int
+    let createdAt: Date
+    var updatedAt: Date
+
+    init(
+        nickname: String,
+        age: Int,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.nickname = nickname
+        self.age = age
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct QuitReadiness: Codable, Equatable {
+    var status: QuitStatus
+    var confidence: Double
+    var openedAppReason: String
+    let createdAt: Date
+    var updatedAt: Date
+
+    init(
+        status: QuitStatus,
+        confidence: Double,
+        openedAppReason: String = "",
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.status = status
+        self.confidence = confidence
+        self.openedAppReason = openedAppReason
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct SmokingBackground: Codable, Equatable {
+    var ageStartedSmoking: Int?
+    var yearsSmoking: Int?
+    var firstCigaretteTiming: FirstCigaretteTiming
+    var previousQuitAttemptCount: PreviousQuitAttemptCount
+    var longestQuitAttempt: LongestQuitAttempt
+    var mainChallenge: SmokingChallenge
+    let createdAt: Date
+    var updatedAt: Date
+
+    init(
+        ageStartedSmoking: Int? = nil,
+        yearsSmoking: Int? = nil,
+        firstCigaretteTiming: FirstCigaretteTiming,
+        previousQuitAttemptCount: PreviousQuitAttemptCount,
+        longestQuitAttempt: LongestQuitAttempt,
+        mainChallenge: SmokingChallenge,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.ageStartedSmoking = ageStartedSmoking
+        self.yearsSmoking = yearsSmoking
+        self.firstCigaretteTiming = firstCigaretteTiming
+        self.previousQuitAttemptCount = previousQuitAttemptCount
+        self.longestQuitAttempt = longestQuitAttempt
+        self.mainChallenge = mainChallenge
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+struct SavingsGoal: Codable, Equatable {
+    var title: String
+    var customText: String
+    let createdAt: Date
+    var updatedAt: Date
+
+    init(
+        title: String,
+        customText: String = "",
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.title = title
+        self.customText = customText
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    var displayTitle: String {
+        let custom = customText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if title == "Custom", !custom.isEmpty {
+            return custom
+        }
+        return title
+    }
 }
 
 enum RiskLevel: String, Equatable {
@@ -608,6 +939,10 @@ struct QuitPlan: Identifiable, Codable, Equatable {
     let id: UUID
     var quitDate: Date
     var quitMode: String
+    var quitStatus: QuitStatus
+    var readinessStage: String
+    var generatedDailyFocus: String
+    var generatedPlanSummary: String
     var triggerRules: [TriggerRule]
     var medicationNote: String
     var baselineCigarettesPerDay: Double
@@ -624,6 +959,10 @@ struct QuitPlan: Identifiable, Codable, Equatable {
         id: UUID = UUID(),
         quitDate: Date,
         quitMode: String,
+        quitStatus: QuitStatus = .readyToQuit,
+        readinessStage: String = QuitStatus.readyToQuit.readinessStage,
+        generatedDailyFocus: String = QuitStatus.readyToQuit.defaultDailyFocus,
+        generatedPlanSummary: String = "",
         triggerRules: [TriggerRule],
         medicationNote: String,
         baselineCigarettesPerDay: Double = 10,
@@ -639,6 +978,10 @@ struct QuitPlan: Identifiable, Codable, Equatable {
         self.id = id
         self.quitDate = quitDate
         self.quitMode = quitMode
+        self.quitStatus = quitStatus
+        self.readinessStage = readinessStage
+        self.generatedDailyFocus = generatedDailyFocus
+        self.generatedPlanSummary = generatedPlanSummary
         self.triggerRules = triggerRules
         self.medicationNote = medicationNote
         self.baselineCigarettesPerDay = baselineCigarettesPerDay
@@ -962,27 +1305,81 @@ struct AppSettings: Codable, Equatable {
 }
 
 struct OnboardingPlanInput: Equatable {
+    var nickname: String
+    var age: Int
+    var quitStatus: QuitStatus
+    var confidence: Double
+    var openedAppReason: String
+    var ageStartedSmoking: Int?
+    var yearsSmoking: Int?
     var cigarettesPerDay: Double
+    var firstCigaretteTiming: FirstCigaretteTiming
+    var previousQuitAttemptCount: PreviousQuitAttemptCount
+    var longestQuitAttempt: LongestQuitAttempt
+    var mainChallenge: SmokingChallenge
+    var commonSmokingTimes: [String]
+    var emotionalTriggers: [String]
+    var situationalTriggers: [String]
+    var quitDatePreference: QuitDatePreference
     var costPerPack: Double
+    var cigarettesPerPack: Int
     var quitDate: Date
-    var quitMode: String
-    var selectedTriggers: [String]
+    var approachPreference: QuitApproachPreference
+    var replacementActions: [String]
     var primaryReason: String
+    var savingsGoalTitle: String
+    var customSavingsGoal: String
 
     init(
+        nickname: String,
+        age: Int,
+        quitStatus: QuitStatus,
+        confidence: Double,
+        openedAppReason: String,
+        ageStartedSmoking: Int?,
+        yearsSmoking: Int?,
         cigarettesPerDay: Double,
+        firstCigaretteTiming: FirstCigaretteTiming,
+        previousQuitAttemptCount: PreviousQuitAttemptCount,
+        longestQuitAttempt: LongestQuitAttempt,
+        mainChallenge: SmokingChallenge,
+        commonSmokingTimes: [String],
+        emotionalTriggers: [String],
+        situationalTriggers: [String],
+        quitDatePreference: QuitDatePreference,
         costPerPack: Double,
+        cigarettesPerPack: Int,
         quitDate: Date,
-        quitMode: String,
-        selectedTriggers: [String],
-        primaryReason: String
+        approachPreference: QuitApproachPreference,
+        replacementActions: [String],
+        primaryReason: String,
+        savingsGoalTitle: String,
+        customSavingsGoal: String
     ) {
+        self.nickname = nickname
+        self.age = age
+        self.quitStatus = quitStatus
+        self.confidence = confidence
+        self.openedAppReason = openedAppReason
+        self.ageStartedSmoking = ageStartedSmoking
+        self.yearsSmoking = yearsSmoking
         self.cigarettesPerDay = cigarettesPerDay
+        self.firstCigaretteTiming = firstCigaretteTiming
+        self.previousQuitAttemptCount = previousQuitAttemptCount
+        self.longestQuitAttempt = longestQuitAttempt
+        self.mainChallenge = mainChallenge
+        self.commonSmokingTimes = commonSmokingTimes
+        self.emotionalTriggers = emotionalTriggers
+        self.situationalTriggers = situationalTriggers
+        self.quitDatePreference = quitDatePreference
         self.costPerPack = costPerPack
+        self.cigarettesPerPack = cigarettesPerPack
         self.quitDate = quitDate
-        self.quitMode = quitMode
-        self.selectedTriggers = selectedTriggers
+        self.approachPreference = approachPreference
+        self.replacementActions = replacementActions
         self.primaryReason = primaryReason
+        self.savingsGoalTitle = savingsGoalTitle
+        self.customSavingsGoal = customSavingsGoal
     }
 }
 
@@ -1010,6 +1407,10 @@ struct HistoryDayGroup: Identifiable, Equatable {
 struct PersistedTeoPateoSnapshot: Equatable {
     var appSettings: AppSettings?
     var notificationSettings: NotificationSettings?
+    var userProfile: UserProfile?
+    var quitReadiness: QuitReadiness?
+    var smokingBackground: SmokingBackground?
+    var savingsGoal: SavingsGoal?
     var quitPlan: QuitPlan?
     var dailyCheckIns: [DailyCheckIn]
     var cravingEvents: [CravingEvent]
@@ -1024,6 +1425,10 @@ struct PersistedTeoPateoSnapshot: Equatable {
     init(
         appSettings: AppSettings? = nil,
         notificationSettings: NotificationSettings? = nil,
+        userProfile: UserProfile? = nil,
+        quitReadiness: QuitReadiness? = nil,
+        smokingBackground: SmokingBackground? = nil,
+        savingsGoal: SavingsGoal? = nil,
         quitPlan: QuitPlan? = nil,
         dailyCheckIns: [DailyCheckIn] = [],
         cravingEvents: [CravingEvent] = [],
@@ -1037,6 +1442,10 @@ struct PersistedTeoPateoSnapshot: Equatable {
     ) {
         self.appSettings = appSettings
         self.notificationSettings = notificationSettings
+        self.userProfile = userProfile
+        self.quitReadiness = quitReadiness
+        self.smokingBackground = smokingBackground
+        self.savingsGoal = savingsGoal
         self.quitPlan = quitPlan
         self.dailyCheckIns = dailyCheckIns
         self.cravingEvents = cravingEvents
@@ -1047,5 +1456,17 @@ struct PersistedTeoPateoSnapshot: Equatable {
         self.userReasons = userReasons
         self.coachChats = coachChats
         self.selectedCoachChatID = selectedCoachChatID
+    }
+}
+
+private extension Array where Element: Hashable {
+    func uniqued() -> [Element] {
+        var seen: Set<Element> = []
+        var result: [Element] = []
+        for element in self where !seen.contains(element) {
+            seen.insert(element)
+            result.append(element)
+        }
+        return result
     }
 }

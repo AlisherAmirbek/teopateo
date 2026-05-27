@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 
 struct FlexibleTags: View {
@@ -48,6 +49,192 @@ struct ScreenHeader: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, 10)
+    }
+}
+
+struct AnimatedMascotView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if reduceMotion {
+                staticMascot
+            } else if let url = Bundle.main.url(forResource: "basic_animation", withExtension: "mov") {
+                TimedMascotVideoView(url: url, replayInterval: 60)
+            } else {
+                staticMascot
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+
+    private var staticMascot: some View {
+        Image("Mascot")
+            .resizable()
+            .scaledToFit()
+            .opacity(0.98)
+    }
+}
+
+private struct TimedMascotVideoView: UIViewRepresentable {
+    let url: URL
+    let replayInterval: TimeInterval
+
+    func makeUIView(context: Context) -> TimedVideoPlayerUIView {
+        let view = TimedVideoPlayerUIView()
+        view.configure(url: url, replayInterval: replayInterval)
+        return view
+    }
+
+    func updateUIView(_ uiView: TimedVideoPlayerUIView, context: Context) {
+        uiView.configure(url: url, replayInterval: replayInterval)
+    }
+
+    static func dismantleUIView(_ uiView: TimedVideoPlayerUIView, coordinator: ()) {
+        uiView.stop()
+    }
+}
+
+private final class TimedVideoPlayerUIView: UIView {
+    private var currentURL: URL?
+    private var player: AVPlayer?
+    private var replayInterval: TimeInterval = 60
+    private var endObserver: NSObjectProtocol?
+    private var replayWorkItem: DispatchWorkItem?
+    private var playbackStartedAt: Date?
+    private var hasStartedPlayback = false
+    private var didFinishPlayback = false
+
+    override class var layerClass: AnyClass {
+        AVPlayerLayer.self
+    }
+
+    private var playerLayer: AVPlayerLayer {
+        layer as! AVPlayerLayer
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isOpaque = false
+        backgroundColor = .clear
+        playerLayer.backgroundColor = UIColor.clear.cgColor
+        playerLayer.videoGravity = .resizeAspect
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    deinit {
+        stop()
+    }
+
+    func configure(url: URL, replayInterval: TimeInterval) {
+        self.replayInterval = replayInterval
+
+        guard currentURL != url else {
+            return
+        }
+
+        stop()
+        currentURL = url
+        let item = AVPlayerItem(url: url)
+        let player = AVPlayer(playerItem: item)
+        player.isMuted = true
+        player.actionAtItemEnd = .pause
+
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            self?.freezeAndScheduleReplay()
+        }
+
+        playerLayer.player = player
+        self.player = player
+
+        if window != nil {
+            playFromBeginning()
+        }
+    }
+
+    func stop() {
+        replayWorkItem?.cancel()
+        replayWorkItem = nil
+
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
+
+        player?.pause()
+        playerLayer.player = nil
+        player = nil
+        currentURL = nil
+        playbackStartedAt = nil
+        hasStartedPlayback = false
+        didFinishPlayback = false
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+
+        if window == nil {
+            player?.pause()
+            replayWorkItem?.cancel()
+            replayWorkItem = nil
+        } else if hasStartedPlayback && !didFinishPlayback {
+            player?.play()
+        } else {
+            playFromBeginning()
+        }
+    }
+
+    private func playFromBeginning() {
+        guard let player, window != nil else { return }
+
+        replayWorkItem?.cancel()
+        replayWorkItem = nil
+        playbackStartedAt = Date()
+        hasStartedPlayback = true
+        didFinishPlayback = false
+
+        player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak player] _ in
+            player?.play()
+        }
+    }
+
+    private func freezeAndScheduleReplay() {
+        didFinishPlayback = true
+        player?.pause()
+        freezeOnLastFrame()
+
+        let elapsed = playbackStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        scheduleReplay(after: max(0, replayInterval - elapsed))
+    }
+
+    private func freezeOnLastFrame() {
+        guard let player, let duration = player.currentItem?.duration, duration.isNumeric else {
+            return
+        }
+
+        let finalFrameOffset = CMTime(value: 1, timescale: 30)
+        let targetTime = CMTimeCompare(duration, finalFrameOffset) > 0 ? duration - finalFrameOffset : .zero
+        player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: finalFrameOffset)
+    }
+
+    private func scheduleReplay(after delay: TimeInterval) {
+        replayWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.playFromBeginning()
+        }
+        replayWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 }
 

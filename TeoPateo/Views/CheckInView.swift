@@ -6,8 +6,6 @@ struct CheckInView: View {
     @State private var slipContext = ""
     @State private var recoveryAction = "Pause before the next cigarette and use the rescue plan."
 
-    private let triggers = ["Coffee", "Work stress", "After meal", "Boredom", "Alcohol", "Social"]
-
     var body: some View {
         RootScreen {
             ScreenHeader(eyebrow: "Daily check-in", title: "Record today without judging it.")
@@ -108,7 +106,7 @@ struct CheckInView: View {
 
             Text("Trigger")
                 .font(.rounded(.subheadline, weight: .bold))
-            FlexibleTags(items: triggers, selected: $store.selectedSlipTriggers)
+            FlexibleTags(items: store.cravingTriggerOptions, selected: $store.selectedSlipTriggers)
 
             TextField("Context, such as commute or after dinner", text: $slipContext)
                 .textFieldStyle(.roundedBorder)

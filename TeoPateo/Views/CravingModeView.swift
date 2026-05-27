@@ -15,8 +15,6 @@ struct CravingModeView: View {
     @State private var step: CravingStep = .rescue
     @State private var reasonIndex = 0
 
-    private let triggers = ["Coffee", "Work stress", "After meal", "Boredom", "Alcohol", "Social"]
-
     var body: some View {
         ZStack {
             QuitTheme.background.ignoresSafeArea()
@@ -259,7 +257,7 @@ struct CravingModeView: View {
             Text(title)
                 .font(.rounded(.headline, weight: .bold))
 
-            FlexibleTags(items: triggers, selected: $store.selectedTriggers)
+            FlexibleTags(items: store.cravingTriggerOptions, selected: $store.selectedTriggers)
         }
         .quietCard()
     }

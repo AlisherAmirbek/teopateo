@@ -27,6 +27,10 @@ final class TeoPateoStore: ObservableObject {
     @Published private(set) var coachChats: [CoachChat] = []
     @Published private(set) var selectedCoachChatID: UUID?
     @Published private(set) var coachResponseState: CoachResponseState = .ready
+    @Published private(set) var userProfile: UserProfile?
+    @Published private(set) var quitReadiness: QuitReadiness?
+    @Published private(set) var smokingBackground: SmokingBackground?
+    @Published private(set) var savingsGoal: SavingsGoal?
     @Published private(set) var notificationSettings = NotificationSettings()
     @Published private(set) var notificationPermissionStatus: NotificationPermissionStatus = .unknown
     @Published private(set) var isOnboardingCompleted = false
@@ -68,6 +72,38 @@ final class TeoPateoStore: ObservableObject {
 
     var currentQuitPlan: QuitPlan {
         quitPlan
+    }
+
+    var displayName: String {
+        let nickname = userProfile?.nickname.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return nickname.isEmpty ? "you" : nickname
+    }
+
+    var firstPlanSummary: String {
+        let summary = quitPlan.generatedPlanSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !summary.isEmpty {
+            return summary
+        }
+        return "Keep one trigger rule and one 10-minute substitute ready before the next urge shows up."
+    }
+
+    var dailyFocus: String {
+        let focus = quitPlan.generatedDailyFocus.trimmingCharacters(in: .whitespacesAndNewlines)
+        return focus.isEmpty ? quitPlan.quitStatus.defaultDailyFocus : focus
+    }
+
+    var savingsGoalSummary: String? {
+        guard let savingsGoal else { return nil }
+        let title = savingsGoal.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return nil }
+        return "Savings goal: \(title)"
+    }
+
+    var cravingTriggerOptions: [String] {
+        let planned = triggerRules.map(\.trigger)
+        let recent = calculatedInsights.topTriggers.map(\.name)
+        let fallback = ["After coffee", "After meals", "Work stress", "Boredom", "Alcohol", "Social pressure"]
+        return Self.uniqueStrings(planned + recent + fallback).prefix(8).map { $0 }
     }
 
     var selectedCoachChat: CoachChat? {
@@ -527,18 +563,70 @@ final class TeoPateoStore: ObservableObject {
     @discardableResult
     func completeOnboarding(_ input: OnboardingPlanInput) -> Bool {
         let now = now()
-        let normalizedMode = input.quitMode == "Cold turkey" ? "Cold turkey" : "Taper"
-        let selectedTriggers = Self.normalizedOnboardingTriggers(input.selectedTriggers)
-        let nextTriggerRules = selectedTriggers.map { trigger in
-            TriggerRule(
-                trigger: trigger,
-                action: Self.onboardingAction(for: trigger)
-            )
+        let nickname = input.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nickname.isEmpty else {
+            lastSaveStatus = .failed("Add a name or nickname before creating the plan.")
+            return false
         }
+
         let primaryReason = input.primaryReason.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !primaryReason.isEmpty else {
             lastSaveStatus = .failed("Add one reason before creating the plan.")
             return false
+        }
+
+        let selectedTriggers = Self.normalizedOnboardingTriggers(
+            input.commonSmokingTimes +
+                input.emotionalTriggers +
+                input.situationalTriggers +
+                [input.mainChallenge.triggerLabel]
+        )
+        let selectedReplacementActions = Self.normalizedReplacementActions(input.replacementActions)
+        let normalizedMode = Self.resolvedQuitMode(
+            preference: input.approachPreference,
+            status: input.quitStatus,
+            confidence: input.confidence,
+            cigarettesPerDay: input.cigarettesPerDay,
+            firstCigaretteTiming: input.firstCigaretteTiming
+        )
+        let resolvedQuitDate = Self.resolvedQuitDate(
+            preference: input.quitDatePreference,
+            selectedDate: input.quitDate,
+            status: input.quitStatus,
+            confidence: input.confidence,
+            now: now,
+            calendar: calendar
+        )
+        let taperSettings = Self.generatedTaperSettings(
+            cigarettesPerDay: input.cigarettesPerDay,
+            confidence: input.confidence,
+            firstCigaretteTiming: input.firstCigaretteTiming,
+            previousAttempts: input.previousQuitAttemptCount,
+            mainChallenge: input.mainChallenge,
+            mode: normalizedMode
+        )
+        let generatedDailyFocus = Self.generatedDailyFocus(
+            status: input.quitStatus,
+            selectedTriggers: selectedTriggers,
+            mainChallenge: input.mainChallenge
+        )
+        let generatedPlanSummary = Self.generatedPlanSummary(
+            status: input.quitStatus,
+            selectedTriggers: selectedTriggers,
+            mainChallenge: input.mainChallenge,
+            mode: normalizedMode,
+            dailyFocus: generatedDailyFocus,
+            primaryReason: primaryReason
+        )
+        let nextTriggerRules = selectedTriggers.map { trigger in
+            TriggerRule(
+                trigger: trigger,
+                action: Self.onboardingAction(
+                    for: trigger,
+                    selectedReplacementActions: selectedReplacementActions,
+                    mainChallenge: input.mainChallenge
+                )
+            )
         }
         let nextReasons = [
             UserReason(
@@ -551,44 +639,91 @@ final class TeoPateoStore: ObservableObject {
         ]
         let nextActivities = Self.onboardingReplacementActivities(
             for: selectedTriggers,
+            selectedActions: selectedReplacementActions,
             now: now
+        )
+        let nextRiskySituations = Self.onboardingRiskySituations(
+            triggers: selectedTriggers,
+            selectedReplacementActions: selectedReplacementActions,
+            mainChallenge: input.mainChallenge,
+            now: now
+        )
+        let nextProfile = UserProfile(
+            nickname: nickname,
+            age: max(input.age, 0),
+            createdAt: userProfile?.createdAt ?? now,
+            updatedAt: now
+        )
+        let nextReadiness = QuitReadiness(
+            status: input.quitStatus,
+            confidence: min(max(input.confidence, 1), 10),
+            openedAppReason: input.openedAppReason.trimmingCharacters(in: .whitespacesAndNewlines),
+            createdAt: quitReadiness?.createdAt ?? now,
+            updatedAt: now
+        )
+        let nextBackground = SmokingBackground(
+            ageStartedSmoking: input.ageStartedSmoking,
+            yearsSmoking: input.yearsSmoking,
+            firstCigaretteTiming: input.firstCigaretteTiming,
+            previousQuitAttemptCount: input.previousQuitAttemptCount,
+            longestQuitAttempt: input.longestQuitAttempt,
+            mainChallenge: input.mainChallenge,
+            createdAt: smokingBackground?.createdAt ?? now,
+            updatedAt: now
+        )
+        let nextSavingsGoal = SavingsGoal(
+            title: input.savingsGoalTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+            customText: input.customSavingsGoal.trimmingCharacters(in: .whitespacesAndNewlines),
+            createdAt: savingsGoal?.createdAt ?? now,
+            updatedAt: now
         )
 
         var nextPlan = quitPlan
-        nextPlan.quitDate = input.quitDate
+        nextPlan.quitDate = resolvedQuitDate
         nextPlan.quitMode = normalizedMode
+        nextPlan.quitStatus = input.quitStatus
+        nextPlan.readinessStage = input.quitStatus.readinessStage
+        nextPlan.generatedDailyFocus = generatedDailyFocus
+        nextPlan.generatedPlanSummary = generatedPlanSummary
         nextPlan.triggerRules = nextTriggerRules
         nextPlan.medicationNote = ""
         nextPlan.baselineCigarettesPerDay = max(input.cigarettesPerDay, 0)
         nextPlan.costPerPack = max(input.costPerPack, 0)
-        nextPlan.cigarettesPerPack = 20
-        nextPlan.taperTargetCigarettesPerDay = normalizedMode == "Taper"
-            ? max(input.cigarettesPerDay - 2, 0)
-            : 0
-        nextPlan.taperReductionStep = 2
-        nextPlan.taperReductionIntervalDays = 3
-        nextPlan.attemptStartedAt = input.quitDate
+        nextPlan.cigarettesPerPack = max(input.cigarettesPerPack, 1)
+        nextPlan.taperTargetCigarettesPerDay = taperSettings.target
+        nextPlan.taperReductionStep = taperSettings.step
+        nextPlan.taperReductionIntervalDays = taperSettings.intervalDays
+        nextPlan.attemptStartedAt = normalizedMode == "Taper" ? now : resolvedQuitDate
         nextPlan.updatedAt = now
 
         let nextSettings = AppSettings(onboardingCompleted: true, updatedAt: now)
 
         do {
+            try repository.saveUserProfile(nextProfile)
+            try repository.saveQuitReadiness(nextReadiness)
+            try repository.saveSmokingBackground(nextBackground)
+            try repository.saveSavingsGoal(nextSavingsGoal)
             try repository.saveQuitPlan(nextPlan)
             try repository.replaceSupportContacts([])
             try repository.replaceUserReasons(nextReasons)
             try repository.replaceReplacementActivities(nextActivities)
-            try repository.replaceRiskySituations([])
+            try repository.replaceRiskySituations(nextRiskySituations)
             try repository.saveAppSettings(nextSettings)
 
             isHydrating = true
+            userProfile = nextProfile
+            quitReadiness = nextReadiness
+            smokingBackground = nextBackground
+            savingsGoal = nextSavingsGoal
             quitPlan = nextPlan
             quitMode = normalizedMode
             triggerRules = nextTriggerRules
             supportContacts = []
             userReasons = nextReasons
             replacementActivities = nextActivities
-            riskySituations = []
+            riskySituations = nextRiskySituations
             self.selectedTriggers = Set(selectedTriggers)
+            confidence = input.confidence
             isOnboardingCompleted = true
             isOnboardingPresented = false
             selectedTab = .today
@@ -1301,6 +1436,10 @@ final class TeoPateoStore: ObservableObject {
             isOnboardingCompleted = snapshot.appSettings?.onboardingCompleted ?? false
             isOnboardingPresented = !isOnboardingCompleted
             notificationSettings = snapshot.notificationSettings ?? NotificationSettings()
+            userProfile = snapshot.userProfile
+            quitReadiness = snapshot.quitReadiness
+            smokingBackground = snapshot.smokingBackground
+            savingsGoal = snapshot.savingsGoal
 
             let loadedPlan = snapshot.quitPlan ?? Self.defaultQuitPlan()
             quitPlan = loadedPlan
@@ -1347,6 +1486,10 @@ final class TeoPateoStore: ObservableObject {
         riskySituations = []
         coachChats = Self.defaultCoachChats()
         selectedCoachChatID = coachChats.first?.id
+        userProfile = nil
+        quitReadiness = nil
+        smokingBackground = nil
+        savingsGoal = nil
         notificationSettings = NotificationSettings()
         isOnboardingCompleted = false
         isOnboardingPresented = true
@@ -1540,12 +1683,38 @@ final class TeoPateoStore: ObservableObject {
     private func coachContextSummary() -> String {
         let insights = calculatedInsights
         var lines = [
+            "User: \(displayName)\(userProfile.map { ", age \($0.age)" } ?? "")",
+            "Quit status: \(quitPlan.quitStatus.title)",
+            "Readiness stage: \(quitPlan.readinessStage)",
+            "Daily focus: \(dailyFocus)",
             "Quit mode: \(quitPlan.quitMode)",
             "Quit date: \(Self.coachDateLabel(quitPlan.quitDate))",
             "Primary reason: \(reasonForCravingMode())",
             "Today risk: \(insights.todayRisk.level.rawValue) - \(insights.todayRisk.summary)",
             "Progress: \(insights.smokeFreeSummary), \(insights.cravingsHandled) cravings handled, \(insights.moneySavedSummary) saved."
         ]
+
+        if let quitReadiness {
+            lines.append("Confidence: \(Self.coachScoreLabel(quitReadiness.confidence)).")
+            if !quitReadiness.openedAppReason.isEmpty {
+                lines.append("Opened app because: \(quitReadiness.openedAppReason)")
+            }
+        }
+
+        if let smokingBackground {
+            lines.append(
+                "Smoking background: first cigarette \(smokingBackground.firstCigaretteTiming.title.lowercased()), previous attempts \(smokingBackground.previousQuitAttemptCount.title), longest quit \(smokingBackground.longestQuitAttempt.title.lowercased()), main challenge \(smokingBackground.mainChallenge.title.lowercased())."
+            )
+        }
+
+        if let savingsGoalSummary {
+            lines.append(savingsGoalSummary)
+        }
+
+        let planSummary = firstPlanSummary
+        if !planSummary.isEmpty {
+            lines.append("Generated plan summary: \(planSummary)")
+        }
 
         if let taperTarget = todayTaperTarget {
             lines.append("Today's taper target: \(Self.coachCigaretteLabel(taperTarget)).")
@@ -2287,27 +2456,147 @@ final class TeoPateoStore: ObservableObject {
     }
 
     private static func normalizedOnboardingTriggers(_ triggers: [String]) -> [String] {
-        let validTriggers = Set(QuitTriggerCatalog.onboardingTriggers)
         let normalized = triggers
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { validTriggers.contains($0) }
+            .filter { !$0.isEmpty }
 
-        let uniqueTriggers = normalized.reduce(into: [String]()) { result, trigger in
-            if !result.contains(trigger) {
-                result.append(trigger)
-            }
-        }
+        let uniqueTriggers = uniqueStrings(normalized)
 
         return uniqueTriggers.isEmpty
             ? Array(QuitTriggerCatalog.onboardingTriggers.prefix(3))
-            : uniqueTriggers
+            : Array(uniqueTriggers.prefix(6))
+    }
+
+    private static func normalizedReplacementActions(_ actions: [String]) -> [String] {
+        let normalized = actions
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let uniqueActions = uniqueStrings(normalized)
+        return uniqueActions.isEmpty ? ["Drink water", "Walk", "Breathing"] : uniqueActions
+    }
+
+    private static func uniqueStrings(_ values: [String]) -> [String] {
+        values.reduce(into: [String]()) { result, value in
+            if !result.contains(where: { $0.caseInsensitiveCompare(value) == .orderedSame }) {
+                result.append(value)
+            }
+        }
+    }
+
+    private static func resolvedQuitMode(
+        preference: QuitApproachPreference,
+        status: QuitStatus,
+        confidence: Double,
+        cigarettesPerDay: Double,
+        firstCigaretteTiming: FirstCigaretteTiming
+    ) -> String {
+        switch preference {
+        case .taper:
+            return status == .alreadyQuit ? "Cold turkey" : "Taper"
+        case .coldTurkey:
+            return "Cold turkey"
+        case .notSure:
+            if status == .alreadyQuit || status == .readyToQuit && confidence >= 7 && cigarettesPerDay <= 10 {
+                return "Cold turkey"
+            }
+            if firstCigaretteTiming == .withinFiveMinutes || firstCigaretteTiming == .withinThirtyMinutes {
+                return "Taper"
+            }
+            return status == .cuttingDown || confidence <= 6 || cigarettesPerDay > 10 ? "Taper" : "Cold turkey"
+        }
+    }
+
+    private static func resolvedQuitDate(
+        preference: QuitDatePreference,
+        selectedDate: Date,
+        status: QuitStatus,
+        confidence: Double,
+        now: Date,
+        calendar: Calendar
+    ) -> Date {
+        let today = calendar.startOfDay(for: now)
+        switch preference {
+        case .alreadyQuit:
+            return min(selectedDate, today)
+        case .chooseDate:
+            return max(calendar.startOfDay(for: selectedDate), today)
+        case .helpMeChoose:
+            let days: Int
+            switch status {
+            case .alreadyQuit:
+                days = 0
+            case .readyToQuit:
+                days = confidence >= 7 ? 7 : 10
+            case .cuttingDown:
+                days = confidence >= 7 ? 14 : 21
+            case .thinkingAboutIt, .unsure:
+                days = 21
+            }
+            return calendar.date(byAdding: .day, value: days, to: today) ?? today
+        }
+    }
+
+    private static func generatedTaperSettings(
+        cigarettesPerDay: Double,
+        confidence: Double,
+        firstCigaretteTiming: FirstCigaretteTiming,
+        previousAttempts: PreviousQuitAttemptCount,
+        mainChallenge: SmokingChallenge,
+        mode: String
+    ) -> (target: Double, step: Double, intervalDays: Int) {
+        guard mode == "Taper" else {
+            return (0, 0, 3)
+        }
+
+        let needsGentlerStart = confidence <= 4 ||
+            firstCigaretteTiming == .withinFiveMinutes ||
+            previousAttempts == .fourOrMore ||
+            mainChallenge == .withdrawal
+        let step = needsGentlerStart ? 1.0 : min(max((cigarettesPerDay * 0.2).rounded(), 1), 3)
+        let intervalDays = needsGentlerStart ? 4 : (confidence >= 8 ? 2 : 3)
+        return (max(cigarettesPerDay - step, 0), step, intervalDays)
+    }
+
+    private static func generatedDailyFocus(
+        status: QuitStatus,
+        selectedTriggers: [String],
+        mainChallenge: SmokingChallenge
+    ) -> String {
+        let primaryTrigger = selectedTriggers.first ?? mainChallenge.triggerLabel
+        switch status {
+        case .alreadyQuit:
+            return "Protect \(primaryTrigger.lowercased()) with a 10-minute rescue before the urge peaks."
+        case .readyToQuit:
+            return "Rehearse the \(primaryTrigger.lowercased()) rule once before the quit date."
+        case .cuttingDown:
+            return "Delay one \(primaryTrigger.lowercased()) cigarette and use a replacement first."
+        case .thinkingAboutIt:
+            return "Notice the next \(primaryTrigger.lowercased()) cue and try one replacement without pressure."
+        case .unsure:
+            return "Log one smoking moment and what the \(mainChallenge.title.lowercased()) was asking for."
+        }
+    }
+
+    private static func generatedPlanSummary(
+        status: QuitStatus,
+        selectedTriggers: [String],
+        mainChallenge: SmokingChallenge,
+        mode: String,
+        dailyFocus: String,
+        primaryReason: String
+    ) -> String {
+        let triggerSummary = selectedTriggers.prefix(3).joined(separator: ", ")
+        let triggerText = triggerSummary.isEmpty ? mainChallenge.triggerLabel : triggerSummary
+        return "You are in \(status.readinessStage.lowercased()) with \(mode.lowercased()) as the first strategy. The first rescue plan protects \(triggerText). \(dailyFocus) Your reason to protect is \"\(primaryReason)\"."
     }
 
     private static func onboardingReplacementActivities(
         for triggers: [String],
+        selectedActions: [String],
         now: Date
     ) -> [ReplacementActivity] {
-        var activities = triggers.map { trigger in
+        let triggerActivities = triggers.prefix(4).map { trigger in
             ReplacementActivity(
                 title: onboardingActivityTitle(for: trigger),
                 instruction: onboardingActivityInstruction(for: trigger),
@@ -2318,73 +2607,100 @@ final class TeoPateoStore: ObservableObject {
             )
         }
 
-        activities.append(
+        let actionActivities = selectedActions.map { action in
             ReplacementActivity(
-                title: "Box breathing",
-                instruction: "Breathe in 4, hold 4, out 4, hold 4. Repeat five times.",
-                category: .breathing,
+                title: onboardingActivityTitle(forAction: action),
+                instruction: onboardingActivityInstruction(forAction: action),
+                category: onboardingActivityCategory(forAction: action),
                 createdAt: now,
                 updatedAt: now
             )
-        )
-        activities.append(
-            ReplacementActivity(
-                title: "Write one sentence",
-                instruction: "Name the trigger and the next right action.",
-                category: .journaling,
-                createdAt: now,
-                updatedAt: now
-            )
-        )
+        }
 
-        return activities
+        return (triggerActivities + actionActivities).uniquedByTitle().prefix(8).map { $0 }
     }
 
-    private static func onboardingAction(for trigger: String) -> String {
+    private static func onboardingRiskySituations(
+        triggers: [String],
+        selectedReplacementActions: [String],
+        mainChallenge: SmokingChallenge,
+        now: Date
+    ) -> [RiskySituation] {
+        let backup = "Start the 10-minute rescue before leaving the current place."
+        return triggers.prefix(3).map { trigger in
+            RiskySituation(
+                title: trigger,
+                expectedContext: "Risk may rise when \(trigger.lowercased()) overlaps with \(mainChallenge.title.lowercased()).",
+                preventionPlan: onboardingAction(
+                    for: trigger,
+                    selectedReplacementActions: selectedReplacementActions,
+                    mainChallenge: mainChallenge
+                ),
+                backupAction: backup,
+                createdAt: now,
+                updatedAt: now
+            )
+        }
+    }
+
+    private static func onboardingAction(
+        for trigger: String,
+        selectedReplacementActions: [String] = [],
+        mainChallenge: SmokingChallenge = .cravings
+    ) -> String {
+        let preferredAction = selectedReplacementActions.first.map { " Start with \($0.lowercased())." } ?? ""
         switch trigger {
-        case "Coffee":
-            return "Drink a full glass of water first, then wait 10 minutes before deciding."
+        case "Coffee", "After coffee":
+            return "Drink a full glass of water first, then wait 10 minutes before deciding.\(preferredAction)"
         case "After meals":
-            return "Brush teeth or chew gum as soon as the meal ends."
-        case "Work stress":
+            return "Brush teeth or chew gum as soon as the meal ends.\(preferredAction)"
+        case "Work stress", "Work breaks", "Work pressure", "Stress":
             return "Step away from the task, walk for 10 minutes, then choose the next small action."
-        case "Driving or commute":
+        case "Driving", "Driving or commute":
             return "Keep cigarettes out of reach and start a short breathing reset before the trip."
         case "Alcohol":
             return "Keep a drink in hand, avoid stepping outside with smokers, and start the rescue timer if the urge spikes."
         case "Boredom":
             return "Start a five-minute reset task before making any smoking decision."
-        case "Social smoking":
+        case "Social smoking", "Friends who smoke", "Social pressure":
             return "Tell one person you are pausing for 10 minutes and stay away from the smoking spot."
-        case "Morning routine":
+        case "Morning", "Morning routine":
             return "Change the first 10 minutes: water, shower, or a short walk before coffee."
-        case "Evening wind-down":
+        case "Evening", "Before bed", "Evening wind-down":
             return "Put cigarettes out of sight and start the rescue timer before settling in."
+        case "Anger", "Anxiety", "Loneliness":
+            return "Name the feeling, slow your breathing, and wait 10 minutes before making a smoking decision."
+        case "Being outside", "Phone scrolling", "Waiting":
+            return "Keep your hands busy and start a replacement action before autopilot takes over."
         default:
-            return "Pause for 10 minutes, name the trigger, and choose one substitute."
+            return "Pause for 10 minutes, name the \(mainChallenge.title.lowercased()) cue, and choose one substitute."
         }
     }
 
     private static func onboardingActivityTitle(for trigger: String) -> String {
         switch trigger {
-        case "Coffee":
+        case "Coffee", "After coffee":
             return "Cold water first"
         case "After meals":
             return "Brush or chew"
-        case "Work stress":
+        case "Work stress", "Work breaks", "Work pressure", "Stress":
             return "Walk one block"
-        case "Driving or commute":
+        case "Driving", "Driving or commute":
             return "Commute breathing"
         case "Alcohol":
             return "Step back inside"
         case "Boredom":
             return "Five-minute reset"
-        case "Social smoking":
+        case "Social smoking", "Friends who smoke", "Social pressure":
             return "Stay with the room"
-        case "Morning routine":
+        case "Morning", "Morning routine":
             return "Change the first 10"
-        case "Evening wind-down":
+        case "Evening", "Before bed", "Evening wind-down":
             return "Hands-busy reset"
+        case "Anger", "Anxiety", "Loneliness":
+            return "Name the feeling"
+        case "Being outside", "Phone scrolling", "Waiting":
+            return "Hands-busy pause"
         default:
             return "10-minute substitute"
         }
@@ -2392,24 +2708,28 @@ final class TeoPateoStore: ObservableObject {
 
     private static func onboardingActivityInstruction(for trigger: String) -> String {
         switch trigger {
-        case "Coffee":
+        case "Coffee", "After coffee":
             return "Finish one full glass of cold water before deciding anything."
         case "After meals":
             return "Brush teeth or chew gum until the urge drops."
-        case "Work stress":
+        case "Work stress", "Work breaks", "Work pressure", "Stress":
             return "Walk away from the task until the timer drops below 6:00."
-        case "Driving or commute":
+        case "Driving", "Driving or commute":
             return "Take five slow breaths before starting the car or leaving transit."
         case "Alcohol":
             return "Move away from the smoking cue and keep both hands busy before going outside."
         case "Boredom":
             return "Tidy one small area or start one quick errand until the urge changes."
-        case "Social smoking":
+        case "Social smoking", "Friends who smoke", "Social pressure":
             return "Stay inside for 10 minutes and choose one hands-busy reset."
-        case "Morning routine":
+        case "Morning", "Morning routine":
             return "Drink water and move for two minutes before coffee or phone checks."
-        case "Evening wind-down":
+        case "Evening", "Before bed", "Evening wind-down":
             return "Hold a cold drink, stretch, or keep both hands busy until the timer ends."
+        case "Anger", "Anxiety", "Loneliness":
+            return "Write one sentence that names the feeling, then breathe for one minute."
+        case "Being outside", "Phone scrolling", "Waiting":
+            return "Keep both hands busy and delay the smoking decision until the timer drops."
         default:
             return "Choose one substitute and stay with it until the timer ends."
         }
@@ -2417,16 +2737,81 @@ final class TeoPateoStore: ObservableObject {
 
     private static func onboardingActivityCategory(for trigger: String) -> ReplacementActivityCategory {
         switch trigger {
-        case "Work stress", "Morning routine":
+        case "Work stress", "Work breaks", "Work pressure", "Stress", "Morning", "Morning routine":
             return .movement
-        case "Driving or commute":
+        case "Driving", "Driving or commute", "Anxiety":
             return .breathing
-        case "Coffee", "After meals", "Evening wind-down":
+        case "Coffee", "After coffee", "After meals", "Evening", "Before bed", "Evening wind-down":
             return .sensory
         case "Alcohol":
             return .sensory
-        case "Social smoking":
+        case "Anger", "Loneliness":
+            return .journaling
+        case "Social smoking", "Friends who smoke", "Social pressure":
             return .distraction
+        default:
+            return .distraction
+        }
+    }
+
+    private static func onboardingActivityTitle(forAction action: String) -> String {
+        switch action {
+        case "Drink water":
+            return "Drink cold water"
+        case "Walk":
+            return "Walk for 10"
+        case "Breathing":
+            return "Box breathing"
+        case "Chewing gum":
+            return "Chew through the urge"
+        case "Brush teeth":
+            return "Brush teeth"
+        case "Message someone":
+            return "Message a person"
+        case "Journal":
+            return "Write one sentence"
+        case "Short task":
+            return "Five-minute reset"
+        default:
+            return action
+        }
+    }
+
+    private static func onboardingActivityInstruction(forAction action: String) -> String {
+        switch action {
+        case "Drink water":
+            return "Finish one full glass before deciding anything."
+        case "Walk":
+            return "Walk until the timer drops below 6:00."
+        case "Breathing":
+            return "Breathe in 4, hold 4, out 4, hold 4. Repeat five times."
+        case "Chewing gum":
+            return "Chew gum until the first wave of the urge drops."
+        case "Brush teeth":
+            return "Brush teeth as soon as the cue ends."
+        case "Message someone":
+            return "Send a short text before stepping toward the smoking cue."
+        case "Journal":
+            return "Name the trigger and the next right action."
+        case "Short task":
+            return "Tidy one small area or finish one two-minute task."
+        default:
+            return "Use this as the first 10-minute substitute."
+        }
+    }
+
+    private static func onboardingActivityCategory(forAction action: String) -> ReplacementActivityCategory {
+        switch action {
+        case "Walk":
+            return .movement
+        case "Breathing":
+            return .breathing
+        case "Drink water", "Chewing gum", "Brush teeth":
+            return .sensory
+        case "Message someone":
+            return .distraction
+        case "Journal":
+            return .journaling
         default:
             return .distraction
         }
@@ -2510,6 +2895,10 @@ enum AppTab: String, CaseIterable {
 private final class InMemoryTeoPateoRepository: TeoPateoRepository {
     private var appSettings: AppSettings?
     private var notificationSettings: NotificationSettings?
+    private var userProfile: UserProfile?
+    private var quitReadiness: QuitReadiness?
+    private var smokingBackground: SmokingBackground?
+    private var savingsGoal: SavingsGoal?
     private var quitPlan: QuitPlan?
     private var dailyCheckIns: [DailyCheckIn] = []
     private var cravingEvents: [CravingEvent] = []
@@ -2528,6 +2917,10 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
         PersistedTeoPateoSnapshot(
             appSettings: appSettings,
             notificationSettings: notificationSettings,
+            userProfile: userProfile,
+            quitReadiness: quitReadiness,
+            smokingBackground: smokingBackground,
+            savingsGoal: savingsGoal,
             quitPlan: quitPlan,
             dailyCheckIns: dailyCheckIns,
             cravingEvents: cravingEvents,
@@ -2555,6 +2948,38 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
 
     func saveNotificationSettings(_ settings: NotificationSettings) throws {
         notificationSettings = settings
+    }
+
+    func fetchUserProfile() throws -> UserProfile? {
+        userProfile
+    }
+
+    func saveUserProfile(_ profile: UserProfile) throws {
+        userProfile = profile
+    }
+
+    func fetchQuitReadiness() throws -> QuitReadiness? {
+        quitReadiness
+    }
+
+    func saveQuitReadiness(_ readiness: QuitReadiness) throws {
+        quitReadiness = readiness
+    }
+
+    func fetchSmokingBackground() throws -> SmokingBackground? {
+        smokingBackground
+    }
+
+    func saveSmokingBackground(_ background: SmokingBackground) throws {
+        smokingBackground = background
+    }
+
+    func fetchSavingsGoal() throws -> SavingsGoal? {
+        savingsGoal
+    }
+
+    func saveSavingsGoal(_ goal: SavingsGoal) throws {
+        savingsGoal = goal
     }
 
     func fetchQuitPlan() throws -> QuitPlan? {
@@ -2659,6 +3084,16 @@ private extension Array where Element: Identifiable {
             result.append(element)
         }
         return result
+    }
+}
+
+private extension Array where Element == ReplacementActivity {
+    func uniquedByTitle() -> [ReplacementActivity] {
+        reduce(into: [ReplacementActivity]()) { result, activity in
+            if !result.contains(where: { $0.title.caseInsensitiveCompare(activity.title) == .orderedSame }) {
+                result.append(activity)
+            }
+        }
     }
 }
 

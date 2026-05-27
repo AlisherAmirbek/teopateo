@@ -101,50 +101,48 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         let repository = try makeRepository()
         let store = TeoPateoStore(repository: repository)
 
-        XCTAssertFalse(store.completeOnboarding(OnboardingPlanInput(
-            cigarettesPerDay: 10,
-            costPerPack: 12,
-            quitDate: fixedDate(50),
-            quitMode: "Taper",
-            selectedTriggers: ["Coffee"],
-            primaryReason: "   "
-        )))
+        XCTAssertFalse(store.completeOnboarding(makeOnboardingInput(primaryReason: "   ")))
         XCTAssertFalse(store.isOnboardingCompleted)
         XCTAssertTrue(store.lastSaveStatus.isFailure)
 
-        XCTAssertTrue(store.completeOnboarding(OnboardingPlanInput(
+        XCTAssertTrue(store.completeOnboarding(makeOnboardingInput(
             cigarettesPerDay: -5,
             costPerPack: -1,
             quitDate: fixedDate(60),
-            quitMode: "Unexpected mode",
-            selectedTriggers: ["Unknown", "Coffee", "Unknown", "Coffee"],
+            approachPreference: .notSure,
+            commonSmokingTimes: ["After coffee", "After coffee"],
             primaryReason: "My breathing"
         )))
 
         XCTAssertEqual(store.currentQuitPlan.quitMode, "Taper")
         XCTAssertEqual(store.currentQuitPlan.baselineCigarettesPerDay, 0)
         XCTAssertEqual(store.currentQuitPlan.costPerPack, 0)
-        XCTAssertEqual(store.triggerRules.map(\.trigger), ["Coffee"])
+        XCTAssertEqual(store.triggerRules.map(\.trigger), ["After coffee", "Cravings"])
+        XCTAssertEqual(store.userProfile?.nickname, "Alex")
+        XCTAssertEqual(store.quitReadiness?.status, .readyToQuit)
+        XCTAssertEqual(store.savingsGoal?.displayTitle, "Health")
 
         let reloaded = TeoPateoStore(repository: repository)
         XCTAssertTrue(reloaded.isOnboardingCompleted)
-        XCTAssertEqual(reloaded.triggerRules.map(\.trigger), ["Coffee"])
+        XCTAssertEqual(reloaded.triggerRules.map(\.trigger), ["After coffee", "Cravings"])
     }
 
-    func testOnboardingUsesDefaultTriggerSetWhenNoValidTriggersAreSelected() throws {
+    func testOnboardingUsesMainChallengeWhenNoSurveyTriggersAreSelected() throws {
         let store = TeoPateoStore(repository: try makeRepository())
 
-        XCTAssertTrue(store.completeOnboarding(OnboardingPlanInput(
+        XCTAssertTrue(store.completeOnboarding(makeOnboardingInput(
             cigarettesPerDay: 6,
             costPerPack: 10,
             quitDate: fixedDate(70),
-            quitMode: "Cold turkey",
-            selectedTriggers: ["Unknown"],
+            approachPreference: .coldTurkey,
+            commonSmokingTimes: [],
+            emotionalTriggers: [],
+            situationalTriggers: [],
             primaryReason: "My family"
         )))
 
-        XCTAssertEqual(store.triggerRules.map(\.trigger), ["Coffee", "After meals", "Work stress"])
-        XCTAssertTrue(store.replacementActivities.contains { $0.linkedTrigger == "After meals" })
+        XCTAssertEqual(store.triggerRules.map(\.trigger), ["Cravings"])
+        XCTAssertTrue(store.replacementActivities.contains { $0.linkedTrigger == "Cravings" })
         XCTAssertEqual(store.currentQuitPlan.taperTargetCigarettesPerDay, 0)
     }
 

@@ -41,10 +41,14 @@ final class LocalPersistenceTests: XCTestCase {
             "coach_messages",
             "app_settings",
             "notification_settings",
-            "risky_situations"
+            "risky_situations",
+            "user_profile",
+            "quit_readiness",
+            "smoking_background",
+            "savings_goal"
         ]
 
-        XCTAssertEqual(try repository.schemaVersion(), 6)
+        XCTAssertEqual(try repository.schemaVersion(), 7)
         XCTAssertTrue(try repository.tableNames().isSuperset(of: expectedTables))
     }
 
@@ -440,12 +444,30 @@ final class LocalPersistenceTests: XCTestCase {
 
         XCTAssertTrue(store.completeOnboarding(
             OnboardingPlanInput(
+                nickname: "Mira",
+                age: 34,
+                quitStatus: .readyToQuit,
+                confidence: 7,
+                openedAppReason: "I nearly smoked after work.",
+                ageStartedSmoking: 19,
+                yearsSmoking: nil,
                 cigarettesPerDay: 12,
+                firstCigaretteTiming: .withinThirtyMinutes,
+                previousQuitAttemptCount: .twoToThree,
+                longestQuitAttempt: .fewWeeks,
+                mainChallenge: .stress,
+                commonSmokingTimes: ["After coffee"],
+                emotionalTriggers: ["Stress"],
+                situationalTriggers: ["Work pressure"],
+                quitDatePreference: .chooseDate,
                 costPerPack: 14,
+                cigarettesPerPack: 20,
                 quitDate: fixedDate(200),
-                quitMode: "Cold turkey",
-                selectedTriggers: ["Coffee", "Work stress"],
-                primaryReason: "I want to breathe easier."
+                approachPreference: .coldTurkey,
+                replacementActions: ["Drink water", "Walk"],
+                primaryReason: "I want to breathe easier.",
+                savingsGoalTitle: "Trip",
+                customSavingsGoal: ""
             )
         ))
 
@@ -454,16 +476,26 @@ final class LocalPersistenceTests: XCTestCase {
         XCTAssertEqual(store.currentQuitPlan.quitMode, "Cold turkey")
         XCTAssertEqual(store.currentQuitPlan.baselineCigarettesPerDay, 12)
         XCTAssertEqual(store.currentQuitPlan.costPerPack, 14)
-        XCTAssertEqual(store.triggerRules.map(\.trigger), ["Coffee", "Work stress"])
+        XCTAssertEqual(store.currentQuitPlan.quitStatus, .readyToQuit)
+        XCTAssertEqual(store.currentQuitPlan.readinessStage, "Quit-date preparation")
+        XCTAssertFalse(store.currentQuitPlan.generatedDailyFocus.isEmpty)
+        XCTAssertEqual(store.triggerRules.map(\.trigger), ["After coffee", "Stress", "Work pressure"])
         XCTAssertEqual(store.userReasons.first?.text, "I want to breathe easier.")
+        XCTAssertEqual(store.userProfile?.nickname, "Mira")
+        XCTAssertEqual(store.quitReadiness?.openedAppReason, "I nearly smoked after work.")
+        XCTAssertEqual(store.smokingBackground?.mainChallenge, .stress)
+        XCTAssertEqual(store.savingsGoal?.displayTitle, "Trip")
         XCTAssertTrue(store.supportContacts.isEmpty)
-        XCTAssertTrue(store.replacementActivities.contains { $0.linkedTrigger == "Coffee" })
+        XCTAssertTrue(store.replacementActivities.contains { $0.linkedTrigger == "After coffee" })
+        XCTAssertFalse(store.riskySituations.isEmpty)
         XCTAssertTrue(store.currentQuitPlan.medicationNote.isEmpty)
 
         let reloadedStore = TeoPateoStore(repository: repository)
         XCTAssertTrue(reloadedStore.isOnboardingCompleted)
         XCTAssertEqual(reloadedStore.currentQuitPlan.quitMode, "Cold turkey")
         XCTAssertEqual(reloadedStore.userReasons.first?.text, "I want to breathe easier.")
+        XCTAssertEqual(reloadedStore.userProfile?.nickname, "Mira")
+        XCTAssertEqual(reloadedStore.savingsGoal?.displayTitle, "Trip")
         XCTAssertTrue(reloadedStore.supportContacts.isEmpty)
     }
 

@@ -107,6 +107,53 @@ class TeoPateoTestCase: XCTestCase {
         )
     }
 
+    func makeOnboardingInput(
+        nickname: String = "Alex",
+        age: Int = 32,
+        quitStatus: QuitStatus = .readyToQuit,
+        confidence: Double = 6,
+        openedAppReason: String = "",
+        cigarettesPerDay: Double = 10,
+        costPerPack: Double = 12,
+        cigarettesPerPack: Int = 20,
+        quitDate: Date? = nil,
+        approachPreference: QuitApproachPreference = .taper,
+        commonSmokingTimes: [String] = ["After coffee"],
+        emotionalTriggers: [String] = [],
+        situationalTriggers: [String] = [],
+        replacementActions: [String] = ["Drink water", "Walk"],
+        primaryReason: String = "My breathing",
+        savingsGoalTitle: String = "Health",
+        customSavingsGoal: String = ""
+    ) -> OnboardingPlanInput {
+        OnboardingPlanInput(
+            nickname: nickname,
+            age: age,
+            quitStatus: quitStatus,
+            confidence: confidence,
+            openedAppReason: openedAppReason,
+            ageStartedSmoking: 18,
+            yearsSmoking: nil,
+            cigarettesPerDay: cigarettesPerDay,
+            firstCigaretteTiming: .withinThirtyMinutes,
+            previousQuitAttemptCount: .one,
+            longestQuitAttempt: .fewDays,
+            mainChallenge: .cravings,
+            commonSmokingTimes: commonSmokingTimes,
+            emotionalTriggers: emotionalTriggers,
+            situationalTriggers: situationalTriggers,
+            quitDatePreference: .chooseDate,
+            costPerPack: costPerPack,
+            cigarettesPerPack: cigarettesPerPack,
+            quitDate: quitDate ?? fixedDate(50),
+            approachPreference: approachPreference,
+            replacementActions: replacementActions,
+            primaryReason: primaryReason,
+            savingsGoalTitle: savingsGoalTitle,
+            customSavingsGoal: customSavingsGoal
+        )
+    }
+
     func makeCheckIn(
         id: Int,
         date: Date,
@@ -351,6 +398,38 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
     func saveNotificationSettings(_ settings: NotificationSettings) throws {
         try failIfNeeded(.saveNotificationSettings)
         try base.saveNotificationSettings(settings)
+    }
+
+    func fetchUserProfile() throws -> UserProfile? {
+        try base.fetchUserProfile()
+    }
+
+    func saveUserProfile(_ profile: UserProfile) throws {
+        try base.saveUserProfile(profile)
+    }
+
+    func fetchQuitReadiness() throws -> QuitReadiness? {
+        try base.fetchQuitReadiness()
+    }
+
+    func saveQuitReadiness(_ readiness: QuitReadiness) throws {
+        try base.saveQuitReadiness(readiness)
+    }
+
+    func fetchSmokingBackground() throws -> SmokingBackground? {
+        try base.fetchSmokingBackground()
+    }
+
+    func saveSmokingBackground(_ background: SmokingBackground) throws {
+        try base.saveSmokingBackground(background)
+    }
+
+    func fetchSavingsGoal() throws -> SavingsGoal? {
+        try base.fetchSavingsGoal()
+    }
+
+    func saveSavingsGoal(_ goal: SavingsGoal) throws {
+        try base.saveSavingsGoal(goal)
     }
 
     func fetchQuitPlan() throws -> QuitPlan? {

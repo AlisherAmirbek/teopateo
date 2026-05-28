@@ -16,6 +16,8 @@ struct TodayView: View {
                     if !store.isOnboardingCompleted {
                         onboardingPrompt
                     }
+                    nextActionCard
+                    pendingSuggestionCard
                     mascot
                     planWeekCard
                     rescueButton
@@ -61,6 +63,62 @@ struct TodayView: View {
         }
         .quietCard()
         .padding(.top, 14)
+    }
+
+    @ViewBuilder
+    private var nextActionCard: some View {
+        let action = store.currentQuitPlan.nextBestAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        if store.isOnboardingCompleted && !action.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Next best action")
+                    .font(.rounded(.headline, weight: .bold))
+                Text(action)
+                    .font(.rounded(.subheadline))
+                    .foregroundColor(QuitTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let focus = store.todaysFocusPlan {
+                    Divider()
+                    Text(focus.title)
+                        .font(.rounded(.caption, weight: .bold))
+                        .foregroundColor(QuitTheme.cocoa)
+                    Text(focus.action)
+                        .font(.rounded(.caption))
+                        .foregroundColor(QuitTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .quietCard()
+            .padding(.top, 14)
+        }
+    }
+
+    @ViewBuilder
+    private var pendingSuggestionCard: some View {
+        if let suggestion = store.highestPriorityPendingPlanSuggestion {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Plan suggestion")
+                    .font(.rounded(.headline, weight: .bold))
+                Text(suggestion.title)
+                    .font(.rounded(.subheadline, weight: .bold))
+                    .foregroundColor(QuitTheme.ink)
+                Text(suggestion.evidenceSummary)
+                    .font(.rounded(.caption))
+                    .foregroundColor(QuitTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button("Accept") {
+                        store.acceptPlanSuggestion(suggestion.id)
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                    Button("Review") {
+                        store.selectedTab = .plan
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                }
+            }
+            .quietCard()
+            .padding(.top, 14)
+        }
     }
 
     private var header: some View {

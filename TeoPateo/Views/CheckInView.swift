@@ -10,6 +10,7 @@ struct CheckInView: View {
         RootScreen {
             ScreenHeader(eyebrow: "Daily check-in", title: "Record today without judging it.")
             StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
+            dailyFocus
 
             if let today = store.todayCheckIn {
                 existingCheckIn(today)
@@ -31,6 +32,21 @@ struct CheckInView: View {
             .opacity(store.smokedToday == nil ? 0.45 : 1)
             .accessibilityIdentifier("checkin-save-button")
         }
+        .onAppear {
+            recoveryAction = store.currentQuitPlan.slipRecoveryPlan.defaultRecoveryAction
+        }
+    }
+
+    private var dailyFocus: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Today's plan")
+                .font(.rounded(.headline, weight: .bold))
+            Text(store.dailyFocus)
+                .font(.rounded(.subheadline))
+                .foregroundColor(QuitTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .quietCard()
     }
 
     private func existingCheckIn(_ checkIn: DailyCheckIn) -> some View {
@@ -97,7 +113,7 @@ struct CheckInView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Slip recovery")
                 .font(.rounded(.headline, weight: .bold))
-            Text("This stays part of the same quit attempt. Capture what happened and choose the next action.")
+            Text(store.currentQuitPlan.slipRecoveryPlan.message)
                 .font(.rounded(.subheadline))
                 .foregroundColor(QuitTheme.muted)
 

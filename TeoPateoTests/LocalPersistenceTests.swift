@@ -48,7 +48,7 @@ final class LocalPersistenceTests: XCTestCase {
             "savings_goal"
         ]
 
-        XCTAssertEqual(try repository.schemaVersion(), 7)
+        XCTAssertEqual(try repository.schemaVersion(), 8)
         XCTAssertTrue(try repository.tableNames().isSuperset(of: expectedTables))
     }
 

@@ -444,6 +444,39 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(strongStore.calculatedInsights.topTriggers.first?.name, "Evening")
     }
 
+    func testAcceptedPlanSuggestionUpdatesPlanAfterRepeatedCravingTrigger() throws {
+        let repository = try makeRepository()
+        try repository.saveQuitPlan(makeQuitPlan(triggerRules: []))
+        let store = TeoPateoStore(repository: repository)
+
+        for index in 0..<3 {
+            store.selectedTriggers = ["Coffee"]
+            XCTAssertTrue(store.completeCravingWithoutSmoking(
+                startedAt: fixedDate(700 + index),
+                completedAt: fixedDate(710 + index),
+                durationSeconds: 300
+            ))
+        }
+
+        let suggestion = try XCTUnwrap(store.highestPriorityPendingPlanSuggestion)
+        XCTAssertEqual(suggestion.type, .addTriggerRule)
+        XCTAssertEqual(suggestion.trigger, "Coffee")
+
+        XCTAssertTrue(store.acceptPlanSuggestion(suggestion.id))
+        XCTAssertEqual(store.triggerRules.first?.trigger, "Coffee")
+        XCTAssertEqual(
+            store.currentQuitPlan.pendingPlanSuggestions.first { $0.id == suggestion.id }?.status,
+            .accepted
+        )
+
+        let reloaded = TeoPateoStore(repository: repository)
+        XCTAssertEqual(reloaded.triggerRules.first?.trigger, "Coffee")
+        XCTAssertEqual(
+            reloaded.currentQuitPlan.pendingPlanSuggestions.first { $0.id == suggestion.id }?.status,
+            .accepted
+        )
+    }
+
     func testHistoryLookupAndNoteUpdatesIgnoreMissingOrNoSmokeRecords() throws {
         let store = TeoPateoStore(repository: try makeRepository())
 

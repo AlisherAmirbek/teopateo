@@ -464,7 +464,11 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 sql: """
                 SELECT id, quit_date, quit_mode, medication_note,
                        quit_status, readiness_stage, generated_daily_focus,
-                       generated_plan_summary,
+                       generated_plan_summary, plan_summary_json,
+                       first_week_goal, next_best_action, strategy_plan_json,
+                       generated_trigger_rules_json, craving_rescue_plan_json,
+                       slip_recovery_plan_json, daily_focus_plan_json,
+                       savings_plan_json, pending_plan_suggestions_json,
                        baseline_cigarettes_per_day, cost_per_pack, cigarettes_per_pack,
                        taper_target_cigarettes_per_day, taper_reduction_step,
                        taper_reduction_interval_days, attempt_started_at,
@@ -486,8 +490,39 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 quitMode: row["quit_mode"],
                 quitStatus: QuitStatus(rawValue: row["quit_status"]) ?? .readyToQuit,
                 readinessStage: row["readiness_stage"],
+                planSummary: decodeJSON(
+                    PlanSummary.self,
+                    from: row,
+                    column: "plan_summary_json",
+                    fallback: PlanSummary(
+                        summary: row["generated_plan_summary"],
+                        quitDate: date(row, "quit_date"),
+                        quitStatus: QuitStatus(rawValue: row["quit_status"]) ?? .readyToQuit,
+                        readinessStage: row["readiness_stage"]
+                    )
+                ),
+                firstWeekGoal: row["first_week_goal"],
+                nextBestAction: row["next_best_action"],
                 generatedDailyFocus: row["generated_daily_focus"],
                 generatedPlanSummary: row["generated_plan_summary"],
+                strategyPlan: decodeJSON(
+                    QuitStrategyPlan.self,
+                    from: row,
+                    column: "strategy_plan_json",
+                    fallback: QuitStrategyPlan(
+                        strategyType: row["quit_mode"] == "Cold turkey" ? .coldTurkey : .taper,
+                        quitDate: date(row, "quit_date"),
+                        taperTarget: row["taper_target_cigarettes_per_day"],
+                        taperStep: row["taper_reduction_step"],
+                        taperIntervalDays: row["taper_reduction_interval_days"]
+                    )
+                ),
+                generatedTriggerRules: decodeJSON([GeneratedTriggerRule].self, from: row, column: "generated_trigger_rules_json", fallback: []),
+                cravingRescuePlan: decodeJSON(CravingRescuePlan.self, from: row, column: "craving_rescue_plan_json", fallback: CravingRescuePlan()),
+                slipRecoveryPlan: decodeJSON(SlipRecoveryPlan.self, from: row, column: "slip_recovery_plan_json", fallback: SlipRecoveryPlan()),
+                dailyFocusPlan: decodeJSON([DailyFocusPlan].self, from: row, column: "daily_focus_plan_json", fallback: []),
+                savingsPlan: decodeJSON(SavingsPlan.self, from: row, column: "savings_plan_json", fallback: SavingsPlan()),
+                pendingPlanSuggestions: decodeJSON([PlanAdjustmentSuggestion].self, from: row, column: "pending_plan_suggestions_json", fallback: []),
                 triggerRules: try fetchTriggerRules(db: db, quitPlanID: id),
                 medicationNote: row["medication_note"],
                 baselineCigarettesPerDay: row["baseline_cigarettes_per_day"],
@@ -504,12 +539,25 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
     }
 
     func saveQuitPlan(_ plan: QuitPlan) throws {
+        let planSummaryJSON = try encodeJSON(plan.planSummary)
+        let strategyPlanJSON = try encodeJSON(plan.strategyPlan)
+        let generatedTriggerRulesJSON = try encodeJSON(plan.generatedTriggerRules)
+        let cravingRescuePlanJSON = try encodeJSON(plan.cravingRescuePlan)
+        let slipRecoveryPlanJSON = try encodeJSON(plan.slipRecoveryPlan)
+        let dailyFocusPlanJSON = try encodeJSON(plan.dailyFocusPlan)
+        let savingsPlanJSON = try encodeJSON(plan.savingsPlan)
+        let pendingPlanSuggestionsJSON = try encodeJSON(plan.pendingPlanSuggestions)
+
         try dbQueue.write { db in
             try db.execute(literal: """
                 INSERT INTO quit_plans (
                     id, quit_date, quit_mode, medication_note,
                     quit_status, readiness_stage, generated_daily_focus,
-                    generated_plan_summary,
+                    generated_plan_summary, plan_summary_json,
+                    first_week_goal, next_best_action, strategy_plan_json,
+                    generated_trigger_rules_json, craving_rescue_plan_json,
+                    slip_recovery_plan_json, daily_focus_plan_json,
+                    savings_plan_json, pending_plan_suggestions_json,
                     baseline_cigarettes_per_day, cost_per_pack, cigarettes_per_pack,
                     taper_target_cigarettes_per_day, taper_reduction_step,
                     taper_reduction_interval_days, attempt_started_at,
@@ -524,6 +572,16 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     \(plan.readinessStage),
                     \(plan.generatedDailyFocus),
                     \(plan.generatedPlanSummary),
+                    \(planSummaryJSON),
+                    \(plan.firstWeekGoal),
+                    \(plan.nextBestAction),
+                    \(strategyPlanJSON),
+                    \(generatedTriggerRulesJSON),
+                    \(cravingRescuePlanJSON),
+                    \(slipRecoveryPlanJSON),
+                    \(dailyFocusPlanJSON),
+                    \(savingsPlanJSON),
+                    \(pendingPlanSuggestionsJSON),
                     \(plan.baselineCigarettesPerDay),
                     \(plan.costPerPack),
                     \(plan.cigarettesPerPack),
@@ -542,6 +600,16 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                     readiness_stage = excluded.readiness_stage,
                     generated_daily_focus = excluded.generated_daily_focus,
                     generated_plan_summary = excluded.generated_plan_summary,
+                    plan_summary_json = excluded.plan_summary_json,
+                    first_week_goal = excluded.first_week_goal,
+                    next_best_action = excluded.next_best_action,
+                    strategy_plan_json = excluded.strategy_plan_json,
+                    generated_trigger_rules_json = excluded.generated_trigger_rules_json,
+                    craving_rescue_plan_json = excluded.craving_rescue_plan_json,
+                    slip_recovery_plan_json = excluded.slip_recovery_plan_json,
+                    daily_focus_plan_json = excluded.daily_focus_plan_json,
+                    savings_plan_json = excluded.savings_plan_json,
+                    pending_plan_suggestions_json = excluded.pending_plan_suggestions_json,
                     baseline_cigarettes_per_day = excluded.baseline_cigarettes_per_day,
                     cost_per_pack = excluded.cost_per_pack,
                     cigarettes_per_pack = excluded.cigarettes_per_pack,
@@ -1491,6 +1559,23 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 """)
         }
 
+        migrator.registerMigration("v8") { db in
+            try db.execute(sql: """
+                ALTER TABLE quit_plans ADD COLUMN plan_summary_json TEXT NOT NULL DEFAULT '';
+                ALTER TABLE quit_plans ADD COLUMN first_week_goal TEXT NOT NULL DEFAULT '';
+                ALTER TABLE quit_plans ADD COLUMN next_best_action TEXT NOT NULL DEFAULT '';
+                ALTER TABLE quit_plans ADD COLUMN strategy_plan_json TEXT NOT NULL DEFAULT '';
+                ALTER TABLE quit_plans ADD COLUMN generated_trigger_rules_json TEXT NOT NULL DEFAULT '[]';
+                ALTER TABLE quit_plans ADD COLUMN craving_rescue_plan_json TEXT NOT NULL DEFAULT '';
+                ALTER TABLE quit_plans ADD COLUMN slip_recovery_plan_json TEXT NOT NULL DEFAULT '';
+                ALTER TABLE quit_plans ADD COLUMN daily_focus_plan_json TEXT NOT NULL DEFAULT '[]';
+                ALTER TABLE quit_plans ADD COLUMN savings_plan_json TEXT NOT NULL DEFAULT '';
+                ALTER TABLE quit_plans ADD COLUMN pending_plan_suggestions_json TEXT NOT NULL DEFAULT '[]';
+
+                PRAGMA user_version = 8;
+                """)
+        }
+
         return migrator
     }
 
@@ -1580,5 +1665,44 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
     private func optionalBool(_ row: Row, _ column: String) -> Bool? {
         let value: Int? = row[column]
         return value.map { $0 != 0 }
+    }
+
+    private func encodeJSON<T: Encodable>(_ value: T) throws -> String {
+        let data = try JSONEncoder.teoPateo.encode(value)
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func decodeJSON<T: Decodable>(
+        _ type: T.Type,
+        from row: Row,
+        column: String,
+        fallback: T
+    ) -> T {
+        let value: String? = row[column]
+        guard
+            let value,
+            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            let data = value.data(using: .utf8),
+            let decoded = try? JSONDecoder.teoPateo.decode(type, from: data)
+        else {
+            return fallback
+        }
+        return decoded
+    }
+}
+
+private extension JSONEncoder {
+    static var teoPateo: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        return encoder
+    }
+}
+
+private extension JSONDecoder {
+    static var teoPateo: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        return decoder
     }
 }

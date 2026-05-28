@@ -377,6 +377,17 @@ struct OnboardingView: View {
                 title: "TeoPateo will start with this rescue setup."
             )
 
+            VStack(alignment: .leading, spacing: 12) {
+                Text(generatedPlanPreview.planSummary.summary)
+                    .font(.rounded(.subheadline))
+                    .foregroundColor(QuitTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                OnboardingReviewRow(label: "First-week goal", value: generatedPlanPreview.firstWeekGoal)
+                OnboardingReviewRow(label: "Next best action", value: generatedPlanPreview.nextBestAction)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .quietCard()
+
             VStack(alignment: .leading, spacing: 14) {
                 OnboardingReviewRow(label: "Profile", value: "\(nickname.trimmingCharacters(in: .whitespacesAndNewlines)), age \(age)")
                 OnboardingReviewRow(label: "Status", value: quitStatus.title)
@@ -626,38 +637,49 @@ struct OnboardingView: View {
         return "\(currency(weekly)) per smoke-free week toward \(title.lowercased())."
     }
 
+    private var generatedPlanPreview: QuitPlan {
+        QuitPlanGenerator.generate(
+            from: currentPlanInput,
+            existingPlan: store.currentQuitPlan,
+            now: Date(),
+            calendar: Calendar.current
+        ).quitPlan
+    }
+
+    private var currentPlanInput: OnboardingPlanInput {
+        OnboardingPlanInput(
+            nickname: nickname,
+            age: age,
+            quitStatus: quitStatus,
+            confidence: confidence,
+            openedAppReason: "",
+            ageStartedSmoking: smokingStartMode == .ageStarted ? ageStartedSmoking : nil,
+            yearsSmoking: smokingStartMode == .yearsSmoking ? yearsSmoking : nil,
+            cigarettesPerDay: cigarettesPerDay,
+            firstCigaretteTiming: firstCigaretteTiming,
+            previousQuitAttemptCount: previousQuitAttemptCount,
+            longestQuitAttempt: longestQuitAttempt,
+            mainChallenge: mainChallenge,
+            commonSmokingTimes: orderedSelection(QuitTriggerCatalog.commonSmokingTimes, selected: selectedCommonSmokingTimes),
+            emotionalTriggers: orderedSelection(QuitTriggerCatalog.emotionalTriggers, selected: selectedEmotionalTriggers),
+            situationalTriggers: orderedSelection(QuitTriggerCatalog.situationalTriggers, selected: selectedSituationalTriggers),
+            quitDatePreference: quitDatePreference,
+            costPerPack: costPerPack,
+            cigarettesPerPack: cigarettesPerPack,
+            quitDate: quitDate,
+            approachPreference: approachPreference,
+            replacementActions: selectedReplacementActionList,
+            primaryReason: primaryReason,
+            savingsGoalTitle: savingsGoalTitle,
+            customSavingsGoal: customSavingsGoal
+        )
+    }
+
     private func advance() {
         guard canAdvance else { return }
 
         if step == finalStep {
-            store.completeOnboarding(
-                OnboardingPlanInput(
-                    nickname: nickname,
-                    age: age,
-                    quitStatus: quitStatus,
-                    confidence: confidence,
-                    openedAppReason: "",
-                    ageStartedSmoking: smokingStartMode == .ageStarted ? ageStartedSmoking : nil,
-                    yearsSmoking: smokingStartMode == .yearsSmoking ? yearsSmoking : nil,
-                    cigarettesPerDay: cigarettesPerDay,
-                    firstCigaretteTiming: firstCigaretteTiming,
-                    previousQuitAttemptCount: previousQuitAttemptCount,
-                    longestQuitAttempt: longestQuitAttempt,
-                    mainChallenge: mainChallenge,
-                    commonSmokingTimes: orderedSelection(QuitTriggerCatalog.commonSmokingTimes, selected: selectedCommonSmokingTimes),
-                    emotionalTriggers: orderedSelection(QuitTriggerCatalog.emotionalTriggers, selected: selectedEmotionalTriggers),
-                    situationalTriggers: orderedSelection(QuitTriggerCatalog.situationalTriggers, selected: selectedSituationalTriggers),
-                    quitDatePreference: quitDatePreference,
-                    costPerPack: costPerPack,
-                    cigarettesPerPack: cigarettesPerPack,
-                    quitDate: quitDate,
-                    approachPreference: approachPreference,
-                    replacementActions: selectedReplacementActionList,
-                    primaryReason: primaryReason,
-                    savingsGoalTitle: savingsGoalTitle,
-                    customSavingsGoal: customSavingsGoal
-                )
-            )
+            store.completeOnboarding(currentPlanInput)
             return
         }
 

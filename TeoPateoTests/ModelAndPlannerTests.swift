@@ -106,6 +106,161 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
         XCTAssertEqual(makeQuitPlan(costPerPack: 15, cigarettesPerPack: 0).costPerCigarette, 0)
     }
 
+    func testQuitPlanGeneratorChoosesStrategyByQuitStage() {
+        let calendar = makeCalendar()
+        let now = makeDate(year: 2026, month: 5, day: 28, calendar: calendar)
+        let cases: [(QuitStatus, QuitApproachPreference, Double, Double, FirstCigaretteTiming, QuitStrategyType)] = [
+            (.alreadyQuit, .notSure, 5, 12, .withinThirtyMinutes, .relapsePrevention),
+            (.readyToQuit, .notSure, 8, 6, .laterMorning, .coldTurkey),
+            (.cuttingDown, .notSure, 5, 15, .withinThirtyMinutes, .taper),
+            (.thinkingAboutIt, .coldTurkey, 7, 8, .laterMorning, .preparation),
+            (.unsure, .taper, 6, 10, .withinThirtyMinutes, .awareness)
+        ]
+
+        for (status, preference, confidence, cigarettes, timing, expectedStrategy) in cases {
+            let output = QuitPlanGenerator.generate(
+                from: makeOnboardingInput(
+                    quitStatus: status,
+                    confidence: confidence,
+                    cigarettesPerDay: cigarettes,
+                    approachPreference: preference,
+                    firstCigaretteTiming: timing,
+                    commonSmokingTimes: ["After coffee"],
+                    emotionalTriggers: ["Stress"],
+                    situationalTriggers: ["Alcohol"]
+                ),
+                existingPlan: makeQuitPlan(),
+                now: now,
+                calendar: calendar
+            )
+
+            XCTAssertEqual(output.quitPlan.strategyPlan.strategyType, expectedStrategy, "\(status.title)")
+            XCTAssertFalse(output.quitPlan.planSummary.summary.isEmpty)
+            XCTAssertFalse(output.quitPlan.nextBestAction.isEmpty)
+            XCTAssertEqual(output.quitPlan.generatedTriggerRules.count, 3)
+        }
+    }
+
+    func testQuitPlanGeneratorVariesTaperPaceAndSlipRecovery() {
+        let calendar = makeCalendar()
+        let now = makeDate(year: 2026, month: 5, day: 28, calendar: calendar)
+
+        let fast = QuitPlanGenerator.generate(
+            from: makeOnboardingInput(
+                quitStatus: .cuttingDown,
+                confidence: 9,
+                cigarettesPerDay: 6,
+                approachPreference: .taper,
+                firstCigaretteTiming: .afternoonOrEvening,
+                previousQuitAttemptCount: .none,
+                longestQuitAttempt: .fewMonths
+            ),
+            existingPlan: makeQuitPlan(),
+            now: now,
+            calendar: calendar
+        ).quitPlan
+
+        XCTAssertEqual(fast.taperReductionStep, 2)
+        XCTAssertEqual(fast.taperReductionIntervalDays, 2)
+        XCTAssertEqual(fast.strategyPlan.nextSevenDayTargets.first?.maximumCigarettes, 4)
+
+        let gentle = QuitPlanGenerator.generate(
+            from: makeOnboardingInput(
+                quitStatus: .cuttingDown,
+                confidence: 3,
+                cigarettesPerDay: 24,
+                approachPreference: .taper,
+                firstCigaretteTiming: .withinFiveMinutes,
+                previousQuitAttemptCount: .fourOrMore,
+                longestQuitAttempt: .lessThanDay,
+                mainChallenge: .withdrawal
+            ),
+            existingPlan: makeQuitPlan(),
+            now: now,
+            calendar: calendar
+        ).quitPlan
+
+        XCTAssertEqual(gentle.taperReductionStep, 1)
+        XCTAssertEqual(gentle.taperReductionIntervalDays, 5)
+        XCTAssertTrue(gentle.slipRecoveryPlan.preserveQuitAttemptByDefault)
+        XCTAssertTrue(gentle.slipRecoveryPlan.message.localizedCaseInsensitiveContains("do not restart"))
+    }
+
+    func testPlanAdjustmentEngineCreatesEvidenceBackedSuggestionsAndHonorsDismissal() {
+        let calendar = makeCalendar()
+        let now = makeDate(year: 2026, month: 5, day: 28, hour: 20, calendar: calendar)
+        let plan = makeQuitPlan(triggerRules: [])
+        let coffeeCravings = (0..<3).map { offset in
+            makeCraving(
+                id: 300 + offset,
+                startedAt: makeDate(year: 2026, month: 5, day: 26 + offset, hour: 9, calendar: calendar),
+                triggers: ["Coffee"]
+            )
+        }
+
+        let suggestions = PlanAdjustmentEngine.updatedSuggestions(
+            existing: [],
+            quitPlan: plan,
+            cravingEvents: coffeeCravings,
+            slipEvents: [],
+            dailyCheckIns: [],
+            replacementActivities: [],
+            notificationSettings: NotificationSettings(),
+            now: now,
+            calendar: calendar
+        )
+
+        let triggerSuggestion = suggestions.first { $0.type == .addTriggerRule }
+        XCTAssertEqual(triggerSuggestion?.trigger, "Coffee")
+        XCTAssertTrue(triggerSuggestion?.evidenceSummary.contains("3 logged cravings") == true)
+
+        var dismissed = try! XCTUnwrap(triggerSuggestion)
+        dismissed.status = .dismissed
+        let repeatedSuggestions = PlanAdjustmentEngine.updatedSuggestions(
+            existing: [dismissed],
+            quitPlan: plan,
+            cravingEvents: coffeeCravings,
+            slipEvents: [],
+            dailyCheckIns: [],
+            replacementActivities: [],
+            notificationSettings: NotificationSettings(),
+            now: now,
+            calendar: calendar
+        )
+        XCTAssertEqual(repeatedSuggestions.filter { $0.status == .pending }.count, 0)
+
+        let slipSuggestions = PlanAdjustmentEngine.updatedSuggestions(
+            existing: [],
+            quitPlan: plan,
+            cravingEvents: [],
+            slipEvents: [
+                SlipEvent(
+                    id: fixedUUID(330),
+                    occurredAt: fixedDate(330),
+                    cigarettesSmoked: 1,
+                    selectedTriggers: ["Alcohol"],
+                    note: "Smoked outside.",
+                    recoveryAction: "Return inside."
+                ),
+                SlipEvent(
+                    id: fixedUUID(331),
+                    occurredAt: fixedDate(331),
+                    cigarettesSmoked: 1,
+                    selectedTriggers: ["Alcohol"],
+                    note: "Smoked after drinks.",
+                    recoveryAction: "Text someone."
+                )
+            ],
+            dailyCheckIns: [],
+            replacementActivities: [],
+            notificationSettings: NotificationSettings(),
+            now: now,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(slipSuggestions.first { $0.type == .updateSlipRecovery }?.trigger, "Alcohol")
+    }
+
     func testCoachProxyRequestDoesNotContainProviderSecrets() throws {
         let client = CoachProxyClient(configuration: CoachProxyConfiguration(
             endpointURL: URL(string: "https://coach.example.test/v1/coach/reply")!,

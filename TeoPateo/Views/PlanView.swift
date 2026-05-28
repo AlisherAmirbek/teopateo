@@ -29,21 +29,416 @@ struct PlanView: View {
 
     var body: some View {
         RootScreen {
-            ScreenHeader(eyebrow: "Quit plan", title: "Your plan stays specific.")
+            ScreenHeader(eyebrow: "Quit plan", title: "Today's playbook.")
             StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
 
-            planProfile
-            quitDate
-            progressBaseline
-            approach
-            rules
-            reasons
-            replacementActivities
-            notifications
+            todayPlaybook
+            compactHighRiskMoments
+            compactCravingRescue
+            compactSuggestedAdjustment
+            settingsToggle
         }
         .sheet(item: $selectedPlanSheet, onDismiss: resetPlanSheetState) { sheet in
             planSheet(sheet)
         }
+    }
+
+    private var todayPlaybook: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Today")
+                    .font(.rounded(.headline, weight: .bold))
+                    .foregroundColor(QuitTheme.ink)
+                Spacer()
+                Text(store.currentQuitPlan.strategyPlan.strategyType.title)
+                    .font(.rounded(.caption, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(QuitTheme.peach.opacity(0.55))
+                    .cornerRadius(12)
+            }
+
+            VStack(spacing: 10) {
+                playbookRow(
+                    icon: "scope",
+                    label: "Focus",
+                    value: todayFocusText,
+                    lineLimit: nil
+                )
+                playbookRow(
+                    icon: "target",
+                    label: "Target",
+                    value: targetSummary,
+                    lineLimit: 1
+                )
+                playbookRow(
+                    icon: "arrow.forward.circle.fill",
+                    label: "Next",
+                    value: compactAction(store.currentQuitPlan.nextBestAction),
+                    lineLimit: 3
+                )
+            }
+        }
+        .quietCard()
+    }
+
+    private var compactHighRiskMoments: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("High-risk moments")
+                .font(.rounded(.headline, weight: .bold))
+                .foregroundColor(QuitTheme.ink)
+
+            if compactRiskMoments.isEmpty {
+                Button {
+                    openPlanSheet(.newTriggerRule)
+                } label: {
+                    Label("Add your first trigger rule", systemImage: "plus.circle.fill")
+                        .font(.rounded(.subheadline, weight: .bold))
+                        .foregroundColor(QuitTheme.cocoa)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(QuitTheme.paper)
+                        .cornerRadius(14)
+                }
+                .buttonStyle(PlainButtonStyle())
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 176), spacing: 10)], spacing: 10) {
+                    ForEach(compactRiskMoments) { moment in
+                        compactRiskMomentCard(moment)
+                    }
+                }
+            }
+        }
+    }
+
+    private var compactCravingRescue: some View {
+        let steps = rescueSteps
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Craving rescue")
+                    .font(.rounded(.headline, weight: .bold))
+                    .foregroundColor(QuitTheme.ink)
+                Spacer()
+                Image(systemName: "timer")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 8)], spacing: 8) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { item in
+                    rescueChip(index: item.offset + 1, title: item.element)
+                }
+            }
+
+            Text(compactAction(store.currentQuitPlan.cravingRescuePlan.backupAction))
+                .font(.rounded(.caption, weight: .bold))
+                .foregroundColor(QuitTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .quietCard()
+    }
+
+    @ViewBuilder
+    private var compactSuggestedAdjustment: some View {
+        if let suggestion = store.highestPriorityPendingPlanSuggestion {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(QuitTheme.cocoa)
+                        .frame(width: 32, height: 32)
+                        .background(QuitTheme.peach.opacity(0.55))
+                        .clipShape(Circle())
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(suggestion.title)
+                            .font(.rounded(.subheadline, weight: .bold))
+                            .foregroundColor(QuitTheme.ink)
+                            .lineLimit(2)
+                        Text(suggestion.evidenceSummary)
+                            .font(.rounded(.caption))
+                            .foregroundColor(QuitTheme.muted)
+                            .lineLimit(2)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Button("Accept") {
+                        store.acceptPlanSuggestion(suggestion.id)
+                    }
+                    .buttonStyle(QuietButtonStyle())
+
+                    Button("Dismiss") {
+                        store.dismissPlanSuggestion(suggestion.id)
+                    }
+                    .font(.rounded(.caption, weight: .bold))
+                    .foregroundColor(QuitTheme.muted)
+                }
+            }
+            .quietCard()
+        }
+    }
+
+    private var settingsToggle: some View {
+        Button {
+            openPlanSheet(.planDetails)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .frame(width: 36, height: 36)
+                    .background(QuitTheme.peach.opacity(0.52))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Edit plan details")
+                        .font(.rounded(.headline, weight: .bold))
+                        .foregroundColor(QuitTheme.ink)
+                    Text("Quit date, taper, rules, reasons, activities, reminders")
+                        .font(.rounded(.caption))
+                        .foregroundColor(QuitTheme.muted)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(QuitTheme.faint)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(QuitTheme.paper)
+            .cornerRadius(18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private var todayFocusText: String {
+        if let focus = store.todaysFocusPlan {
+            let action = focus.action.trimmingCharacters(in: .whitespacesAndNewlines)
+            return action.isEmpty ? focus.title : action
+        }
+        return store.dailyFocus.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var targetSummary: String {
+        let plan = store.currentQuitPlan
+        switch plan.strategyPlan.strategyType {
+        case .taper:
+            let target = store.todayTaperTarget ?? plan.taperTargetCigarettesPerDay
+            return "\(Int(target)) max"
+        case .coldTurkey:
+            return "No cigarettes"
+        case .relapsePrevention:
+            return "Stay quit"
+        case .preparation:
+            return "Practice pause"
+        case .awareness:
+            return "Log one cue"
+        }
+    }
+
+    private var compactRiskMoments: [CompactRiskMoment] {
+        let generated = store.currentQuitPlan.generatedTriggerRules
+            .sorted { $0.priority < $1.priority }
+            .prefix(3)
+            .map { rule in
+                CompactRiskMoment(
+                    id: rule.id,
+                    title: rule.trigger,
+                    action: compactAction(rule.replacementAction),
+                    systemName: riskIcon(for: rule.trigger),
+                    ruleID: matchingTriggerRuleID(for: rule.trigger)
+                )
+            }
+
+        if !generated.isEmpty {
+            return Array(generated)
+        }
+
+        return store.triggerRules.prefix(3).map { rule in
+            CompactRiskMoment(
+                id: rule.id,
+                title: rule.trigger,
+                action: compactAction(rule.action),
+                systemName: riskIcon(for: rule.trigger),
+                ruleID: rule.id
+            )
+        }
+    }
+
+    private var rescueSteps: [String] {
+        let triggers = Set(compactRiskMoments.map(\.title))
+        let activityTitles = store.activitiesForCurrentCraving(triggers: triggers)
+            .prefix(3)
+            .map { compactAction($0.title) }
+        if activityTitles.isEmpty {
+            return ["Start timer", "Change place", "Breathe"]
+        }
+        return Array(activityTitles)
+    }
+
+    private func playbookRow(
+        icon: String,
+        label: String,
+        value: String,
+        lineLimit: Int?
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(QuitTheme.cocoa)
+                .frame(width: 34, height: 34)
+                .background(QuitTheme.peach.opacity(0.5))
+                .clipShape(Circle())
+
+            Text(label)
+                .font(.rounded(.caption, weight: .bold))
+                .foregroundColor(QuitTheme.muted)
+                .frame(width: 54, alignment: .leading)
+
+            Text(value.isEmpty ? "Keep rescue close" : value)
+                .font(.rounded(.subheadline, weight: .bold))
+                .foregroundColor(QuitTheme.ink)
+                .lineLimit(lineLimit)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func compactRiskMomentCard(_ moment: CompactRiskMoment) -> some View {
+        Button {
+            openRiskMoment(moment)
+        } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 9) {
+                    Image(systemName: moment.systemName)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(QuitTheme.cocoa)
+                        .frame(width: 30, height: 30)
+                        .background(QuitTheme.peach.opacity(0.52))
+                        .clipShape(Circle())
+
+                    Text(moment.title)
+                        .font(.rounded(.subheadline, weight: .bold))
+                        .foregroundColor(QuitTheme.ink)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(QuitTheme.faint)
+                    Text(moment.action)
+                        .font(.rounded(.caption, weight: .bold))
+                        .foregroundColor(QuitTheme.cocoa)
+                        .lineLimit(nil)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .layoutPriority(1)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+            .background(QuitTheme.paper)
+            .cornerRadius(14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func rescueChip(index: Int, title: String) -> some View {
+        HStack(spacing: 6) {
+            Text("\(index)")
+                .font(.rounded(.caption, weight: .heavy))
+                .foregroundColor(.white)
+                .frame(width: 22, height: 22)
+                .background(QuitTheme.cocoa)
+                .clipShape(Circle())
+
+            Text(title)
+                .font(.rounded(.caption, weight: .bold))
+                .foregroundColor(QuitTheme.ink)
+                .lineLimit(nil)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .background(QuitTheme.background.opacity(0.68))
+        .cornerRadius(14)
+    }
+
+    private func openRiskMoment(_ moment: CompactRiskMoment) {
+        if let ruleID = moment.ruleID {
+            openPlanSheet(.triggerRule(ruleID))
+        } else {
+            resetPlanSheetState()
+            newTrigger = moment.title
+            newAction = moment.action
+            selectedPlanSheet = .newTriggerRule
+        }
+    }
+
+    private func matchingTriggerRuleID(for trigger: String) -> UUID? {
+        store.triggerRules.first { rule in
+            rule.trigger.localizedCaseInsensitiveContains(trigger) ||
+                trigger.localizedCaseInsensitiveContains(rule.trigger)
+        }?.id
+    }
+
+    private func riskIcon(for trigger: String) -> String {
+        let lower = trigger.lowercased()
+        if lower.contains("coffee") { return "cup.and.saucer.fill" }
+        if lower.contains("work") { return "briefcase.fill" }
+        if lower.contains("meal") || lower.contains("lunch") || lower.contains("dinner") { return "fork.knife" }
+        if lower.contains("stress") || lower.contains("withdrawal") { return "wind" }
+        if lower.contains("social") || lower.contains("people") { return "person.2.fill" }
+        if lower.contains("alcohol") { return "drop.fill" }
+        if lower.contains("evening") || lower.contains("night") { return "moon.fill" }
+        return "bolt.fill"
+    }
+
+    private func compactAction(_ value: String) -> String {
+        var text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return "" }
+
+        let replacements = [
+            "Start a 10-minute substitute before deciding whether to smoke.": "10-minute rescue",
+            "Start a 10-minute substitute before deciding whether to smoke": "10-minute rescue",
+            "Start the 10-minute rescue": "Start rescue",
+            "Start a 10-minute rescue": "Start rescue",
+            "before deciding whether to smoke": "before deciding"
+        ]
+        for replacement in replacements {
+            text = text.replacingOccurrences(of: replacement.key, with: replacement.value)
+        }
+
+        if let end = text.firstIndex(where: { ".;\n".contains($0) }) {
+            text = String(text[..<end])
+        }
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return text
+    }
+
+    private var editableSettingsHeader: some View {
+        Text("Editable settings")
+            .font(.rounded(.headline, weight: .bold))
+            .foregroundColor(QuitTheme.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 6)
     }
 
     private var planProfile: some View {
@@ -297,6 +692,8 @@ struct PlanView: View {
     @ViewBuilder
     private func planSheet(_ sheet: PlanSheet) -> some View {
         switch sheet {
+        case .planDetails:
+            planDetailsSheet
         case .triggerRule(let id):
             triggerRuleSheet(id)
         case .newTriggerRule:
@@ -312,6 +709,23 @@ struct PlanView: View {
         case .notifications:
             NotificationSettingsView()
                 .environmentObject(store)
+        }
+    }
+
+    private var planDetailsSheet: some View {
+        sheetShell(
+            title: "Edit plan details",
+            subtitle: "Adjust the parts of the plan that should change."
+        ) {
+            StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
+            planProfile
+            quitDate
+            progressBaseline
+            approach
+            rules
+            reasons
+            replacementActivities
+            notifications
         }
     }
 
@@ -917,7 +1331,16 @@ struct PlanView: View {
     }
 }
 
+private struct CompactRiskMoment: Identifiable {
+    let id: UUID
+    let title: String
+    let action: String
+    let systemName: String
+    let ruleID: UUID?
+}
+
 private enum PlanSheet: Identifiable {
+    case planDetails
     case triggerRule(UUID)
     case newTriggerRule
     case reason(UUID)
@@ -928,6 +1351,8 @@ private enum PlanSheet: Identifiable {
 
     var id: String {
         switch self {
+        case .planDetails:
+            return "plan-details"
         case .triggerRule(let id):
             return "trigger-rule-\(id.uuidString)"
         case .newTriggerRule:

@@ -95,23 +95,49 @@ struct InsightsView: View {
 
     private var planAdjustment: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(insights.planAdjustment.title)
-                .font(.rounded(.headline, weight: .bold))
-            Text(insights.planAdjustment.detail)
-                .font(.rounded(.subheadline))
-                .foregroundColor(QuitTheme.muted)
-            if store.canApplyPlanAdjustmentSuggestion {
-                Button("Apply suggestion") {
-                    if store.applyPlanAdjustmentSuggestion() {
+            if let suggestion = store.highestPriorityPendingPlanSuggestion {
+                Text(suggestion.title)
+                    .font(.rounded(.headline, weight: .bold))
+                Text(suggestion.evidenceSummary)
+                    .font(.rounded(.caption, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                Text(suggestion.explanation)
+                    .font(.rounded(.subheadline))
+                    .foregroundColor(QuitTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(suggestion.suggestedAction)
+                    .font(.rounded(.caption))
+                    .foregroundColor(QuitTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Accept suggestion") {
+                    if store.acceptPlanSuggestion(suggestion.id) {
                         store.selectedTab = .plan
                     }
                 }
                 .buttonStyle(FilledButtonStyle())
+                Button("Dismiss") {
+                    store.dismissPlanSuggestion(suggestion.id)
+                }
+                .buttonStyle(QuietButtonStyle())
+            } else {
+                Text(insights.planAdjustment.title)
+                    .font(.rounded(.headline, weight: .bold))
+                Text(insights.planAdjustment.detail)
+                    .font(.rounded(.subheadline))
+                    .foregroundColor(QuitTheme.muted)
+                if store.canApplyPlanAdjustmentSuggestion {
+                    Button("Apply suggestion") {
+                        if store.applyPlanAdjustmentSuggestion() {
+                            store.selectedTab = .plan
+                        }
+                    }
+                    .buttonStyle(FilledButtonStyle())
+                }
+                Button(insights.planAdjustment.actionTitle) {
+                    store.selectedTab = .plan
+                }
+                .buttonStyle(QuietButtonStyle())
             }
-            Button(insights.planAdjustment.actionTitle) {
-                store.selectedTab = .plan
-            }
-            .buttonStyle(QuietButtonStyle())
         }
         .quietCard()
     }

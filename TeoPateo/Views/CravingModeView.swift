@@ -92,6 +92,7 @@ struct CravingModeView: View {
     private var rescueContent: some View {
         VStack(alignment: .leading, spacing: 18) {
             timerPanel
+            rescueScriptPanel
             motivationPanel
             intensityNowPanel
             activityPanel(title: "Pick one action now", subtitle: "Do one small replacement while the timer runs.")
@@ -120,7 +121,7 @@ struct CravingModeView: View {
         VStack(alignment: .leading, spacing: 18) {
             outcomeIntro(
                 title: "No reset needed",
-                message: "Capture the moment and get back to the plan from the next choice."
+                message: store.currentQuitPlan.slipRecoveryPlan.message
             )
             sliderPanel(title: "Craving after smoking", value: $finalIntensity)
             triggerPanel(title: "What set it off?")
@@ -166,6 +167,23 @@ struct CravingModeView: View {
                 .buttonStyle(QuietButtonStyle())
                 .accessibilityIdentifier("craving-reset-button")
             }
+        }
+        .quietCard()
+    }
+
+    private var rescueScriptPanel: some View {
+        let rescue = store.currentQuitPlan.cravingRescuePlan
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Rescue script")
+                .font(.rounded(.headline, weight: .bold))
+            Text(rescue.primaryScript)
+                .font(.rounded(.subheadline))
+                .foregroundColor(QuitTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(rescue.backupAction)
+                .font(.rounded(.caption, weight: .bold))
+                .foregroundColor(QuitTheme.cocoa)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .quietCard()
     }
@@ -404,7 +422,7 @@ struct CravingModeView: View {
             supportContactID: nil,
             cigarettesSmoked: 1,
             slipNote: slipNote.isEmpty ? "Smoked during a craving." : slipNote,
-            recoveryAction: "Pause before the next cigarette and use one replacement activity."
+            recoveryAction: store.currentQuitPlan.slipRecoveryPlan.defaultRecoveryAction
         )
         resetTimer()
         dismiss()

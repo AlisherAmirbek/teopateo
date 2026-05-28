@@ -80,19 +80,54 @@ final class TeoPateoStore: ObservableObject {
     }
 
     var firstPlanSummary: String {
-        let summary = quitPlan.generatedPlanSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = quitPlan.planSummary.summary.trimmingCharacters(in: .whitespacesAndNewlines)
         if !summary.isEmpty {
             return summary
+        }
+        let generated = quitPlan.generatedPlanSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !generated.isEmpty {
+            return generated
         }
         return "Keep one trigger rule and one 10-minute substitute ready before the next urge shows up."
     }
 
     var dailyFocus: String {
-        let focus = quitPlan.generatedDailyFocus.trimmingCharacters(in: .whitespacesAndNewlines)
+        let focus = todaysFocusPlan?.action.trimmingCharacters(in: .whitespacesAndNewlines) ??
+            quitPlan.generatedDailyFocus.trimmingCharacters(in: .whitespacesAndNewlines)
         return focus.isEmpty ? quitPlan.quitStatus.defaultDailyFocus : focus
     }
 
+    var todaysFocusPlan: DailyFocusPlan? {
+        guard !quitPlan.dailyFocusPlan.isEmpty else { return nil }
+        let elapsed = max(
+            calendar.dateComponents(
+                [.day],
+                from: calendar.startOfDay(for: quitPlan.planSummary.planStartDate),
+                to: calendar.startOfDay(for: now())
+            ).day ?? 0,
+            0
+        )
+        let index = min(elapsed + 1, 7)
+        return quitPlan.dailyFocusPlan.first { $0.dayIndex == index } ?? quitPlan.dailyFocusPlan.first
+    }
+
+    var highestPriorityPendingPlanSuggestion: PlanAdjustmentSuggestion? {
+        quitPlan.pendingPlanSuggestions
+            .filter { $0.status == .pending }
+            .sorted {
+                if $0.confidence != $1.confidence {
+                    return $0.confidence > $1.confidence
+                }
+                return $0.createdAt > $1.createdAt
+            }
+            .first
+    }
+
     var savingsGoalSummary: String? {
+        let generated = quitPlan.savingsPlan.savingsGoalMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !generated.isEmpty {
+            return generated
+        }
         guard let savingsGoal else { return nil }
         let title = savingsGoal.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
@@ -229,6 +264,7 @@ final class TeoPateoStore: ObservableObject {
         do {
             try repository.saveDailyCheckIn(checkIn)
             dailyCheckIns = try repository.recentCheckIns(limit: 10_000)
+            refreshPlanAdjustmentSuggestions()
             persistenceError = nil
             lastSaveStatus = .saved(existing == nil ? "Check-in saved." : "Today check-in updated.")
             return true
@@ -384,6 +420,7 @@ final class TeoPateoStore: ObservableObject {
         do {
             try repository.saveSlipEvent(event)
             slipEvents = try repository.recentSlipEvents(limit: 10_000)
+            refreshPlanAdjustmentSuggestions()
             persistenceError = nil
             lastSaveStatus = .saved("Slip saved as plan data.")
             return true
@@ -494,6 +531,8 @@ final class TeoPateoStore: ObservableObject {
 
     func updateQuitDate(_ date: Date) {
         quitPlan.quitDate = date
+        quitPlan.planSummary.quitDate = date
+        quitPlan.strategyPlan.quitDate = date
         quitPlan.updatedAt = now()
         persistQuitPlan(successMessage: "Quit date updated.")
     }
@@ -506,6 +545,7 @@ final class TeoPateoStore: ObservableObject {
         quitPlan.baselineCigarettesPerDay = max(cigarettesPerDay, 0)
         quitPlan.costPerPack = max(costPerPack, 0)
         quitPlan.cigarettesPerPack = max(cigarettesPerPack, 1)
+        updateSavingsPlanForCurrentBaseline()
         quitPlan.updatedAt = now()
         persistQuitPlan(successMessage: "Progress baseline updated.")
     }
@@ -521,6 +561,9 @@ final class TeoPateoStore: ObservableObject {
         )
         quitPlan.taperReductionStep = max(reductionStep, 0)
         quitPlan.taperReductionIntervalDays = max(reductionIntervalDays, 1)
+        quitPlan.strategyPlan.taperTarget = quitPlan.taperTargetCigarettesPerDay
+        quitPlan.strategyPlan.taperStep = quitPlan.taperReductionStep
+        quitPlan.strategyPlan.taperIntervalDays = quitPlan.taperReductionIntervalDays
         quitPlan.updatedAt = now()
         persistQuitPlan(successMessage: "Taper schedule updated.")
     }
@@ -610,78 +653,11 @@ final class TeoPateoStore: ObservableObject {
             return false
         }
 
-        let selectedTriggers = Self.normalizedOnboardingTriggers(
-            input.commonSmokingTimes +
-                input.emotionalTriggers +
-                input.situationalTriggers +
-                [input.mainChallenge.triggerLabel]
-        )
-        let selectedReplacementActions = Self.normalizedReplacementActions(input.replacementActions)
-        let normalizedMode = Self.resolvedQuitMode(
-            preference: input.approachPreference,
-            status: input.quitStatus,
-            confidence: input.confidence,
-            cigarettesPerDay: input.cigarettesPerDay,
-            firstCigaretteTiming: input.firstCigaretteTiming
-        )
-        let resolvedQuitDate = Self.resolvedQuitDate(
-            preference: input.quitDatePreference,
-            selectedDate: input.quitDate,
-            status: input.quitStatus,
-            confidence: input.confidence,
+        let generatedPlan = QuitPlanGenerator.generate(
+            from: input,
+            existingPlan: quitPlan,
             now: now,
             calendar: calendar
-        )
-        let taperSettings = Self.generatedTaperSettings(
-            cigarettesPerDay: input.cigarettesPerDay,
-            confidence: input.confidence,
-            firstCigaretteTiming: input.firstCigaretteTiming,
-            previousAttempts: input.previousQuitAttemptCount,
-            mainChallenge: input.mainChallenge,
-            mode: normalizedMode
-        )
-        let generatedDailyFocus = Self.generatedDailyFocus(
-            status: input.quitStatus,
-            selectedTriggers: selectedTriggers,
-            mainChallenge: input.mainChallenge
-        )
-        let generatedPlanSummary = Self.generatedPlanSummary(
-            status: input.quitStatus,
-            selectedTriggers: selectedTriggers,
-            mainChallenge: input.mainChallenge,
-            mode: normalizedMode,
-            dailyFocus: generatedDailyFocus,
-            primaryReason: primaryReason
-        )
-        let nextTriggerRules = selectedTriggers.map { trigger in
-            TriggerRule(
-                trigger: trigger,
-                action: Self.onboardingAction(
-                    for: trigger,
-                    selectedReplacementActions: selectedReplacementActions,
-                    mainChallenge: input.mainChallenge
-                )
-            )
-        }
-        let nextReasons = [
-            UserReason(
-                text: primaryReason,
-                sortOrder: 0,
-                isPrimary: true,
-                createdAt: now,
-                updatedAt: now
-            )
-        ]
-        let nextActivities = Self.onboardingReplacementActivities(
-            for: selectedTriggers,
-            selectedActions: selectedReplacementActions,
-            now: now
-        )
-        let nextRiskySituations = Self.onboardingRiskySituations(
-            triggers: selectedTriggers,
-            selectedReplacementActions: selectedReplacementActions,
-            mainChallenge: input.mainChallenge,
-            now: now
         )
         let nextProfile = UserProfile(
             nickname: nickname,
@@ -713,23 +689,7 @@ final class TeoPateoStore: ObservableObject {
             updatedAt: now
         )
 
-        var nextPlan = quitPlan
-        nextPlan.quitDate = resolvedQuitDate
-        nextPlan.quitMode = normalizedMode
-        nextPlan.quitStatus = input.quitStatus
-        nextPlan.readinessStage = input.quitStatus.readinessStage
-        nextPlan.generatedDailyFocus = generatedDailyFocus
-        nextPlan.generatedPlanSummary = generatedPlanSummary
-        nextPlan.triggerRules = nextTriggerRules
-        nextPlan.medicationNote = ""
-        nextPlan.baselineCigarettesPerDay = max(input.cigarettesPerDay, 0)
-        nextPlan.costPerPack = max(input.costPerPack, 0)
-        nextPlan.cigarettesPerPack = max(input.cigarettesPerPack, 1)
-        nextPlan.taperTargetCigarettesPerDay = taperSettings.target
-        nextPlan.taperReductionStep = taperSettings.step
-        nextPlan.taperReductionIntervalDays = taperSettings.intervalDays
-        nextPlan.attemptStartedAt = normalizedMode == "Taper" ? now : resolvedQuitDate
-        nextPlan.updatedAt = now
+        let nextPlan = generatedPlan.quitPlan
 
         let nextSettings = AppSettings(onboardingCompleted: true, updatedAt: now)
 
@@ -740,9 +700,9 @@ final class TeoPateoStore: ObservableObject {
             try repository.saveSavingsGoal(nextSavingsGoal)
             try repository.saveQuitPlan(nextPlan)
             try repository.replaceSupportContacts([])
-            try repository.replaceUserReasons(nextReasons)
-            try repository.replaceReplacementActivities(nextActivities)
-            try repository.replaceRiskySituations(nextRiskySituations)
+            try repository.replaceUserReasons(generatedPlan.userReasons)
+            try repository.replaceReplacementActivities(generatedPlan.replacementActivities)
+            try repository.replaceRiskySituations(generatedPlan.riskySituations)
             try repository.saveAppSettings(nextSettings)
 
             isHydrating = true
@@ -751,13 +711,13 @@ final class TeoPateoStore: ObservableObject {
             smokingBackground = nextBackground
             savingsGoal = nextSavingsGoal
             quitPlan = nextPlan
-            quitMode = normalizedMode
-            triggerRules = nextTriggerRules
+            quitMode = nextPlan.quitMode
+            triggerRules = generatedPlan.triggerRules
             supportContacts = []
-            userReasons = nextReasons
-            replacementActivities = nextActivities
-            riskySituations = nextRiskySituations
-            self.selectedTriggers = Set(selectedTriggers)
+            userReasons = generatedPlan.userReasons
+            replacementActivities = generatedPlan.replacementActivities
+            riskySituations = generatedPlan.riskySituations
+            self.selectedTriggers = Set(generatedPlan.triggerRules.map(\.trigger))
             confidence = input.confidence
             isOnboardingCompleted = true
             isOnboardingPresented = false
@@ -1136,15 +1096,31 @@ final class TeoPateoStore: ObservableObject {
                 trigger.contains(selected) || selected.contains(trigger)
             }
         }
+        let prioritized = quitPlan.cravingRescuePlan.prioritizedActivityIDs.compactMap { id in
+            enabled.first { $0.id == id }
+        }
 
         let categoryFallbacks = ReplacementActivityCategory.userVisibleCases.compactMap { category in
             enabled.first { $0.category == category }
         }
 
-        return Array((matched + categoryFallbacks).uniquedByID().prefix(4))
+        return Array((matched + prioritized + categoryFallbacks + enabled).uniquedByID().prefix(4))
     }
 
     func reasonsForCravingMode() -> [UserReason] {
+        if let primaryID = quitPlan.cravingRescuePlan.primaryReasonID,
+           let primary = userReasons.first(where: { $0.id == primaryID }) {
+            let remaining = userReasons
+                .filter { $0.id != primary.id }
+                .sorted { lhs, rhs in
+                    if lhs.sortOrder != rhs.sortOrder {
+                        return lhs.sortOrder < rhs.sortOrder
+                    }
+                    return lhs.updatedAt > rhs.updatedAt
+                }
+            return [primary] + remaining
+        }
+
         if let primary = userReasons.first(where: \.isPrimary) {
             let remaining = userReasons
                 .filter { $0.id != primary.id }
@@ -1244,6 +1220,10 @@ final class TeoPateoStore: ObservableObject {
     }
 
     var canApplyPlanAdjustmentSuggestion: Bool {
+        if highestPriorityPendingPlanSuggestion != nil {
+            return true
+        }
+
         let insights = calculatedInsights
         if let topTrigger = (insights.topSlipTriggers.first ?? insights.topTriggers.first) {
             return matchingTriggerRule(for: topTrigger.name) == nil
@@ -1253,6 +1233,10 @@ final class TeoPateoStore: ObservableObject {
 
     @discardableResult
     func applyPlanAdjustmentSuggestion() -> Bool {
+        if let suggestion = highestPriorityPendingPlanSuggestion {
+            return acceptPlanSuggestion(suggestion.id)
+        }
+
         let insights = calculatedInsights
         if let topTrigger = (insights.topSlipTriggers.first ?? insights.topTriggers.first) {
             guard matchingTriggerRule(for: topTrigger.name) == nil else {
@@ -1275,6 +1259,52 @@ final class TeoPateoStore: ObservableObject {
 
         lastSaveStatus = .failed("Log more cravings before applying a suggestion.")
         return false
+    }
+
+    @discardableResult
+    func acceptPlanSuggestion(_ id: UUID) -> Bool {
+        guard let index = quitPlan.pendingPlanSuggestions.firstIndex(where: { $0.id == id }) else {
+            lastSaveStatus = .failed("Suggestion not found.")
+            return false
+        }
+
+        let suggestion = quitPlan.pendingPlanSuggestions[index]
+        switch suggestion.type {
+        case .addTriggerRule, .updateTriggerRule:
+            applyTriggerSuggestion(suggestion)
+        case .reorderTriggerRules:
+            applyTriggerReorderSuggestion(suggestion)
+        case .addReplacementActivity:
+            applyReplacementActivitySuggestion(suggestion)
+        case .reorderReplacementActivities:
+            applyActivityReorderSuggestion(suggestion)
+        case .adjustTaperPace:
+            if let interval = suggestion.taperReductionIntervalDays {
+                quitPlan.taperReductionIntervalDays = interval
+                quitPlan.strategyPlan.taperIntervalDays = interval
+            }
+        case .addRiskyWindowReminder:
+            setNotificationEnabled(.riskyWindow, isEnabled: true)
+        case .changeDailyFocus:
+            applyDailyFocusSuggestion(suggestion)
+        case .updateSlipRecovery:
+            applySlipRecoverySuggestion(suggestion)
+        }
+
+        quitPlan.pendingPlanSuggestions[index].status = .accepted
+        quitPlan.pendingPlanSuggestions[index].updatedAt = now()
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: "Plan suggestion accepted.")
+        return true
+    }
+
+    func editPlanSuggestion(_ id: UUID) {
+        updatePlanSuggestionStatus(id, status: .edited, successMessage: "Suggestion marked for editing.")
+        selectedTab = .plan
+    }
+
+    func dismissPlanSuggestion(_ id: UUID) {
+        updatePlanSuggestionStatus(id, status: .dismissed, successMessage: "Suggestion dismissed.")
     }
 
     func deleteCravingEvent(_ id: UUID) {
@@ -1561,6 +1591,7 @@ final class TeoPateoStore: ObservableObject {
     private func updateQuitMode() {
         guard !isHydrating else { return }
         quitPlan.quitMode = quitMode
+        quitPlan.strategyPlan.strategyType = quitMode == "Cold turkey" ? .coldTurkey : .taper
         quitPlan.updatedAt = now()
         persistQuitPlan(successMessage: "Quit approach updated.")
     }
@@ -1749,6 +1780,34 @@ final class TeoPateoStore: ObservableObject {
         let planSummary = firstPlanSummary
         if !planSummary.isEmpty {
             lines.append("Generated plan summary: \(planSummary)")
+        }
+
+        let strategy = quitPlan.strategyPlan
+        lines.append("Strategy: \(strategy.strategyType.title). \(strategy.rationale)")
+
+        let nextBestAction = quitPlan.nextBestAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !nextBestAction.isEmpty {
+            lines.append("Next best action: \(nextBestAction)")
+        }
+
+        if !quitPlan.generatedTriggerRules.isEmpty {
+            lines.append(
+                "Generated trigger rules: " + quitPlan.generatedTriggerRules
+                    .sorted { $0.priority < $1.priority }
+                    .prefix(3)
+                    .map { "\($0.trigger) -> \($0.replacementAction), backup: \($0.backupAction)" }
+                    .joined(separator: "; ")
+            )
+        }
+
+        lines.append("Craving rescue script: \(quitPlan.cravingRescuePlan.primaryScript)")
+        lines.append("Craving rescue backup: \(quitPlan.cravingRescuePlan.backupAction)")
+        lines.append("Slip recovery preference: \(quitPlan.slipRecoveryPlan.defaultRecoveryAction)")
+
+        if let suggestion = highestPriorityPendingPlanSuggestion {
+            lines.append(
+                "Pending plan suggestion: \(suggestion.title). Evidence: \(suggestion.evidenceSummary). Suggested action: \(suggestion.suggestedAction)"
+            )
         }
 
         if let taperTarget = todayTaperTarget {
@@ -1988,6 +2047,7 @@ final class TeoPateoStore: ObservableObject {
         do {
             try repository.saveCravingEvent(event)
             cravingEvents = try repository.recentCravingEvents(limit: 10_000)
+            refreshPlanAdjustmentSuggestions()
             persistenceError = nil
             lastSaveStatus = .saved(successMessage)
             syncScheduledNotifications(showSuccess: false)
@@ -2006,6 +2066,180 @@ final class TeoPateoStore: ObservableObject {
             updated.updatedAt = now()
             return updated
         }
+    }
+
+    private func updateSavingsPlanForCurrentBaseline() {
+        let weeklyAvoided = max(quitPlan.baselineCigarettesPerDay, 0) * 7
+        let weeklySavings = weeklyAvoided * quitPlan.costPerCigarette
+        let title = savingsGoal?.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let goal = title?.isEmpty == false ? title ?? quitPlan.savingsPlan.savingsGoal : quitPlan.savingsPlan.savingsGoal
+        let goalText = goal.isEmpty ? "your savings goal" : goal.lowercased()
+
+        quitPlan.savingsPlan.costPerPack = quitPlan.costPerPack
+        quitPlan.savingsPlan.cigarettesPerPack = quitPlan.cigarettesPerPack
+        quitPlan.savingsPlan.savingsGoal = goal
+        quitPlan.savingsPlan.weeklySavingsBaseline = weeklySavings
+        quitPlan.savingsPlan.cigarettesAvoidedBaseline = weeklyAvoided
+        quitPlan.savingsPlan.firstMilestoneAmount = max(5, (weeklySavings / 2).rounded())
+        quitPlan.savingsPlan.savingsGoalMessage = "At your current baseline, every smoke-free week puts about \(Self.moneySummary(weeklySavings)) toward \(goalText)."
+        quitPlan.savingsPlan.dashboardMessage = "A smoke-free day is worth about \(Self.moneySummary(weeklySavings / 7)) toward \(goalText)."
+    }
+
+    private func refreshPlanAdjustmentSuggestions() {
+        let nextSuggestions = PlanAdjustmentEngine.updatedSuggestions(
+            existing: quitPlan.pendingPlanSuggestions,
+            quitPlan: quitPlan,
+            cravingEvents: cravingEvents,
+            slipEvents: slipEvents,
+            dailyCheckIns: dailyCheckIns,
+            replacementActivities: replacementActivities,
+            notificationSettings: notificationSettings,
+            now: now(),
+            calendar: calendar
+        )
+
+        guard nextSuggestions != quitPlan.pendingPlanSuggestions else {
+            return
+        }
+
+        quitPlan.pendingPlanSuggestions = nextSuggestions
+        quitPlan.updatedAt = now()
+
+        do {
+            quitPlan.triggerRules = triggerRules
+            try repository.saveQuitPlan(quitPlan)
+            persistenceError = nil
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Plan suggestions could not be saved.")
+        }
+    }
+
+    private func applyTriggerSuggestion(_ suggestion: PlanAdjustmentSuggestion) {
+        let trigger = suggestion.trigger?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !trigger.isEmpty else { return }
+        let action = suggestion.replacementAction?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackAction = "Start a 10-minute substitute before deciding whether to smoke."
+        if let index = triggerRules.firstIndex(where: { rule in
+            rule.trigger.localizedCaseInsensitiveContains(trigger) ||
+                trigger.localizedCaseInsensitiveContains(rule.trigger)
+        }) {
+            triggerRules[index].action = action?.isEmpty == false ? action ?? fallbackAction : fallbackAction
+            triggerRules[index].isEnabled = true
+        } else {
+            triggerRules.append(TriggerRule(
+                trigger: trigger,
+                action: action?.isEmpty == false ? action ?? fallbackAction : fallbackAction
+            ))
+        }
+
+        if !quitPlan.generatedTriggerRules.contains(where: { $0.trigger.caseInsensitiveCompare(trigger) == .orderedSame }) {
+            quitPlan.generatedTriggerRules.append(GeneratedTriggerRule(
+                trigger: trigger,
+                warningSign: "This trigger has repeated in recent logs.",
+                replacementAction: action?.isEmpty == false ? action ?? fallbackAction : fallbackAction,
+                backupAction: suggestion.backupAction ?? "Change location and keep the rescue timer running.",
+                cravingModePrompt: "Delay \(trigger.lowercased()) by 10 minutes before deciding.",
+                reminderHint: nil,
+                priority: quitPlan.generatedTriggerRules.count + 1
+            ))
+        }
+        quitPlan.triggerRules = triggerRules
+    }
+
+    private func applyTriggerReorderSuggestion(_ suggestion: PlanAdjustmentSuggestion) {
+        guard let trigger = suggestion.trigger,
+              let index = triggerRules.firstIndex(where: {
+                  $0.trigger.localizedCaseInsensitiveContains(trigger) ||
+                      trigger.localizedCaseInsensitiveContains($0.trigger)
+              }),
+              index > 0
+        else {
+            return
+        }
+        triggerRules.move(from: index, to: 0)
+        quitPlan.triggerRules = triggerRules
+    }
+
+    private func applyReplacementActivitySuggestion(_ suggestion: PlanAdjustmentSuggestion) {
+        let title = suggestion.activityTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let instruction = suggestion.activityInstruction?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !title.isEmpty, !instruction.isEmpty else { return }
+        replacementActivities.insert(
+            ReplacementActivity(
+                title: title,
+                instruction: instruction,
+                category: .distraction,
+                linkedTrigger: suggestion.trigger ?? "",
+                createdAt: now(),
+                updatedAt: now()
+            ),
+            at: 0
+        )
+        persistReplacementActivities(successMessage: "Replacement activity added.")
+    }
+
+    private func applyActivityReorderSuggestion(_ suggestion: PlanAdjustmentSuggestion) {
+        guard let activityID = suggestion.activityID,
+              let index = replacementActivities.firstIndex(where: { $0.id == activityID }),
+              index > 0
+        else {
+            return
+        }
+        replacementActivities.move(from: index, to: 0)
+        quitPlan.cravingRescuePlan.prioritizedActivityIDs.removeAll { $0 == activityID }
+        quitPlan.cravingRescuePlan.prioritizedActivityIDs.insert(activityID, at: 0)
+        persistReplacementActivities(successMessage: "Replacement activities reordered.")
+    }
+
+    private func applyDailyFocusSuggestion(_ suggestion: PlanAdjustmentSuggestion) {
+        let title = suggestion.dailyFocusTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let action = suggestion.dailyFocusAction?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !title.isEmpty, !action.isEmpty else { return }
+        let currentIndex = todaysFocusPlan?.dayIndex ?? 1
+        if let index = quitPlan.dailyFocusPlan.firstIndex(where: { $0.dayIndex == currentIndex }) {
+            quitPlan.dailyFocusPlan[index].title = title
+            quitPlan.dailyFocusPlan[index].action = action
+            quitPlan.dailyFocusPlan[index].relatedTrigger = suggestion.trigger
+            quitPlan.dailyFocusPlan[index].isUserEdited = true
+        } else {
+            quitPlan.dailyFocusPlan.insert(
+                DailyFocusPlan(
+                    dayIndex: currentIndex,
+                    title: title,
+                    action: action,
+                    relatedTrigger: suggestion.trigger,
+                    isUserEdited: true
+                ),
+                at: 0
+            )
+        }
+        quitPlan.generatedDailyFocus = action
+    }
+
+    private func applySlipRecoverySuggestion(_ suggestion: PlanAdjustmentSuggestion) {
+        let backup = suggestion.backupAction?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !backup.isEmpty {
+            quitPlan.slipRecoveryPlan.defaultRecoveryAction = backup
+        }
+        if let trigger = suggestion.trigger, !trigger.isEmpty {
+            quitPlan.slipRecoveryPlan.message = "If \(trigger.lowercased()) leads to smoking, keep the attempt alive and protect the next choice."
+        }
+    }
+
+    private func updatePlanSuggestionStatus(
+        _ id: UUID,
+        status: PlanSuggestionStatus,
+        successMessage: String
+    ) {
+        guard let index = quitPlan.pendingPlanSuggestions.firstIndex(where: { $0.id == id }) else {
+            lastSaveStatus = .failed("Suggestion not found.")
+            return
+        }
+        quitPlan.pendingPlanSuggestions[index].status = status
+        quitPlan.pendingPlanSuggestions[index].updatedAt = now()
+        quitPlan.updatedAt = now()
+        persistQuitPlan(successMessage: successMessage)
     }
 
     private func matchingTriggerRule(for trigger: String) -> TriggerRule? {

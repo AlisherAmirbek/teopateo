@@ -29,7 +29,8 @@ struct TeoPateoApp: App {
             return TeoPateoStore(
                 repository: repository,
                 notificationScheduler: UITestNotificationScheduler(),
-                coachClient: UITestCoachClient()
+                coachClient: UITestCoachClient(),
+                now: { makeUITestNow() }
             )
         } catch {
             return TeoPateoStore()
@@ -46,14 +47,24 @@ struct TeoPateoApp: App {
         return try SQLiteTeoPateoRepository(databaseURL: databaseURL)
     }
 
+    private static func makeUITestNow() -> Date {
+        let environment = ProcessInfo.processInfo.environment
+        if let value = environment["TEOPATEO_UI_TEST_NOW"],
+           let date = ISO8601DateFormatter().date(from: value) {
+            return date
+        }
+        return Date()
+    }
+
     private static func seedUITestDataIfNeeded(_ repository: SQLiteTeoPateoRepository) throws {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("-teopateo-ui-seed-completed") else {
             return
         }
 
-        let now = Date()
-        let quitDate = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
+        let calendar = Calendar.current
+        let now = makeUITestNow()
+        let quitDate = calendar.date(byAdding: .day, value: 7, to: now) ?? now
         let plan = QuitPlan(
             quitDate: quitDate,
             quitMode: "Taper",
@@ -103,8 +114,12 @@ struct TeoPateoApp: App {
             )
         ])
 
+        if arguments.contains("-teopateo-ui-seed-plan-week") {
+            try seedUITestPlanWeek(repository, now: now, calendar: calendar)
+        }
+
         if arguments.contains("-teopateo-ui-seed-history") {
-            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now) ?? now
+            let yesterday = calendar.date(byAdding: .day, value: -1, to: now) ?? now
             try repository.saveDailyCheckIn(DailyCheckIn(
                 date: yesterday,
                 mood: 5,
@@ -143,6 +158,46 @@ struct TeoPateoApp: App {
                 updatedAt: now
             ))
         }
+    }
+
+    private static func seedUITestPlanWeek(
+        _ repository: SQLiteTeoPateoRepository,
+        now: Date,
+        calendar: Calendar
+    ) throws {
+        let weekStart = mondayWeekStart(containing: now, calendar: calendar)
+        let dailyResults = [
+            (offset: 0, cigarettes: 4, note: ""),
+            (offset: 1, cigarettes: 5, note: "One over target."),
+            (offset: 2, cigarettes: 7, note: "Above target.")
+        ]
+
+        for result in dailyResults {
+            guard let date = calendar.date(byAdding: .day, value: result.offset, to: weekStart) else {
+                continue
+            }
+
+            try repository.saveDailyCheckIn(DailyCheckIn(
+                date: date,
+                mood: 7,
+                stress: 5,
+                confidence: 8,
+                smokedToday: true,
+                cigarettesSmoked: result.cigarettes,
+                taperTargetCigarettes: 4,
+                stayedWithinTaperTarget: result.cigarettes <= 4,
+                slipNote: result.note,
+                createdAt: date,
+                updatedAt: date
+            ))
+        }
+    }
+
+    private static func mondayWeekStart(containing date: Date, calendar: Calendar) -> Date {
+        let day = calendar.startOfDay(for: date)
+        let weekday = calendar.component(.weekday, from: day)
+        let daysSinceMonday = (weekday + 5) % 7
+        return calendar.date(byAdding: .day, value: -daysSinceMonday, to: day) ?? day
     }
     #endif
 }

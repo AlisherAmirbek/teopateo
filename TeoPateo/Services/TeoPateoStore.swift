@@ -131,6 +131,10 @@ final class TeoPateoStore: ObservableObject {
         latestCheckIn(on: now())
     }
 
+    var currentWeekPlanAdherence: [DailyPlanAdherenceDay] {
+        planAdherenceWeek(containing: now())
+    }
+
     var metrics: [ProgressMetric] {
         let insights = calculatedInsights
         return [
@@ -556,6 +560,37 @@ final class TeoPateoStore: ObservableObject {
                 date: date,
                 targetCigarettes: target,
                 isToday: calendar.isDate(date, inSameDayAs: today)
+            )
+        }
+    }
+
+    func planAdherenceWeek(containing date: Date) -> [DailyPlanAdherenceDay] {
+        let today = calendar.startOfDay(for: now())
+        let start = mondayWeekStart(containing: date)
+
+        return (0..<7).compactMap { offset in
+            guard let day = calendar.date(byAdding: .day, value: offset, to: start) else {
+                return nil
+            }
+
+            let checkIn = latestCheckIn(on: day)
+            let slipCigarettes = slipEvents
+                .filter { calendar.isDate($0.occurredAt, inSameDayAs: day) }
+                .reduce(0) { $0 + $1.cigarettesSmoked }
+            let target = checkIn?.taperTargetCigarettes ?? taperTarget(on: day) ?? 0
+            let cigarettes = Self.effectiveCigarettesSmoked(
+                checkIn: checkIn,
+                slipCigarettes: slipCigarettes
+            )
+
+            return DailyPlanAdherenceDay(
+                date: day,
+                targetCigarettes: target,
+                cigarettesSmoked: cigarettes,
+                status: day <= today
+                    ? Self.dailyPlanAdherenceStatus(cigarettesSmoked: cigarettes, targetCigarettes: target)
+                    : nil,
+                isToday: calendar.isDate(day, inSameDayAs: today)
             )
         }
     }
@@ -1993,6 +2028,49 @@ final class TeoPateoStore: ObservableObject {
                 return $0.createdAt > $1.createdAt
             }
             .first
+    }
+
+    private func mondayWeekStart(containing date: Date) -> Date {
+        let day = calendar.startOfDay(for: date)
+        let weekday = calendar.component(.weekday, from: day)
+        let daysSinceMonday = (weekday + 5) % 7
+        return calendar.date(byAdding: .day, value: -daysSinceMonday, to: day) ?? day
+    }
+
+    private static func effectiveCigarettesSmoked(
+        checkIn: DailyCheckIn?,
+        slipCigarettes: Int
+    ) -> Int? {
+        let checkInCigarettes: Int?
+        switch checkIn?.smokedToday {
+        case .some(true):
+            checkInCigarettes = max(checkIn?.cigarettesSmoked ?? 0, 1)
+        case .some(false):
+            checkInCigarettes = 0
+        case nil:
+            checkInCigarettes = nil
+        }
+
+        let recordedValues = [checkInCigarettes, slipCigarettes > 0 ? slipCigarettes : nil].compactMap { $0 }
+        return recordedValues.max()
+    }
+
+    private static func dailyPlanAdherenceStatus(
+        cigarettesSmoked: Int?,
+        targetCigarettes: Double
+    ) -> DailyPlanAdherenceStatus? {
+        guard let cigarettesSmoked else {
+            return nil
+        }
+
+        let smoked = Double(cigarettesSmoked)
+        if smoked <= targetCigarettes {
+            return .achieved
+        }
+
+        let overTarget = smoked - targetCigarettes
+        let slightMissAllowance = max(1, ceil(targetCigarettes * 0.25))
+        return overTarget <= slightMissAllowance ? .slightMiss : .missed
     }
 
     private func cravingHistoryTitle(_ event: CravingEvent) -> String {

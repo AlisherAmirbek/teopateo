@@ -17,6 +17,7 @@ struct TodayView: View {
                         onboardingPrompt
                     }
                     mascot
+                    planWeekCard
                     rescueButton
                     riskCard
                     facts
@@ -86,6 +87,11 @@ struct TodayView: View {
     private var mascot: some View {
         MascotRoomView()
             .frame(height: 278)
+    }
+
+    private var planWeekCard: some View {
+        PlanWeekCard(days: store.currentWeekPlanAdherence)
+            .padding(.top, 2)
     }
 
     private var rescueButton: some View {
@@ -181,6 +187,114 @@ struct TodayView: View {
                 .fill(QuitTheme.line)
                 .frame(height: 1)
         }
+    }
+}
+
+private struct PlanWeekCard: View {
+    let days: [DailyPlanAdherenceDay]
+
+    private var titleDate: Date? {
+        days.first(where: \.isToday)?.date ?? days.first?.date
+    }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack {
+                Spacer()
+                Text(titleDate?.formatted(.dateTime.month(.wide).year()) ?? "")
+                    .font(.rounded(.title3, weight: .bold))
+                    .foregroundColor(QuitTheme.ink)
+                    .accessibilityIdentifier("plan-week-card")
+                Spacer()
+            }
+
+            HStack(spacing: 0) {
+                ForEach(days) { day in
+                    VStack(spacing: 10) {
+                        Text(weekdayLetter(for: day.date))
+                            .font(.rounded(.subheadline, weight: .bold))
+                            .foregroundColor(QuitTheme.faint)
+
+                        Text(day.date.formatted(.dateTime.day()))
+                            .font(.rounded(.headline, weight: .bold))
+                            .foregroundColor(dayTextColor(for: day.status))
+                            .minimumScaleFactor(0.75)
+                            .frame(width: 40, height: 40)
+                            .background(dayColor(for: day.status))
+                            .clipShape(Circle())
+                            .overlay {
+                                Circle()
+                                    .stroke(day.isToday ? QuitTheme.cocoa.opacity(0.34) : Color.clear, lineWidth: 2)
+                            }
+                            .accessibilityLabel(accessibilityLabel(for: day))
+                            .accessibilityIdentifier("plan-week-day-\(statusIdentifier(for: day.status))")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .background(QuitTheme.paper)
+        .cornerRadius(24)
+    }
+
+    private func weekdayLetter(for date: Date) -> String {
+        String(date.formatted(.dateTime.weekday(.abbreviated)).prefix(1))
+    }
+
+    private func dayColor(for status: DailyPlanAdherenceStatus?) -> Color {
+        switch status {
+        case .achieved:
+            return QuitTheme.sage
+        case .slightMiss:
+            return QuitTheme.peach
+        case .missed:
+            return Color(red: 0.690, green: 0.259, blue: 0.184)
+        case nil:
+            return QuitTheme.background.opacity(0.72)
+        }
+    }
+
+    private func dayTextColor(for status: DailyPlanAdherenceStatus?) -> Color {
+        switch status {
+        case .achieved, .missed:
+            return .white
+        case .slightMiss:
+            return QuitTheme.cocoa
+        case nil:
+            return QuitTheme.faint
+        }
+    }
+
+    private func statusIdentifier(for status: DailyPlanAdherenceStatus?) -> String {
+        switch status {
+        case .achieved:
+            return "achieved"
+        case .slightMiss:
+            return "slight-miss"
+        case .missed:
+            return "missed"
+        case nil:
+            return "not-logged"
+        }
+    }
+
+    private func accessibilityLabel(for day: DailyPlanAdherenceDay) -> String {
+        let date = day.date.formatted(.dateTime.weekday(.wide).month(.wide).day())
+        let status: String
+        switch day.status {
+        case .achieved:
+            status = "plan achieved"
+        case .slightMiss:
+            status = "slightly missed plan"
+        case .missed:
+            status = "missed plan"
+        case nil:
+            status = "not logged"
+        }
+
+        return "\(date), \(status)"
     }
 }
 

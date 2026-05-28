@@ -872,6 +872,22 @@ struct TaperScheduleDay: Identifiable, Equatable {
     var id: Date { date }
 }
 
+enum DailyPlanAdherenceStatus: Equatable {
+    case achieved
+    case slightMiss
+    case missed
+}
+
+struct DailyPlanAdherenceDay: Identifiable, Equatable {
+    let date: Date
+    let targetCigarettes: Double
+    let cigarettesSmoked: Int?
+    let status: DailyPlanAdherenceStatus?
+    let isToday: Bool
+
+    var id: Date { date }
+}
+
 struct TriggerRule: Identifiable, Codable, Equatable {
     let id: UUID
     var trigger: String

@@ -33,8 +33,29 @@ final class TeoPateoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["TeoPateo will start with this rescue setup."].waitForExistence(timeout: 3))
         app.buttons["onboarding-next-button"].tap()
 
-        XCTAssertTrue(app.staticTexts["Pause before the cigarette."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["continue-setup-button"].exists)
+    }
+
+    func testTodayShowsPlanWeekAdherenceStrip() {
+        launchApp(seedPlanWeek: true)
+
+        XCTAssertTrue(element("plan-week-card").waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["May 2026"].waitForExistence(timeout: 3))
+
+        let achieved = firstElement("plan-week-day-achieved")
+        let slightMiss = firstElement("plan-week-day-slight-miss")
+        let missed = firstElement("plan-week-day-missed")
+        let notLogged = firstElement("plan-week-day-not-logged")
+
+        XCTAssertTrue(achieved.waitForExistence(timeout: 3))
+        XCTAssertTrue(slightMiss.waitForExistence(timeout: 3))
+        XCTAssertTrue(missed.waitForExistence(timeout: 3))
+        XCTAssertTrue(notLogged.waitForExistence(timeout: 3))
+        XCTAssertTrue(achieved.label.contains("plan achieved"))
+        XCTAssertTrue(slightMiss.label.contains("slightly missed plan"))
+        XCTAssertTrue(missed.label.contains("missed plan"))
+        XCTAssertTrue(notLogged.label.contains("not logged"))
     }
 
     func testCravingRescueTimerRecoveredFlowAndSave() {
@@ -58,7 +79,7 @@ final class TeoPateoUITests: XCTestCase {
         noteField.typeText("Water helped")
         app.buttons["craving-outcome-save-button"].tap()
 
-        XCTAssertTrue(app.staticTexts["Pause before the cigarette."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Craving saved as handled."].waitForExistence(timeout: 3))
     }
 
@@ -145,7 +166,7 @@ final class TeoPateoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Review today's quit plan"].waitForExistence(timeout: 3))
 
         app.buttons["notification-close-button"].tap()
-        XCTAssertTrue(app.staticTexts["Pause before the cigarette."].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 3))
     }
 
     func testCoachPromptAndTypedMessageFlow() {
@@ -168,6 +189,7 @@ final class TeoPateoUITests: XCTestCase {
     private func launchApp(
         seedCompleted: Bool = true,
         seedHistory: Bool = false,
+        seedPlanWeek: Bool = false,
         notificationStatus: String = "authorized"
     ) {
         app = XCUIApplication()
@@ -178,13 +200,21 @@ final class TeoPateoUITests: XCTestCase {
         if seedHistory {
             app.launchArguments.append("-teopateo-ui-seed-history")
         }
+        if seedPlanWeek {
+            app.launchArguments.append("-teopateo-ui-seed-plan-week")
+        }
         app.launchEnvironment["TEOPATEO_UI_TEST_DATABASE_NAME"] = UUID().uuidString
+        app.launchEnvironment["TEOPATEO_UI_TEST_NOW"] = "2026-05-27T12:00:00Z"
         app.launchEnvironment["TEOPATEO_UI_TEST_NOTIFICATION_STATUS"] = notificationStatus
         app.launch()
     }
 
     private func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any)[identifier]
+    }
+
+    private func firstElement(_ identifier: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
     private func openHistory() {

@@ -33,6 +33,72 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(try repository.fetchQuitPlan()?.quitMode, "Cold turkey")
     }
 
+    func testCurrentWeekPlanAdherenceClassifiesDailyResults() throws {
+        let repository = try makeRepository()
+        let calendar = makeCalendar()
+        let monday = calendar.startOfDay(for: makeDate(year: 2026, month: 5, day: 25, calendar: calendar))
+        let tuesday = calendar.startOfDay(for: makeDate(year: 2026, month: 5, day: 26, calendar: calendar))
+        let wednesday = calendar.startOfDay(for: makeDate(year: 2026, month: 5, day: 27, calendar: calendar))
+
+        try repository.saveQuitPlan(makeQuitPlan(
+            quitDate: monday,
+            taperTargetCigarettesPerDay: 4,
+            taperReductionStep: 0,
+            attemptStartedAt: monday
+        ))
+        try repository.saveDailyCheckIn(DailyCheckIn(
+            id: fixedUUID(201),
+            date: monday,
+            mood: 7,
+            stress: 5,
+            confidence: 8,
+            smokedToday: true,
+            cigarettesSmoked: 4,
+            taperTargetCigarettes: 4,
+            stayedWithinTaperTarget: true,
+            slipNote: "",
+            createdAt: fixedDate(201),
+            updatedAt: fixedDate(202)
+        ))
+        try repository.saveDailyCheckIn(DailyCheckIn(
+            id: fixedUUID(202),
+            date: tuesday,
+            mood: 7,
+            stress: 5,
+            confidence: 8,
+            smokedToday: true,
+            cigarettesSmoked: 5,
+            taperTargetCigarettes: 4,
+            stayedWithinTaperTarget: false,
+            slipNote: "One over target.",
+            createdAt: fixedDate(203),
+            updatedAt: fixedDate(204)
+        ))
+        try repository.saveDailyCheckIn(DailyCheckIn(
+            id: fixedUUID(203),
+            date: wednesday,
+            mood: 7,
+            stress: 5,
+            confidence: 8,
+            smokedToday: true,
+            cigarettesSmoked: 7,
+            taperTargetCigarettes: 4,
+            stayedWithinTaperTarget: false,
+            slipNote: "Above target.",
+            createdAt: fixedDate(205),
+            updatedAt: fixedDate(206)
+        ))
+
+        let store = TeoPateoStore(repository: repository, now: { wednesday }, calendar: calendar)
+        let week = store.currentWeekPlanAdherence
+
+        XCTAssertEqual(week.count, 7)
+        XCTAssertEqual(week.first?.date, monday)
+        XCTAssertEqual(week.map(\.status).prefix(4), [.achieved, .slightMiss, .missed, nil])
+        XCTAssertEqual(week[2].cigarettesSmoked, 7)
+        XCTAssertTrue(week[2].isToday)
+    }
+
     func testInvalidPlanLibraryInputsSetFailureAndDoNotMutateCollections() throws {
         let store = TeoPateoStore(repository: try makeRepository())
         let triggerCount = store.triggerRules.count

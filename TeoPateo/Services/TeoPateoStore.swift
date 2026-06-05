@@ -497,7 +497,12 @@ final class TeoPateoStore: ObservableObject {
         persistCoachChats()
 
         var assistantMessageID: UUID?
+        var reply = ""
         do {
+            guard !Task.isCancelled else {
+                throw CancellationError()
+            }
+
             let coachRequest = makeCoachRequest(for: chatID)
             let pendingAssistantMessageID = UUID()
             assistantMessageID = pendingAssistantMessageID
@@ -506,10 +511,16 @@ final class TeoPateoStore: ObservableObject {
                 to: chatID
             )
 
-            var reply = ""
             for try await chunk in coachClient.reply(to: coachRequest) {
+                guard !Task.isCancelled else {
+                    throw CancellationError()
+                }
                 reply += chunk
                 updateCoachMessage(pendingAssistantMessageID, in: chatID, text: reply)
+            }
+
+            guard !Task.isCancelled else {
+                throw CancellationError()
             }
 
             let trimmedReply = reply.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -521,11 +532,23 @@ final class TeoPateoStore: ObservableObject {
             coachResponseState = .ready
             persistCoachChats()
         } catch {
+            let trimmedReply = reply.trimmingCharacters(in: .whitespacesAndNewlines)
             if let assistantMessageID {
-                deleteCoachMessage(assistantMessageID, from: chatID)
+                if trimmedReply.isEmpty {
+                    deleteCoachMessage(assistantMessageID, from: chatID)
+                } else {
+                    updateCoachMessage(assistantMessageID, in: chatID, text: trimmedReply)
+                }
                 persistCoachChats()
             }
-            coachResponseState = .failed(Self.coachErrorMessage(for: error))
+
+            if Task.isCancelled || Self.isCancellation(error) {
+                coachResponseState = .ready
+            } else if !trimmedReply.isEmpty {
+                coachResponseState = .failed(Self.partialCoachReplySavedMessage)
+            } else {
+                coachResponseState = .failed(Self.coachErrorMessage(for: error))
+            }
         }
     }
 
@@ -1907,6 +1930,22 @@ final class TeoPateoStore: ObservableObject {
         }
 
         return "The coach is unavailable right now. Your message was saved."
+    }
+
+    private static var partialCoachReplySavedMessage: String {
+        "The coach response was interrupted. Partial reply saved."
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+
+        if let urlError = error as? URLError, urlError.code == .cancelled {
+            return true
+        }
+
+        return false
     }
 
     private static func coachDateLabel(_ date: Date) -> String {

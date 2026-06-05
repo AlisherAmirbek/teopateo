@@ -257,6 +257,69 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         )
     }
 
+    func testCoachStreamFailurePreservesPartialAssistantReply() async throws {
+        let repository = try makeRepository()
+        let coachClient = TestCoachClient(response: .chunksThenFailure(
+            [
+                "Take one slow breath, ",
+                "then put water in your hand."
+            ],
+            URLError(.networkConnectionLost)
+        ))
+        let store = TeoPateoStore(repository: repository, coachClient: coachClient)
+
+        await store.sendCoachMessage("I want to smoke after coffee.")
+
+        XCTAssertEqual(store.coachMessages.count, 2)
+        XCTAssertEqual(store.coachMessages.first?.text, "I want to smoke after coffee.")
+        XCTAssertEqual(store.coachMessages.last?.isUser, false)
+        XCTAssertEqual(
+            store.coachMessages.last?.text,
+            "Take one slow breath, then put water in your hand."
+        )
+        XCTAssertEqual(
+            store.coachResponseState.message,
+            "The coach response was interrupted. Partial reply saved."
+        )
+
+        let reloaded = TeoPateoStore(repository: repository, coachClient: coachClient)
+        XCTAssertEqual(reloaded.coachMessages.map(\.text), store.coachMessages.map(\.text))
+        XCTAssertEqual(reloaded.coachMessages.map(\.isUser), store.coachMessages.map(\.isUser))
+    }
+
+    func testCoachCancellationPreservesPartialReplyAndClearsSendingState() async throws {
+        let store = TeoPateoStore(
+            repository: try makeRepository(),
+            coachClient: TestCoachClient(response: .chunksThenFailure(
+                ["Name the trigger and wait."],
+                CancellationError()
+            ))
+        )
+
+        await store.sendCoachMessage("I am leaving work and want to smoke.")
+
+        XCTAssertFalse(store.isCoachResponding)
+        XCTAssertNil(store.coachResponseState.message)
+        XCTAssertEqual(store.coachMessages.count, 2)
+        XCTAssertEqual(store.coachMessages.last?.isUser, false)
+        XCTAssertEqual(store.coachMessages.last?.text, "Name the trigger and wait.")
+    }
+
+    func testCoachCancellationWithoutReplyClearsPlaceholderAndSendingState() async throws {
+        let store = TeoPateoStore(
+            repository: try makeRepository(),
+            coachClient: TestCoachClient(response: .failure(CancellationError()))
+        )
+
+        await store.sendCoachMessage("I am craving after lunch.")
+
+        XCTAssertFalse(store.isCoachResponding)
+        XCTAssertNil(store.coachResponseState.message)
+        XCTAssertEqual(store.coachMessages.count, 1)
+        XCTAssertEqual(store.coachMessages.last?.text, "I am craving after lunch.")
+        XCTAssertEqual(store.coachMessages.last?.isUser, true)
+    }
+
     func testNewCoachChatStartsWithCleanRequestHistory() async throws {
         let repository = try makeRepository()
         let coachClient = TestCoachClient()

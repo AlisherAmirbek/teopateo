@@ -274,6 +274,7 @@ final class TestCoachClient: CoachResponding {
     enum Response {
         case success(String)
         case successChunks([String])
+        case chunksThenFailure([String], Error)
         case failure(Error)
     }
 
@@ -298,6 +299,11 @@ final class TestCoachClient: CoachResponding {
                     continuation.yield(chunk)
                 }
                 continuation.finish()
+            case .chunksThenFailure(let chunks, let error):
+                for chunk in chunks {
+                    continuation.yield(chunk)
+                }
+                continuation.finish(throwing: error)
             case .failure(let error):
                 continuation.finish(throwing: error)
             }

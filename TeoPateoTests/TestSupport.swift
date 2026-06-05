@@ -363,6 +363,7 @@ enum TestRepositoryOperation: Hashable {
     case loadSnapshot
     case saveNotificationSettings
     case saveDailyCheckIn
+    case saveCravingWithSlip
     case recentCheckIns
 }
 
@@ -466,6 +467,11 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
 
     func saveCravingEvent(_ event: CravingEvent) throws {
         try base.saveCravingEvent(event)
+    }
+
+    func saveCravingWithSlip(craving: CravingEvent, slip: SlipEvent) throws {
+        try failIfNeeded(.saveCravingWithSlip)
+        try base.saveCravingWithSlip(craving: craving, slip: slip)
     }
 
     func recentCravingEvents(limit: Int) throws -> [CravingEvent] {

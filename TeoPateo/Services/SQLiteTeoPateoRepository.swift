@@ -32,6 +32,7 @@ protocol TeoPateoRepository {
     func deleteDailyCheckIn(_ id: UUID) throws
 
     func saveCravingEvent(_ event: CravingEvent) throws
+    func saveCravingWithSlip(craving: CravingEvent, slip: SlipEvent) throws
     func recentCravingEvents(limit: Int) throws -> [CravingEvent]
     func deleteCravingEvent(_ id: UUID) throws
 
@@ -729,66 +730,78 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
     }
 
     func saveCravingEvent(_ event: CravingEvent) throws {
+        try dbQueue.write { db in
+            try writeCravingEvent(event, in: db)
+        }
+    }
+
+    func saveCravingWithSlip(craving: CravingEvent, slip: SlipEvent) throws {
+        try dbQueue.write { db in
+            try writeCravingEvent(craving, in: db)
+            try writeSlipEvent(slip, in: db)
+        }
+    }
+
+    private func writeCravingEvent(_ event: CravingEvent, in db: Database) throws {
         let completedAt = event.completedAt.map(\.timeIntervalSince1970)
         let dismissedAt = event.dismissedAt.map(\.timeIntervalSince1970)
         let helpedActivityID = event.helpedActivityID?.uuidString
         let supportContactID = event.supportContactID?.uuidString
-        try dbQueue.write { db in
+
+        try db.execute(literal: """
+            INSERT INTO craving_events (
+                id, started_at, completed_at, duration_seconds,
+                completed_without_smoking, outcome, initial_intensity,
+                final_intensity, helped_activity_id, support_contact_id,
+                reflection_note, dismissed_at, created_at, updated_at
+            )
+            VALUES (
+                \(event.id.uuidString),
+                \(event.startedAt.timeIntervalSince1970),
+                \(completedAt),
+                \(event.durationSeconds),
+                \(event.completedWithoutSmoking ? 1 : 0),
+                \(event.outcome.rawValue),
+                \(event.initialIntensity),
+                \(event.finalIntensity),
+                \(helpedActivityID),
+                \(supportContactID),
+                \(event.reflectionNote),
+                \(dismissedAt),
+                \(event.createdAt.timeIntervalSince1970),
+                \(event.updatedAt.timeIntervalSince1970)
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at,
+                duration_seconds = excluded.duration_seconds,
+                completed_without_smoking = excluded.completed_without_smoking,
+                outcome = excluded.outcome,
+                initial_intensity = excluded.initial_intensity,
+                final_intensity = excluded.final_intensity,
+                helped_activity_id = excluded.helped_activity_id,
+                support_contact_id = excluded.support_contact_id,
+                reflection_note = excluded.reflection_note,
+                dismissed_at = excluded.dismissed_at,
+                updated_at = excluded.updated_at;
+            """)
+
+        try db.execute(
+            sql: "DELETE FROM craving_event_triggers WHERE craving_event_id = ?;",
+            arguments: [event.id.uuidString]
+        )
+
+        for (position, trigger) in event.selectedTriggers.enumerated() {
             try db.execute(literal: """
-                INSERT INTO craving_events (
-                    id, started_at, completed_at, duration_seconds,
-                    completed_without_smoking, outcome, initial_intensity,
-                    final_intensity, helped_activity_id, support_contact_id,
-                    reflection_note, dismissed_at, created_at, updated_at
+                INSERT INTO craving_event_triggers (
+                    craving_event_id, trigger, position
                 )
                 VALUES (
                     \(event.id.uuidString),
-                    \(event.startedAt.timeIntervalSince1970),
-                    \(completedAt),
-                    \(event.durationSeconds),
-                    \(event.completedWithoutSmoking ? 1 : 0),
-                    \(event.outcome.rawValue),
-                    \(event.initialIntensity),
-                    \(event.finalIntensity),
-                    \(helpedActivityID),
-                    \(supportContactID),
-                    \(event.reflectionNote),
-                    \(dismissedAt),
-                    \(event.createdAt.timeIntervalSince1970),
-                    \(event.updatedAt.timeIntervalSince1970)
-                )
-                ON CONFLICT(id) DO UPDATE SET
-                    started_at = excluded.started_at,
-                    completed_at = excluded.completed_at,
-                    duration_seconds = excluded.duration_seconds,
-                    completed_without_smoking = excluded.completed_without_smoking,
-                    outcome = excluded.outcome,
-                    initial_intensity = excluded.initial_intensity,
-                    final_intensity = excluded.final_intensity,
-                    helped_activity_id = excluded.helped_activity_id,
-                    support_contact_id = excluded.support_contact_id,
-                    reflection_note = excluded.reflection_note,
-                    dismissed_at = excluded.dismissed_at,
-                    updated_at = excluded.updated_at;
+                    \(trigger),
+                    \(position)
+                );
                 """)
-
-            try db.execute(
-                sql: "DELETE FROM craving_event_triggers WHERE craving_event_id = ?;",
-                arguments: [event.id.uuidString]
-            )
-
-            for (position, trigger) in event.selectedTriggers.enumerated() {
-                try db.execute(literal: """
-                    INSERT INTO craving_event_triggers (
-                        craving_event_id, trigger, position
-                    )
-                    VALUES (
-                        \(event.id.uuidString),
-                        \(trigger),
-                        \(position)
-                    );
-                    """)
-            }
         }
     }
 
@@ -838,51 +851,55 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
 
     func saveSlipEvent(_ event: SlipEvent) throws {
         try dbQueue.write { db in
+            try writeSlipEvent(event, in: db)
+        }
+    }
+
+    private func writeSlipEvent(_ event: SlipEvent, in db: Database) throws {
+        try db.execute(literal: """
+            INSERT INTO slip_events (
+                id, occurred_at, cigarettes_smoked, mood, stress,
+                context, note, recovery_action, created_at, updated_at
+            )
+            VALUES (
+                \(event.id.uuidString),
+                \(event.occurredAt.timeIntervalSince1970),
+                \(event.cigarettesSmoked),
+                \(event.mood),
+                \(event.stress),
+                \(event.context),
+                \(event.note),
+                \(event.recoveryAction),
+                \(event.createdAt.timeIntervalSince1970),
+                \(event.updatedAt.timeIntervalSince1970)
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                occurred_at = excluded.occurred_at,
+                cigarettes_smoked = excluded.cigarettes_smoked,
+                mood = excluded.mood,
+                stress = excluded.stress,
+                context = excluded.context,
+                note = excluded.note,
+                recovery_action = excluded.recovery_action,
+                updated_at = excluded.updated_at;
+            """)
+
+        try db.execute(
+            sql: "DELETE FROM slip_event_triggers WHERE slip_event_id = ?;",
+            arguments: [event.id.uuidString]
+        )
+
+        for (position, trigger) in event.selectedTriggers.enumerated() {
             try db.execute(literal: """
-                INSERT INTO slip_events (
-                    id, occurred_at, cigarettes_smoked, mood, stress,
-                    context, note, recovery_action, created_at, updated_at
+                INSERT INTO slip_event_triggers (
+                    slip_event_id, trigger, position
                 )
                 VALUES (
                     \(event.id.uuidString),
-                    \(event.occurredAt.timeIntervalSince1970),
-                    \(event.cigarettesSmoked),
-                    \(event.mood),
-                    \(event.stress),
-                    \(event.context),
-                    \(event.note),
-                    \(event.recoveryAction),
-                    \(event.createdAt.timeIntervalSince1970),
-                    \(event.updatedAt.timeIntervalSince1970)
-                )
-                ON CONFLICT(id) DO UPDATE SET
-                    occurred_at = excluded.occurred_at,
-                    cigarettes_smoked = excluded.cigarettes_smoked,
-                    mood = excluded.mood,
-                    stress = excluded.stress,
-                    context = excluded.context,
-                    note = excluded.note,
-                    recovery_action = excluded.recovery_action,
-                    updated_at = excluded.updated_at;
+                    \(trigger),
+                    \(position)
+                );
                 """)
-
-            try db.execute(
-                sql: "DELETE FROM slip_event_triggers WHERE slip_event_id = ?;",
-                arguments: [event.id.uuidString]
-            )
-
-            for (position, trigger) in event.selectedTriggers.enumerated() {
-                try db.execute(literal: """
-                    INSERT INTO slip_event_triggers (
-                        slip_event_id, trigger, position
-                    )
-                    VALUES (
-                        \(event.id.uuidString),
-                        \(trigger),
-                        \(position)
-                    );
-                    """)
-            }
         }
     }
 

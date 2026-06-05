@@ -163,6 +163,29 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(dismissed.initialIntensity, 7)
     }
 
+    func testCravingWithSlipFailureDoesNotSavePartialCraving() throws {
+        let baseRepository = try makeRepository()
+        let repository = ThrowingTeoPateoRepository(
+            base: baseRepository,
+            failingOperations: [.saveCravingWithSlip]
+        )
+        let store = TeoPateoStore(repository: repository)
+
+        store.selectedTriggers = ["Work stress"]
+        XCTAssertFalse(store.completeCraving(
+            startedAt: fixedDate(40),
+            completedAt: fixedDate(41),
+            durationSeconds: 120,
+            completedWithoutSmoking: false
+        ))
+
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertTrue(store.cravingEvents.isEmpty)
+        XCTAssertTrue(store.slipEvents.isEmpty)
+        XCTAssertTrue(try baseRepository.recentCravingEvents(limit: 10).isEmpty)
+        XCTAssertTrue(try baseRepository.recentSlipEvents(limit: 10).isEmpty)
+    }
+
     func testOnboardingRejectsBlankReasonAndFallsBackToDefaultTriggers() throws {
         let repository = try makeRepository()
         let store = TeoPateoStore(repository: repository)

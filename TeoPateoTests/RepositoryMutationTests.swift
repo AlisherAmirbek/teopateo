@@ -82,6 +82,42 @@ final class RepositoryMutationTests: TeoPateoTestCase {
         XCTAssertEqual(slip.recoveryAction, "Call support")
     }
 
+    func testSavingCravingWithSlipPersistsBothRecordsTogether() throws {
+        let repository = try makeRepository()
+
+        try repository.saveCravingWithSlip(
+            craving: CravingEvent(
+                id: fixedUUID(40),
+                startedAt: fixedDate(40),
+                completedAt: fixedDate(41),
+                durationSeconds: 120,
+                selectedTriggers: ["Work stress"],
+                outcome: .smokedAfterCraving,
+                reflectionNote: "Smoked after a tense call.",
+                createdAt: fixedDate(40),
+                updatedAt: fixedDate(41)
+            ),
+            slip: SlipEvent(
+                id: fixedUUID(41),
+                occurredAt: fixedDate(41),
+                cigarettesSmoked: 1,
+                selectedTriggers: ["Work stress"],
+                context: "Craving mode",
+                note: "Smoked after a tense call.",
+                recoveryAction: "Walk before checking messages.",
+                createdAt: fixedDate(41),
+                updatedAt: fixedDate(42)
+            )
+        )
+
+        let craving = try XCTUnwrap(repository.recentCravingEvents(limit: 10).first)
+        let slip = try XCTUnwrap(repository.recentSlipEvents(limit: 10).first)
+        XCTAssertEqual(craving.outcome, .smokedAfterCraving)
+        XCTAssertEqual(craving.selectedTriggers, ["Work stress"])
+        XCTAssertEqual(slip.context, "Craving mode")
+        XCTAssertEqual(slip.selectedTriggers, ["Work stress"])
+    }
+
     func testRecentQueriesHonorOrderingAndLimit() throws {
         let repository = try makeRepository()
         for index in 0..<5 {

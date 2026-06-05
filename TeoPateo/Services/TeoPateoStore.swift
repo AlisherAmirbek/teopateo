@@ -353,20 +353,34 @@ final class TeoPateoStore: ObservableObject {
             dismissedAt: nil
         )
 
-        guard persistCravingEvent(event, successMessage: "Craving and slip saved.") else {
-            return false
-        }
-
-        return saveSlipEvent(
+        let now = now()
+        let slipEvent = SlipEvent(
             occurredAt: completedAt,
-            cigarettesSmoked: cigarettesSmoked,
-            triggers: selectedTriggers,
+            cigarettesSmoked: max(cigarettesSmoked, 1),
+            selectedTriggers: selectedTriggers.sorted(),
             mood: mood,
             stress: stress,
             context: "Craving mode",
             note: slipNote,
-            recoveryAction: recoveryAction
+            recoveryAction: recoveryAction,
+            createdAt: now,
+            updatedAt: now
         )
+
+        do {
+            try repository.saveCravingWithSlip(craving: event, slip: slipEvent)
+            cravingEvents = try repository.recentCravingEvents(limit: 10_000)
+            slipEvents = try repository.recentSlipEvents(limit: 10_000)
+            refreshPlanAdjustmentSuggestions()
+            persistenceError = nil
+            lastSaveStatus = .saved("Craving and slip saved.")
+            syncScheduledNotifications(showSuccess: false)
+            return true
+        } catch {
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Craving and slip could not be saved.")
+            return false
+        }
     }
 
     @discardableResult
@@ -3357,6 +3371,20 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
     func saveCravingEvent(_ event: CravingEvent) throws {
         cravingEvents.removeAll { $0.id == event.id }
         cravingEvents.append(event)
+    }
+
+    func saveCravingWithSlip(craving: CravingEvent, slip: SlipEvent) throws {
+        let previousCravingEvents = cravingEvents
+        let previousSlipEvents = slipEvents
+
+        do {
+            try saveCravingEvent(craving)
+            try saveSlipEvent(slip)
+        } catch {
+            cravingEvents = previousCravingEvents
+            slipEvents = previousSlipEvents
+            throw error
+        }
     }
 
     func recentCravingEvents(limit: Int) throws -> [CravingEvent] {

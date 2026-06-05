@@ -1985,7 +1985,9 @@ enum QuitPlanGenerator {
         plan.taperTargetCigarettesPerDay = taperSettings.target
         plan.taperReductionStep = taperSettings.step
         plan.taperReductionIntervalDays = taperSettings.intervalDays
-        plan.attemptStartedAt = quitMode == "Taper" ? now : quitDate
+        plan.attemptStartedAt = quitMode == "Taper" && existingPlan.quitMode == "Taper"
+            ? existingPlan.attemptStartedAt
+            : (quitMode == "Taper" ? now : quitDate)
         plan.updatedAt = now
 
         return PersonalizedPlanGenerationOutput(
@@ -2129,7 +2131,7 @@ enum QuitPlanGenerator {
             intervalDays = confidence >= 8 ? 2 : 3
         }
 
-        return TaperSettings(target: max(baseline - step, 0), step: step, intervalDays: intervalDays)
+        return TaperSettings(target: baseline, step: step, intervalDays: intervalDays)
     }
 
     private static func generatedTriggerRules(
@@ -2479,7 +2481,7 @@ enum QuitPlanGenerator {
         let goal = savingsGoalTitle == "Custom" && !trimmed(customSavingsGoal).isEmpty
             ? trimmed(customSavingsGoal)
             : trimmed(savingsGoalTitle)
-        let firstMilestone = max(5, (weeklySavings / 2).rounded())
+        let firstMilestone = weeklySavings > 0 ? max(5, (weeklySavings / 2).rounded()) : 0
         let goalText = goal.isEmpty ? "your savings goal" : goal.lowercased()
         return SavingsPlan(
             costPerPack: max(costPerPack, 0),

@@ -1,6 +1,7 @@
 import XCTest
 @testable import TeoPateo
 
+@MainActor
 final class StoreBehaviorTests: TeoPateoTestCase {
     func testPlanUpdatesClampPersistAndAffectTaperSchedule() throws {
         let repository = try makeRepository()
@@ -22,6 +23,8 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(store.currentQuitPlan.baselineCigarettesPerDay, 0)
         XCTAssertEqual(store.currentQuitPlan.costPerPack, 0)
         XCTAssertEqual(store.currentQuitPlan.cigarettesPerPack, 1)
+        XCTAssertEqual(store.currentQuitPlan.savingsPlan.weeklySavingsBaseline, 0)
+        XCTAssertEqual(store.currentQuitPlan.savingsPlan.firstMilestoneAmount, 0)
         XCTAssertEqual(store.currentQuitPlan.taperTargetCigarettesPerDay, 0)
         XCTAssertEqual(store.currentQuitPlan.taperReductionStep, 0)
         XCTAssertEqual(store.currentQuitPlan.taperReductionIntervalDays, 1)
@@ -35,7 +38,8 @@ final class StoreBehaviorTests: TeoPateoTestCase {
 
     func testCurrentWeekPlanAdherenceClassifiesDailyResults() throws {
         let repository = try makeRepository()
-        let calendar = makeCalendar()
+        var calendar = makeCalendar()
+        calendar.firstWeekday = 2
         let monday = calendar.startOfDay(for: makeDate(year: 2026, month: 5, day: 25, calendar: calendar))
         let tuesday = calendar.startOfDay(for: makeDate(year: 2026, month: 5, day: 26, calendar: calendar))
         let wednesday = calendar.startOfDay(for: makeDate(year: 2026, month: 5, day: 27, calendar: calendar))
@@ -88,15 +92,48 @@ final class StoreBehaviorTests: TeoPateoTestCase {
             createdAt: fixedDate(205),
             updatedAt: fixedDate(206)
         ))
+        try repository.saveSlipEvent(SlipEvent(
+            id: fixedUUID(204),
+            occurredAt: monday.addingTimeInterval(3600),
+            cigarettesSmoked: 1,
+            selectedTriggers: ["Coffee"],
+            context: "Morning",
+            note: "Extra cigarette after check-in.",
+            recoveryAction: "Return to taper.",
+            createdAt: fixedDate(207),
+            updatedAt: fixedDate(208)
+        ))
 
         let store = TeoPateoStore(repository: repository, now: { wednesday }, calendar: calendar)
         let week = store.currentWeekPlanAdherence
 
         XCTAssertEqual(week.count, 7)
         XCTAssertEqual(week.first?.date, monday)
-        XCTAssertEqual(week.map(\.status).prefix(4), [.achieved, .slightMiss, .missed, nil])
+        XCTAssertEqual(week.map(\.status).prefix(4), [.slightMiss, .slightMiss, .missed, nil])
+        XCTAssertEqual(week[0].cigarettesSmoked, 5)
         XCTAssertEqual(week[2].cigarettesSmoked, 7)
         XCTAssertTrue(week[2].isToday)
+    }
+
+    func testPlanAdherenceWeekUsesCalendarFirstWeekday() throws {
+        let repository = try makeRepository()
+        var calendar = makeCalendar()
+        calendar.firstWeekday = 1
+        let sunday = calendar.startOfDay(for: makeDate(year: 2026, month: 5, day: 24, calendar: calendar))
+        let wednesday = calendar.startOfDay(for: makeDate(year: 2026, month: 5, day: 27, calendar: calendar))
+
+        try repository.saveQuitPlan(makeQuitPlan(
+            quitDate: sunday,
+            taperTargetCigarettesPerDay: 4,
+            taperReductionStep: 0,
+            attemptStartedAt: sunday
+        ))
+
+        let store = TeoPateoStore(repository: repository, now: { wednesday }, calendar: calendar)
+        let week = store.planAdherenceWeek(containing: wednesday)
+
+        XCTAssertEqual(week.first?.date, sunday)
+        XCTAssertEqual(week.last?.date, calendar.date(byAdding: .day, value: 6, to: sunday))
     }
 
     func testInvalidPlanLibraryInputsSetFailureAndDoNotMutateCollections() throws {
@@ -129,7 +166,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
 
         store.selectedTriggers = ["Coffee"]
         store.startCravingSession()
-        XCTAssertTrue(store.selectedTriggers.isEmpty)
+        XCTAssertEqual(store.selectedTriggers, ["Coffee"])
         XCTAssertEqual(store.lastSaveStatus, .idle)
 
         store.selectedTriggers = ["Coffee"]
@@ -161,6 +198,22 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(dismissed.outcome, .dismissedWithoutOutcome)
         XCTAssertEqual(dismissed.durationSeconds, 0)
         XCTAssertEqual(dismissed.initialIntensity, 7)
+    }
+
+    func testCravingCompletionCanUseSessionLocalTriggers() throws {
+        let repository = try makeRepository()
+        let store = TeoPateoStore(repository: repository)
+
+        store.selectedTriggers = ["Global"]
+        XCTAssertTrue(store.completeCravingWithoutSmoking(
+            startedAt: fixedDate(50),
+            completedAt: fixedDate(51),
+            durationSeconds: 120,
+            selectedTriggers: ["Local"]
+        ))
+
+        XCTAssertEqual(store.selectedTriggers, ["Global"])
+        XCTAssertEqual(store.cravingEvents.first?.selectedTriggers, ["Local"])
     }
 
     func testCravingWithSlipFailureDoesNotSavePartialCraving() throws {
@@ -577,6 +630,36 @@ final class StoreBehaviorTests: TeoPateoTestCase {
 
         XCTAssertNotNil(store.historyEntry(for: checkInID, kind: .checkIn))
         XCTAssertNil(store.historyEntry(for: checkInID, kind: .slip))
+    }
+
+    func testStoreSaveDefaultsUseInjectedClock() throws {
+        let repository = try makeRepository()
+        let calendar = makeCalendar()
+        let now = makeDate(year: 2026, month: 6, day: 1, hour: 9, calendar: calendar)
+        let store = TeoPateoStore(repository: repository, now: { now }, calendar: calendar)
+
+        store.smokedToday = false
+        XCTAssertTrue(store.saveCheckIn(slipNote: ""))
+        XCTAssertEqual(store.dailyCheckIns.first?.date, now)
+        XCTAssertEqual(store.dailyCheckIns.first?.createdAt, now)
+
+        XCTAssertTrue(store.completeCravingWithoutSmoking(
+            startedAt: now.addingTimeInterval(-120),
+            durationSeconds: 120,
+            selectedTriggers: ["Coffee"]
+        ))
+        XCTAssertEqual(store.cravingEvents.first?.completedAt, now)
+        XCTAssertEqual(store.cravingEvents.first?.createdAt, now)
+
+        XCTAssertTrue(store.saveSlipEvent(
+            cigarettesSmoked: 1,
+            triggers: ["Stress"],
+            context: "Check",
+            note: "Clock test.",
+            recoveryAction: "Return to plan."
+        ))
+        XCTAssertEqual(store.slipEvents.first?.occurredAt, now)
+        XCTAssertEqual(store.slipEvents.first?.createdAt, now)
     }
 
     func testRefreshAuthorizationSyncsExistingEnabledReminders() throws {

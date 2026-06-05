@@ -18,6 +18,7 @@ struct CravingModeView: View {
     @State private var slipNote = ""
     @State private var step: CravingStep = .rescue
     @State private var reasonIndex = 0
+    @State private var selectedTriggers: Set<String> = []
 
     var body: some View {
         ZStack {
@@ -48,6 +49,7 @@ struct CravingModeView: View {
         }
         .onAppear {
             resetTimerState()
+            selectedTriggers = []
             store.startCravingSession()
             reasonIndex = 0
         }
@@ -254,7 +256,7 @@ struct CravingModeView: View {
                     .foregroundColor(QuitTheme.muted)
             }
 
-            ForEach(store.activitiesForCurrentCraving(triggers: store.selectedTriggers)) { activity in
+            ForEach(store.activitiesForCurrentCraving(triggers: selectedTriggers)) { activity in
                 Button {
                     selectedActivityID = activity.id
                 } label: {
@@ -283,7 +285,7 @@ struct CravingModeView: View {
             Text(title)
                 .font(.rounded(.headline, weight: .bold))
 
-            FlexibleTags(items: store.cravingTriggerOptions, selected: $store.selectedTriggers)
+            FlexibleTags(items: store.cravingTriggerOptions, selected: $selectedTriggers)
         }
         .quietCard()
     }
@@ -540,7 +542,8 @@ struct CravingModeView: View {
             finalIntensity: finalIntensity,
             helpedActivityID: selectedActivityID,
             supportContactID: nil,
-            reflectionNote: reflectionNote
+            reflectionNote: reflectionNote,
+            selectedTriggers: selectedTriggers
         )
         resetTimer()
         dismiss()
@@ -558,7 +561,8 @@ struct CravingModeView: View {
             supportContactID: nil,
             cigarettesSmoked: 1,
             slipNote: slipNote.isEmpty ? "Smoked during a craving." : slipNote,
-            recoveryAction: store.currentQuitPlan.slipRecoveryPlan.defaultRecoveryAction
+            recoveryAction: store.currentQuitPlan.slipRecoveryPlan.defaultRecoveryAction,
+            selectedTriggers: selectedTriggers
         )
         resetTimer()
         dismiss()
@@ -570,7 +574,8 @@ struct CravingModeView: View {
             startedAt: startedAt,
             dismissedAt: dismissedAt,
             durationSeconds: elapsedDurationSeconds(at: dismissedAt),
-            initialIntensity: initialIntensity
+            initialIntensity: initialIntensity,
+            selectedTriggers: selectedTriggers
         )
         resetTimer()
         dismiss()

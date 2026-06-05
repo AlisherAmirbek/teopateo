@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class TeoPateoStore: ObservableObject {
     @Published var selectedTab: AppTab = .today
     @Published var isCravingModePresented = false
@@ -234,7 +235,7 @@ final class TeoPateoStore: ObservableObject {
 
     @discardableResult
     func saveCheckIn(
-        date: Date = Date(),
+        date: Date? = nil,
         slipNote: String
     ) -> Bool {
         guard smokedToday != nil else {
@@ -243,12 +244,13 @@ final class TeoPateoStore: ObservableObject {
         }
 
         let now = now()
-        let existing = latestCheckIn(on: date)
+        let checkInDate = date ?? now
+        let existing = latestCheckIn(on: checkInDate)
         let cigarettesSmoked = smokedToday == true ? max(cigarettesSmoked, 1) : 0
-        let taperTarget = taperTarget(on: date)
+        let taperTarget = taperTarget(on: checkInDate)
         let checkIn = DailyCheckIn(
             id: existing?.id ?? UUID(),
-            date: date,
+            date: checkInDate,
             mood: mood,
             stress: stress,
             confidence: confidence,
@@ -278,42 +280,48 @@ final class TeoPateoStore: ObservableObject {
     @discardableResult
     func completeCraving(
         startedAt: Date,
-        completedAt: Date = Date(),
+        completedAt: Date? = nil,
         durationSeconds: Int,
-        completedWithoutSmoking: Bool
+        completedWithoutSmoking: Bool,
+        selectedTriggers: Set<String>? = nil
     ) -> Bool {
+        let resolvedCompletedAt = completedAt ?? now()
         if completedWithoutSmoking {
             return completeCravingWithoutSmoking(
                 startedAt: startedAt,
-                completedAt: completedAt,
-                durationSeconds: durationSeconds
+                completedAt: resolvedCompletedAt,
+                durationSeconds: durationSeconds,
+                selectedTriggers: selectedTriggers
             )
         }
 
         return completeCravingWithSlip(
             startedAt: startedAt,
-            completedAt: completedAt,
+            completedAt: resolvedCompletedAt,
             durationSeconds: durationSeconds,
             cigarettesSmoked: 1,
             slipNote: "Smoked during a craving.",
-            recoveryAction: "Return to the next planned 10-minute pause."
+            recoveryAction: "Return to the next planned 10-minute pause.",
+            selectedTriggers: selectedTriggers
         )
     }
 
     @discardableResult
     func completeCravingWithoutSmoking(
         startedAt: Date,
-        completedAt: Date = Date(),
+        completedAt: Date? = nil,
         durationSeconds: Int,
         initialIntensity: Double? = nil,
         finalIntensity: Double? = nil,
         helpedActivityID: UUID? = nil,
         supportContactID: UUID? = nil,
-        reflectionNote: String = ""
+        reflectionNote: String = "",
+        selectedTriggers: Set<String>? = nil
     ) -> Bool {
+        let resolvedCompletedAt = completedAt ?? now()
         let event = makeCravingEvent(
             startedAt: startedAt,
-            completedAt: completedAt,
+            completedAt: resolvedCompletedAt,
             durationSeconds: durationSeconds,
             outcome: .completedWithoutSmoking,
             initialIntensity: initialIntensity,
@@ -321,7 +329,8 @@ final class TeoPateoStore: ObservableObject {
             helpedActivityID: helpedActivityID,
             supportContactID: supportContactID,
             reflectionNote: reflectionNote,
-            dismissedAt: nil
+            dismissedAt: nil,
+            selectedTriggers: selectedTriggers
         )
 
         return persistCravingEvent(event, successMessage: "Craving saved as handled.")
@@ -330,7 +339,7 @@ final class TeoPateoStore: ObservableObject {
     @discardableResult
     func completeCravingWithSlip(
         startedAt: Date,
-        completedAt: Date = Date(),
+        completedAt: Date? = nil,
         durationSeconds: Int,
         initialIntensity: Double? = nil,
         finalIntensity: Double? = nil,
@@ -338,11 +347,14 @@ final class TeoPateoStore: ObservableObject {
         supportContactID: UUID? = nil,
         cigarettesSmoked: Int,
         slipNote: String,
-        recoveryAction: String
+        recoveryAction: String,
+        selectedTriggers: Set<String>? = nil
     ) -> Bool {
+        let resolvedCompletedAt = completedAt ?? now()
+        let triggerSelection = selectedTriggers ?? self.selectedTriggers
         let event = makeCravingEvent(
             startedAt: startedAt,
-            completedAt: completedAt,
+            completedAt: resolvedCompletedAt,
             durationSeconds: durationSeconds,
             outcome: .smokedAfterCraving,
             initialIntensity: initialIntensity,
@@ -350,14 +362,15 @@ final class TeoPateoStore: ObservableObject {
             helpedActivityID: helpedActivityID,
             supportContactID: supportContactID,
             reflectionNote: slipNote,
-            dismissedAt: nil
+            dismissedAt: nil,
+            selectedTriggers: triggerSelection
         )
 
         let now = now()
         let slipEvent = SlipEvent(
-            occurredAt: completedAt,
+            occurredAt: resolvedCompletedAt,
             cigarettesSmoked: max(cigarettesSmoked, 1),
-            selectedTriggers: selectedTriggers.sorted(),
+            selectedTriggers: triggerSelection.sorted(),
             mood: mood,
             stress: stress,
             context: "Craving mode",
@@ -386,10 +399,12 @@ final class TeoPateoStore: ObservableObject {
     @discardableResult
     func dismissCravingSession(
         startedAt: Date,
-        dismissedAt: Date = Date(),
+        dismissedAt: Date? = nil,
         durationSeconds: Int,
-        initialIntensity: Double? = nil
+        initialIntensity: Double? = nil,
+        selectedTriggers: Set<String>? = nil
     ) -> Bool {
+        let resolvedDismissedAt = dismissedAt ?? now()
         let event = makeCravingEvent(
             startedAt: startedAt,
             completedAt: nil,
@@ -400,7 +415,8 @@ final class TeoPateoStore: ObservableObject {
             helpedActivityID: nil,
             supportContactID: nil,
             reflectionNote: "",
-            dismissedAt: dismissedAt
+            dismissedAt: resolvedDismissedAt,
+            selectedTriggers: selectedTriggers
         )
 
         return persistCravingEvent(event, successMessage: "Craving saved for later review.")
@@ -408,7 +424,7 @@ final class TeoPateoStore: ObservableObject {
 
     @discardableResult
     func saveSlipEvent(
-        occurredAt: Date = Date(),
+        occurredAt: Date? = nil,
         cigarettesSmoked: Int,
         triggers: Set<String>,
         mood: Double? = nil,
@@ -418,8 +434,9 @@ final class TeoPateoStore: ObservableObject {
         recoveryAction: String
     ) -> Bool {
         let now = now()
+        let resolvedOccurredAt = occurredAt ?? now
         let event = SlipEvent(
-            occurredAt: occurredAt,
+            occurredAt: resolvedOccurredAt,
             cigarettesSmoked: max(cigarettesSmoked, 1),
             selectedTriggers: triggers.sorted(),
             mood: mood,
@@ -446,7 +463,6 @@ final class TeoPateoStore: ObservableObject {
     }
 
     func startCravingSession() {
-        selectedTriggers = []
         lastSaveStatus = .idle
     }
 
@@ -646,7 +662,7 @@ final class TeoPateoStore: ObservableObject {
 
     func planAdherenceWeek(containing date: Date) -> [DailyPlanAdherenceDay] {
         let today = calendar.startOfDay(for: now())
-        let start = mondayWeekStart(containing: date)
+        let start = weekStart(containing: date)
 
         return (0..<7).compactMap { offset in
             guard let day = calendar.date(byAdding: .day, value: offset, to: start) else {
@@ -2076,14 +2092,16 @@ final class TeoPateoStore: ObservableObject {
         helpedActivityID: UUID?,
         supportContactID: UUID?,
         reflectionNote: String,
-        dismissedAt: Date?
+        dismissedAt: Date?,
+        selectedTriggers: Set<String>? = nil
     ) -> CravingEvent {
         let now = now()
+        let triggerSelection = selectedTriggers ?? self.selectedTriggers
         return CravingEvent(
             startedAt: startedAt,
             completedAt: completedAt,
             durationSeconds: max(durationSeconds, 0),
-            selectedTriggers: selectedTriggers.sorted(),
+            selectedTriggers: triggerSelection.sorted(),
             outcome: outcome,
             initialIntensity: initialIntensity,
             finalIntensity: finalIntensity,
@@ -2133,7 +2151,7 @@ final class TeoPateoStore: ObservableObject {
         quitPlan.savingsPlan.savingsGoal = goal
         quitPlan.savingsPlan.weeklySavingsBaseline = weeklySavings
         quitPlan.savingsPlan.cigarettesAvoidedBaseline = weeklyAvoided
-        quitPlan.savingsPlan.firstMilestoneAmount = max(5, (weeklySavings / 2).rounded())
+        quitPlan.savingsPlan.firstMilestoneAmount = weeklySavings > 0 ? max(5, (weeklySavings / 2).rounded()) : 0
         quitPlan.savingsPlan.savingsGoalMessage = "At your current baseline, every smoke-free week puts about \(Self.moneySummary(weeklySavings)) toward \(goalText)."
         quitPlan.savingsPlan.dashboardMessage = "A smoke-free day is worth about \(Self.moneySummary(weeklySavings / 7)) toward \(goalText)."
     }
@@ -2317,11 +2335,12 @@ final class TeoPateoStore: ObservableObject {
             .first
     }
 
-    private func mondayWeekStart(containing date: Date) -> Date {
-        let day = calendar.startOfDay(for: date)
-        let weekday = calendar.component(.weekday, from: day)
-        let daysSinceMonday = (weekday + 5) % 7
-        return calendar.date(byAdding: .day, value: -daysSinceMonday, to: day) ?? day
+    private func weekStart(containing date: Date) -> Date {
+        if let interval = calendar.dateInterval(of: .weekOfYear, for: date) {
+            return calendar.startOfDay(for: interval.start)
+        }
+
+        return calendar.startOfDay(for: date)
     }
 
     private static func effectiveCigarettesSmoked(
@@ -2338,8 +2357,12 @@ final class TeoPateoStore: ObservableObject {
             checkInCigarettes = nil
         }
 
-        let recordedValues = [checkInCigarettes, slipCigarettes > 0 ? slipCigarettes : nil].compactMap { $0 }
-        return recordedValues.max()
+        let slipTotal = max(slipCigarettes, 0)
+        guard checkInCigarettes != nil || slipTotal > 0 else {
+            return nil
+        }
+
+        return max(checkInCigarettes ?? 0, 0) + slipTotal
     }
 
     private static func dailyPlanAdherenceStatus(
@@ -2419,11 +2442,7 @@ final class TeoPateoStore: ObservableObject {
     }
 
     private func weekRange(containing date: Date) -> ClosedRange<Date> {
-        if let interval = calendar.dateInterval(of: .weekOfYear, for: date) {
-            return interval.start...interval.end.addingTimeInterval(-1)
-        }
-
-        let start = calendar.startOfDay(for: date)
+        let start = weekStart(containing: date)
         let end = calendar.date(byAdding: .day, value: 7, to: start) ?? start
         return start...end.addingTimeInterval(-1)
     }
@@ -2920,7 +2939,7 @@ final class TeoPateoStore: ObservableObject {
             mainChallenge == .withdrawal
         let step = needsGentlerStart ? 1.0 : min(max((cigarettesPerDay * 0.2).rounded(), 1), 3)
         let intervalDays = needsGentlerStart ? 4 : (confidence >= 8 ? 2 : 3)
-        return (max(cigarettesPerDay - step, 0), step, intervalDays)
+        return (max(cigarettesPerDay, 0), step, intervalDays)
     }
 
     private static func generatedDailyFocus(

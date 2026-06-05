@@ -219,7 +219,10 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
 
         XCTAssertEqual(fast.taperReductionStep, 2)
         XCTAssertEqual(fast.taperReductionIntervalDays, 2)
-        XCTAssertEqual(fast.strategyPlan.nextSevenDayTargets.first?.maximumCigarettes, 4)
+        XCTAssertEqual(
+            Array(fast.strategyPlan.nextSevenDayTargets.prefix(3).map(\.maximumCigarettes)),
+            [6.0, 6.0, 4.0]
+        )
 
         let gentle = QuitPlanGenerator.generate(
             from: makeOnboardingInput(
@@ -241,6 +244,50 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
         XCTAssertEqual(gentle.taperReductionIntervalDays, 5)
         XCTAssertTrue(gentle.slipRecoveryPlan.preserveQuitAttemptByDefault)
         XCTAssertTrue(gentle.slipRecoveryPlan.message.localizedCaseInsensitiveContains("do not restart"))
+    }
+
+    func testQuitPlanGeneratorPreservesTaperAttemptStartWhenRegenerated() {
+        let calendar = makeCalendar()
+        let attemptStart = makeDate(year: 2026, month: 5, day: 1, calendar: calendar)
+        let now = makeDate(year: 2026, month: 5, day: 28, calendar: calendar)
+        let existingPlan = makeQuitPlan(
+            quitDate: attemptStart,
+            quitMode: "Taper",
+            attemptStartedAt: attemptStart
+        )
+
+        let regenerated = QuitPlanGenerator.generate(
+            from: makeOnboardingInput(
+                quitStatus: .cuttingDown,
+                cigarettesPerDay: 8,
+                approachPreference: .taper
+            ),
+            existingPlan: existingPlan,
+            now: now,
+            calendar: calendar
+        ).quitPlan
+
+        XCTAssertEqual(regenerated.attemptStartedAt, attemptStart)
+        XCTAssertEqual(regenerated.updatedAt, now)
+    }
+
+    func testQuitPlanGeneratorDoesNotCreatePhantomSavingsMilestone() {
+        let calendar = makeCalendar()
+        let now = makeDate(year: 2026, month: 5, day: 28, calendar: calendar)
+
+        let plan = QuitPlanGenerator.generate(
+            from: makeOnboardingInput(
+                cigarettesPerDay: 0,
+                costPerPack: 0,
+                cigarettesPerPack: 20
+            ),
+            existingPlan: makeQuitPlan(),
+            now: now,
+            calendar: calendar
+        ).quitPlan
+
+        XCTAssertEqual(plan.savingsPlan.weeklySavingsBaseline, 0)
+        XCTAssertEqual(plan.savingsPlan.firstMilestoneAmount, 0)
     }
 
     func testPlanAdjustmentEngineCreatesEvidenceBackedSuggestionsAndHonorsDismissal() {

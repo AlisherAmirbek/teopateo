@@ -1,6 +1,7 @@
 import XCTest
 @testable import TeoPateo
 
+@MainActor
 final class LocalPersistenceTests: XCTestCase {
     private var temporaryDirectory: URL!
     private var databaseURL: URL!

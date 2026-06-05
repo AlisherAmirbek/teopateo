@@ -206,6 +206,11 @@ class TeoPateoTestCase: XCTestCase {
     }
 
     func waitForMainQueue(file: StaticString = #filePath, line: UInt = #line) {
+        if Thread.isMainThread {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            return
+        }
+
         let expectation = expectation(description: "main queue")
         DispatchQueue.main.async {
             expectation.fulfill()

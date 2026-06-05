@@ -3,6 +3,63 @@ import UserNotifications
 @testable import TeoPateo
 
 final class ModelAndPlannerTests: TeoPateoTestCase {
+    func testCravingCountdownUsesWallClockElapsedTime() {
+        let startedAt = fixedDate(1_000)
+        let ninetySecondsLater = startedAt.addingTimeInterval(90)
+        let fifteenMinutesLater = startedAt.addingTimeInterval(900)
+
+        XCTAssertEqual(
+            CravingCountdownClock.remainingSeconds(
+                startedAt: startedAt,
+                now: ninetySecondsLater,
+                hasStarted: true
+            ),
+            510
+        )
+        XCTAssertEqual(
+            CravingCountdownClock.elapsedSeconds(
+                startedAt: startedAt,
+                now: fifteenMinutesLater,
+                hasStarted: true
+            ),
+            600
+        )
+        XCTAssertEqual(
+            CravingCountdownClock.remainingSeconds(
+                startedAt: startedAt,
+                now: fifteenMinutesLater,
+                hasStarted: true
+            ),
+            0
+        )
+    }
+
+    func testCravingCountdownExcludesExplicitPauseTime() {
+        let startedAt = fixedDate(2_000)
+        let pausedAt = startedAt.addingTimeInterval(120)
+        let whilePaused = startedAt.addingTimeInterval(420)
+        let afterResume = startedAt.addingTimeInterval(480)
+
+        XCTAssertEqual(
+            CravingCountdownClock.elapsedSeconds(
+                startedAt: startedAt,
+                now: whilePaused,
+                hasStarted: true,
+                pausedAt: pausedAt
+            ),
+            120
+        )
+        XCTAssertEqual(
+            CravingCountdownClock.elapsedSeconds(
+                startedAt: startedAt,
+                now: afterResume,
+                hasStarted: true,
+                accumulatedPausedSeconds: 300
+            ),
+            180
+        )
+    }
+
     func testReminderTimeClampsAndFormatsBoundaries() {
         let tooEarly = ReminderTime(hour: -5, minute: -30)
         XCTAssertEqual(tooEarly.hour, 0)

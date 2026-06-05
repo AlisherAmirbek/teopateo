@@ -9,6 +9,9 @@ protocol TeoPateoRepository {
     func fetchAppSettings() throws -> AppSettings?
     func saveAppSettings(_ settings: AppSettings) throws
 
+    func fetchPrivacySettings() throws -> PrivacySettings?
+    func savePrivacySettings(_ settings: PrivacySettings) throws
+
     func fetchNotificationSettings() throws -> NotificationSettings?
     func saveNotificationSettings(_ settings: NotificationSettings) throws
 
@@ -55,6 +58,8 @@ protocol TeoPateoRepository {
     func replaceCoachChats(_ chats: [CoachChat], selectedChatID: UUID?) throws
     func fetchCoachChats() throws -> [CoachChat]
     func fetchSelectedCoachChatID() throws -> UUID?
+
+    func deleteAllUserData() throws
 }
 
 enum TeoPateoRepositoryError: Error, LocalizedError {
@@ -119,6 +124,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         PersistedTeoPateoSnapshot(
             appSettings: try fetchAppSettings(),
             notificationSettings: try fetchNotificationSettings(),
+            privacySettings: try fetchPrivacySettings(),
             userProfile: try fetchUserProfile(),
             quitReadiness: try fetchQuitReadiness(),
             smokingBackground: try fetchSmokingBackground(),
@@ -134,6 +140,54 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
             coachChats: try fetchCoachChats(),
             selectedCoachChatID: try fetchSelectedCoachChatID()
         )
+    }
+
+    func fetchPrivacySettings() throws -> PrivacySettings? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT coach_data_consent_status, coach_data_consent_updated_at,
+                       policy_version, updated_at
+                FROM privacy_settings
+                WHERE id = 0;
+                """
+            )
+
+            guard let row else {
+                return nil
+            }
+
+            return PrivacySettings(
+                coachDataConsentStatus: CoachDataConsentStatus(rawValue: row["coach_data_consent_status"]) ?? .notDetermined,
+                coachDataConsentUpdatedAt: optionalDate(row, "coach_data_consent_updated_at"),
+                policyVersion: row["policy_version"],
+                updatedAt: date(row, "updated_at")
+            )
+        }
+    }
+
+    func savePrivacySettings(_ settings: PrivacySettings) throws {
+        try dbQueue.write { db in
+            try db.execute(literal: """
+                INSERT INTO privacy_settings (
+                    id, coach_data_consent_status, coach_data_consent_updated_at,
+                    policy_version, updated_at
+                )
+                VALUES (
+                    0,
+                    \(settings.coachDataConsentStatus.rawValue),
+                    \(settings.coachDataConsentUpdatedAt?.timeIntervalSince1970),
+                    \(settings.policyVersion),
+                    \(settings.updatedAt.timeIntervalSince1970)
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    coach_data_consent_status = excluded.coach_data_consent_status,
+                    coach_data_consent_updated_at = excluded.coach_data_consent_updated_at,
+                    policy_version = excluded.policy_version,
+                    updated_at = excluded.updated_at;
+                """)
+        }
     }
 
     func fetchAppSettings() throws -> AppSettings? {
@@ -1226,6 +1280,33 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         }
     }
 
+    func deleteAllUserData() throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                DELETE FROM coach_messages;
+                DELETE FROM coach_chats;
+                DELETE FROM craving_event_triggers;
+                DELETE FROM craving_events;
+                DELETE FROM slip_event_triggers;
+                DELETE FROM slip_events;
+                DELETE FROM daily_check_ins;
+                DELETE FROM trigger_rules;
+                DELETE FROM quit_plans;
+                DELETE FROM replacement_activities;
+                DELETE FROM risky_situations;
+                DELETE FROM support_contacts;
+                DELETE FROM user_reasons;
+                DELETE FROM user_profile;
+                DELETE FROM quit_readiness;
+                DELETE FROM smoking_background;
+                DELETE FROM savings_goal;
+                DELETE FROM notification_settings;
+                DELETE FROM privacy_settings;
+                DELETE FROM app_settings;
+                """)
+        }
+    }
+
     private func fetchCoachMessages(db: Database, chatID: UUID) throws -> [CoachMessage] {
         let rows = try Row.fetchAll(
             db,
@@ -1590,6 +1671,25 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 ALTER TABLE quit_plans ADD COLUMN pending_plan_suggestions_json TEXT NOT NULL DEFAULT '[]';
 
                 PRAGMA user_version = 8;
+                """)
+        }
+
+        migrator.registerMigration("v9") { db in
+            try db.execute(sql: """
+                CREATE TABLE IF NOT EXISTS privacy_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 0),
+                    coach_data_consent_status TEXT NOT NULL DEFAULT 'not_determined',
+                    coach_data_consent_updated_at REAL,
+                    policy_version TEXT NOT NULL DEFAULT '2026-06-06',
+                    updated_at REAL NOT NULL
+                );
+
+                INSERT OR IGNORE INTO privacy_settings (
+                    id, updated_at
+                )
+                VALUES (0, 0);
+
+                PRAGMA user_version = 9;
                 """)
         }
 

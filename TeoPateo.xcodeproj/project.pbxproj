@@ -21,6 +21,7 @@
 		A1B2C3D4E5F60718293A0302 /* NotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */; };
 		A1B2C3D4E5F60718293A0304 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */; };
 		A1B2C3D4E5F60718293A0402 /* CoachService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0401 /* CoachService.swift */; };
+		A1B2C3D4E5F60718293A0502 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0501 /* PrivacyInfo.xcprivacy */; };
 		A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89C40CE62B9B4943A6112508 /* Assets.xcassets */; };
 		A6D36C3E9F4B4DA79022A621 /* basic_animation.mov in Resources */ = {isa = PBXBuildFile; fileRef = A6D36C3D9F4B4DA79022A621 /* basic_animation.mov */; };
 		B2C3D4E5F60718293A100002 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100001 /* TestSupport.swift */; };
@@ -73,6 +74,7 @@
 		A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0401 /* CoachService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0501 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A6D36C3D9F4B4DA79022A621 /* basic_animation.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = basic_animation.mov; sourceTree = "<group>"; };
 		A9A0901E1C624D8CB77A502E /* CheckInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInView.swift; sourceTree = "<group>"; };
 		B1CB205C3D214C019BD2E015 /* TeoPateoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeoPateoStore.swift; sourceTree = "<group>"; };
@@ -208,6 +210,7 @@
 			isa = PBXGroup;
 			children = (
 				7491E28A2FC6260A0099630B /* TeoPateo.entitlements */,
+				A1B2C3D4E5F60718293A0501 /* PrivacyInfo.xcprivacy */,
 				C7459CD623144D7485026A3B /* TeoPateoApp.swift */,
 				FF8D76413EEE429DAA5F16A9 /* ContentView.swift */,
 				441FF74BC40A45FEA3920387 /* Views */,
@@ -330,6 +333,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */,
+				A1B2C3D4E5F60718293A0502 /* PrivacyInfo.xcprivacy in Resources */,
 				93584B49DCF24780864A59D8 /* mascot.png in Resources */,
 				9E38C8425EDA4A23A1967A7E /* icon.png in Resources */,
 				A6D36C3E9F4B4DA79022A621 /* basic_animation.mov in Resources */,

@@ -129,28 +129,31 @@ final class TeoPateoUITests: XCTestCase {
         launchApp()
 
         app.tabBars.buttons["Plan"].tap()
-        XCTAssertTrue(app.staticTexts["Your plan stays specific."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Today's playbook."].waitForExistence(timeout: 5))
 
+        openPlanDetails()
         tapWhenVisible(app.buttons["plan-add-trigger-rule-button"])
-        app.textFields["plan-trigger-field"].tap()
-        app.textFields["plan-trigger-field"].typeText("Lunch break")
-        app.textFields["plan-action-field"].tap()
-        app.textFields["plan-action-field"].typeText("Walk outside first")
+        typeText("Lunch break", intoTextField: "plan-trigger-field")
+        typeText("Walk outside first", intoTextField: "plan-action-field")
         app.buttons["plan-sheet-save-button"].tap()
+        XCTAssertTrue(app.staticTexts["Today's playbook."].waitForExistence(timeout: 3))
+
+        openPlanDetails()
         XCTAssertTrue(app.staticTexts["Lunch break"].waitForExistence(timeout: 3))
-
         tapWhenVisible(app.buttons["plan-add-reason-button"])
-        app.textFields["plan-reason-field"].tap()
-        app.textFields["plan-reason-field"].typeText("I want steady energy")
+        typeText("I want steady energy", intoTextField: "plan-reason-field")
         app.buttons["plan-sheet-save-button"].tap()
-        XCTAssertTrue(app.staticTexts["I want steady energy"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["Today's playbook."].waitForExistence(timeout: 3))
 
+        openPlanDetails()
+        XCTAssertTrue(app.staticTexts["I want steady energy"].waitForExistence(timeout: 3))
         tapWhenVisible(app.buttons["plan-add-activity-button"])
-        app.textFields["plan-activity-title-field"].tap()
-        app.textFields["plan-activity-title-field"].typeText("Stretch reset")
-        app.textFields["plan-activity-instruction-field"].tap()
-        app.textFields["plan-activity-instruction-field"].typeText("Stretch for two minutes")
+        typeText("Stretch reset", intoTextField: "plan-activity-title-field")
+        typeText("Stretch for two minutes", intoTextField: "plan-activity-instruction-field")
         app.buttons["plan-sheet-save-button"].tap()
+        XCTAssertTrue(app.staticTexts["Today's playbook."].waitForExistence(timeout: 3))
+
+        openPlanDetails()
         XCTAssertTrue(app.staticTexts["Stretch reset"].waitForExistence(timeout: 3))
     }
 
@@ -176,6 +179,8 @@ final class TeoPateoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Get help before you smoke."].waitForExistence(timeout: 5))
 
         app.buttons["coach-prompt-I want to smoke now"].tap()
+        XCTAssertTrue(app.staticTexts["Allow AI coach replies?"].waitForExistence(timeout: 3))
+        app.buttons["coach-consent-allow-button"].tap()
         XCTAssertTrue(app.staticTexts["I want to smoke now. Help me get through the next 10 minutes."].waitForExistence(timeout: 3))
 
         let input = app.textFields["coach-input-field"]
@@ -228,6 +233,23 @@ final class TeoPateoUITests: XCTestCase {
         let row = app.buttons["history-row-Slip-Slip: 2 cigarettes"]
         tapWhenVisible(row)
         XCTAssertTrue(app.staticTexts["Slip: 2 cigarettes"].waitForExistence(timeout: 5))
+    }
+
+    private func openPlanDetails() {
+        tapWhenVisible(app.buttons["plan-edit-details-button"])
+        XCTAssertTrue(app.staticTexts["Edit plan details"].waitForExistence(timeout: 5))
+    }
+
+    private func typeText(_ text: String, intoTextField identifier: String) {
+        let field = app.textFields[identifier]
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        expectation(
+            for: NSPredicate(format: "hasKeyboardFocus == true"),
+            evaluatedWith: field
+        )
+        waitForExpectations(timeout: 2)
+        field.typeText(text)
     }
 
     private func tapWhenVisible(_ element: XCUIElement) {

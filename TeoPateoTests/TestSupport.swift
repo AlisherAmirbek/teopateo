@@ -368,6 +368,7 @@ struct TestRepositoryError: Error, Equatable, LocalizedError {
 enum TestRepositoryOperation: Hashable {
     case loadSnapshot
     case saveQuitPlan
+    case savePrivacySettings
     case saveNotificationSettings
     case saveDailyCheckIn
     case saveCravingEvent
@@ -378,6 +379,7 @@ enum TestRepositoryOperation: Hashable {
     case replaceRiskySituations
     case replaceCoachChats
     case recentCheckIns
+    case deleteAllUserData
 }
 
 final class ThrowingTeoPateoRepository: TeoPateoRepository {
@@ -413,6 +415,15 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
 
     func saveAppSettings(_ settings: AppSettings) throws {
         try base.saveAppSettings(settings)
+    }
+
+    func fetchPrivacySettings() throws -> PrivacySettings? {
+        try base.fetchPrivacySettings()
+    }
+
+    func savePrivacySettings(_ settings: PrivacySettings) throws {
+        try failIfNeeded(.savePrivacySettings)
+        try base.savePrivacySettings(settings)
     }
 
     func fetchNotificationSettings() throws -> NotificationSettings? {
@@ -556,6 +567,11 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
 
     func fetchSelectedCoachChatID() throws -> UUID? {
         try base.fetchSelectedCoachChatID()
+    }
+
+    func deleteAllUserData() throws {
+        try failIfNeeded(.deleteAllUserData)
+        try base.deleteAllUserData()
     }
 
     private func failIfNeeded(_ operation: TestRepositoryOperation) throws {

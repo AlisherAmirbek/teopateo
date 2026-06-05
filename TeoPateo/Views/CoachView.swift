@@ -5,6 +5,7 @@ struct CoachView: View {
     @EnvironmentObject private var store: TeoPateoStore
     @State private var input = ""
     @State private var chatPendingDeletion: CoachChat?
+    @State private var pendingConsent: PendingCoachConsent?
 
     private let promptColumns = [
         GridItem(.adaptive(minimum: 140), spacing: 8)
@@ -44,6 +45,27 @@ struct CoachView: View {
                     store.deleteCoachChat(chat.id)
                 },
                 secondaryButton: .cancel()
+            )
+        }
+        .sheet(item: $pendingConsent) { consent in
+            CoachConsentSheet(
+                messagePreview: consent.message,
+                showsUnder18Notice: (store.userProfile?.age ?? 18) < 18,
+                allow: {
+                    let message = consent.message
+                    guard store.grantCoachDataConsent() else { return }
+                    if input.trimmingCharacters(in: .whitespacesAndNewlines) == message {
+                        input = ""
+                    }
+                    pendingConsent = nil
+                    Task {
+                        await store.sendCoachMessage(message)
+                    }
+                },
+                decline: {
+                    store.declineCoachDataConsent()
+                    pendingConsent = nil
+                }
             )
         }
     }
@@ -190,9 +212,7 @@ struct CoachView: View {
 
     private func promptButton(_ option: CoachPromptOption) -> some View {
         Button {
-            Task {
-                await store.sendCoachMessage(option.message)
-            }
+            requestCoachSend(option.message)
         } label: {
             Text(option.title)
                 .lineLimit(2)
@@ -241,11 +261,29 @@ struct CoachView: View {
     private func sendCurrentInput() {
         let message = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !message.isEmpty, !store.isCoachResponding else { return }
-        input = ""
+        requestCoachSend(message)
+    }
+
+    private func requestCoachSend(_ message: String) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !store.isCoachResponding else { return }
+        guard store.canSendCoachDataOffDevice else {
+            pendingConsent = PendingCoachConsent(message: trimmed)
+            return
+        }
+
+        if input.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed {
+            input = ""
+        }
         Task {
-            await store.sendCoachMessage(message)
+            await store.sendCoachMessage(trimmed)
         }
     }
+}
+
+private struct PendingCoachConsent: Identifiable, Equatable {
+    let id = UUID()
+    let message: String
 }
 
 private struct CoachPromptOption: Identifiable {
@@ -253,6 +291,138 @@ private struct CoachPromptOption: Identifiable {
     let message: String
 
     var id: String { title }
+}
+
+private struct CoachConsentSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let messagePreview: String
+    let showsUnder18Notice: Bool
+    let allow: () -> Void
+    let decline: () -> Void
+
+    var body: some View {
+        ZStack {
+            QuitTheme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    header
+                    disclosure
+                    messageContext
+                    actions
+                }
+                .padding(24)
+            }
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Coach sharing")
+                .font(.rounded(.caption, weight: .bold))
+                .foregroundColor(QuitTheme.muted)
+            Text("Allow AI coach replies?")
+                .font(.system(size: 30, weight: .heavy, design: .rounded))
+                .foregroundColor(QuitTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var disclosure: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            disclosureRow(
+                icon: "arrow.up.forward",
+                title: "What leaves this device",
+                detail: "Your coach message and a short quit-plan context: smoking history, check-ins, cravings, slips, triggers, reasons, and replacement activities."
+            )
+            disclosureRow(
+                icon: "server.rack",
+                title: "Where it goes",
+                detail: "The request goes to the TeoPateo coach proxy and then to an AI provider to generate a reply. The proxy does not keep a long-term user account."
+            )
+            disclosureRow(
+                icon: "scissors",
+                title: "Context limit",
+                detail: "The proxy trims quit-plan context to 6,000 characters before forwarding it to the AI provider."
+            )
+            disclosureRow(
+                icon: "hand.raised.fill",
+                title: "Your choice",
+                detail: "Declining keeps the rest of TeoPateo usable. You can turn coach sharing off later in Privacy & Data."
+            )
+            if showsUnder18Notice {
+                disclosureRow(
+                    icon: "exclamationmark.triangle.fill",
+                    title: "Extra care",
+                    detail: "Because your profile age is under 18, avoid sharing full names, contact details, or anything you would not want an adult you trust to help you review."
+                )
+            }
+        }
+        .quietCard()
+    }
+
+    private var messageContext: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Message waiting")
+                .font(.rounded(.headline, weight: .bold))
+                .foregroundColor(QuitTheme.ink)
+            Text(messagePreview)
+                .font(.rounded(.subheadline))
+                .foregroundColor(QuitTheme.muted)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .quietCard()
+    }
+
+    private var actions: some View {
+        VStack(spacing: 10) {
+            Button {
+                allow()
+                dismiss()
+            } label: {
+                Text("Allow coach sharing")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(FilledButtonStyle())
+            .accessibilityIdentifier("coach-consent-allow-button")
+
+            Button {
+                decline()
+                dismiss()
+            } label: {
+                Text("Not now")
+                    .font(.rounded(.headline, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(QuitTheme.paper)
+                    .cornerRadius(14)
+            }
+            .accessibilityIdentifier("coach-consent-decline-button")
+        }
+    }
+
+    private func disclosureRow(icon: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(QuitTheme.cocoa)
+                .frame(width: 30, height: 30)
+                .background(QuitTheme.peach.opacity(0.54))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.rounded(.subheadline, weight: .bold))
+                    .foregroundColor(QuitTheme.ink)
+                Text(detail)
+                    .font(.rounded(.caption))
+                    .foregroundColor(QuitTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 }
 
 private struct CoachMessageBubble: View {

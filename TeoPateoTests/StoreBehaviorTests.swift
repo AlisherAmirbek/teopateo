@@ -3,6 +3,14 @@ import XCTest
 
 @MainActor
 final class StoreBehaviorTests: TeoPateoTestCase {
+    private func allowCoachDataSharing(
+        _ store: TeoPateoStore,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(store.grantCoachDataConsent(), file: file, line: line)
+    }
+
     func testPlanUpdatesClampPersistAndAffectTaperSchedule() throws {
         let repository = try makeRepository()
         let calendar = makeCalendar()
@@ -318,6 +326,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         let repository = try makeRepository()
         let coachClient = TestCoachClient()
         let store = TeoPateoStore(repository: repository, coachClient: coachClient)
+        allowCoachDataSharing(store)
         let originalCount = store.coachMessages.count
         XCTAssertEqual(originalCount, 0)
         XCTAssertEqual(store.coachChats.count, 1)
@@ -341,6 +350,60 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(reloaded.coachMessages.map(\.isUser), store.coachMessages.map(\.isUser))
     }
 
+    func testCoachMessageRequiresConsentBeforePersistingOrSending() async throws {
+        let repository = try makeRepository()
+        let coachClient = TestCoachClient()
+        let store = TeoPateoStore(repository: repository, coachClient: coachClient)
+
+        XCTAssertFalse(store.canSendCoachDataOffDevice)
+
+        await store.sendCoachMessage("I want to smoke now.")
+
+        XCTAssertEqual(store.coachMessages.count, 0)
+        XCTAssertEqual(coachClient.requests.count, 0)
+        XCTAssertEqual(
+            store.coachResponseState.message,
+            "Allow coach data sharing before sending a message."
+        )
+        XCTAssertTrue(try repository.fetchCoachChats().flatMap(\.messages).isEmpty)
+    }
+
+    func testCoachConsentCanBeGrantedPersistedAndRevoked() throws {
+        let repository = try makeRepository()
+        let store = TeoPateoStore(repository: repository)
+
+        XCTAssertEqual(store.coachDataConsentStatus, .notDetermined)
+        XCTAssertTrue(store.grantCoachDataConsent())
+        XCTAssertTrue(store.canSendCoachDataOffDevice)
+        XCTAssertEqual(try repository.fetchPrivacySettings()?.coachDataConsentStatus, .granted)
+
+        let reloaded = TeoPateoStore(repository: repository)
+        XCTAssertTrue(reloaded.canSendCoachDataOffDevice)
+
+        XCTAssertTrue(reloaded.revokeCoachDataConsent())
+        XCTAssertFalse(reloaded.canSendCoachDataOffDevice)
+        XCTAssertEqual(try repository.fetchPrivacySettings()?.coachDataConsentStatus, .denied)
+    }
+
+    func testDeletingAllLocalDataResetsStoreAndCancelsNotifications() throws {
+        let repository = try makeRepository()
+        let scheduler = TestNotificationScheduler(currentStatus: .authorized)
+        let store = TeoPateoStore(repository: repository, notificationScheduler: scheduler)
+        XCTAssertTrue(store.grantCoachDataConsent())
+        store.addUserReason("I want clearer mornings.")
+
+        XCTAssertTrue(store.deleteAllLocalData())
+
+        XCTAssertEqual(store.coachDataConsentStatus, .notDetermined)
+        XCTAssertFalse(store.canSendCoachDataOffDevice)
+        XCTAssertFalse(store.isOnboardingCompleted)
+        XCTAssertTrue(store.isOnboardingPresented)
+        XCTAssertEqual(scheduler.cancelScheduledCalls, 1)
+        XCTAssertNil(try repository.fetchPrivacySettings())
+        XCTAssertTrue(try repository.fetchCoachChats().isEmpty)
+        XCTAssertTrue(try repository.fetchUserReasons().isEmpty)
+    }
+
     func testCoachStreamingChunksBuildOneAssistantMessage() async throws {
         let coachClient = TestCoachClient(response: .successChunks([
             "Take one slow breath, ",
@@ -348,6 +411,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
             "and drink water first."
         ]))
         let store = TeoPateoStore(repository: try makeRepository(), coachClient: coachClient)
+        allowCoachDataSharing(store)
 
         await store.sendCoachMessage("I want to smoke now.")
 
@@ -369,6 +433,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
             URLError(.networkConnectionLost)
         ))
         let store = TeoPateoStore(repository: repository, coachClient: coachClient)
+        allowCoachDataSharing(store)
 
         await store.sendCoachMessage("I want to smoke after coffee.")
 
@@ -397,6 +462,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
                 CancellationError()
             ))
         )
+        allowCoachDataSharing(store)
 
         await store.sendCoachMessage("I am leaving work and want to smoke.")
 
@@ -412,6 +478,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
             repository: try makeRepository(),
             coachClient: TestCoachClient(response: .failure(CancellationError()))
         )
+        allowCoachDataSharing(store)
 
         await store.sendCoachMessage("I am craving after lunch.")
 
@@ -426,6 +493,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         let repository = try makeRepository()
         let coachClient = TestCoachClient()
         let store = TeoPateoStore(repository: repository, coachClient: coachClient)
+        allowCoachDataSharing(store)
 
         await store.sendCoachMessage("I want to smoke after coffee.")
         let firstChatID = try XCTUnwrap(store.selectedCoachChatID)
@@ -454,6 +522,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         let coachClient = TestCoachClient()
         let now = fixedDate(530)
         let store = TeoPateoStore(repository: repository, coachClient: coachClient, now: { now })
+        allowCoachDataSharing(store)
 
         await store.sendCoachMessage("I want to smoke after coffee.")
         let originalChats = store.coachChats
@@ -472,6 +541,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
     func testNewCoachChatRequiresCurrentUserInput() async throws {
         let repository = try makeRepository()
         let store = TeoPateoStore(repository: repository, coachClient: TestCoachClient())
+        allowCoachDataSharing(store)
         let initialChatID = try XCTUnwrap(store.selectedCoachChatID)
         let initialChatCount = store.coachChats.count
 
@@ -498,6 +568,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
     func testDeletingCoachChatSelectsNextAndKeepsOneBlankChat() async throws {
         let repository = try makeRepository()
         let store = TeoPateoStore(repository: repository, coachClient: TestCoachClient())
+        allowCoachDataSharing(store)
 
         await store.sendCoachMessage("I want to smoke after coffee.")
         let firstChatID = try XCTUnwrap(store.selectedCoachChatID)
@@ -529,6 +600,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
             repository: try makeRepository(),
             coachClient: TestCoachClient(response: .failure(TestCoachError()))
         )
+        allowCoachDataSharing(store)
         let originalCount = store.coachMessages.count
 
         await store.sendCoachMessage("I slipped after dinner.")
@@ -547,6 +619,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
             repository: try makeRepository(),
             coachClient: TestCoachClient(response: .failure(URLError(.notConnectedToInternet)))
         )
+        allowCoachDataSharing(store)
 
         await store.sendCoachMessage("I am craving after coffee.")
 
@@ -563,6 +636,7 @@ final class StoreBehaviorTests: TeoPateoTestCase {
             repository: try makeRepository(),
             coachClient: TestCoachClient(response: .failure(CoachClientError.requestFailed(statusCode: 429)))
         )
+        allowCoachDataSharing(store)
 
         await store.sendCoachMessage("I am craving after dinner.")
 

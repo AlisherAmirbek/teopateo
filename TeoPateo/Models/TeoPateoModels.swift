@@ -1714,6 +1714,37 @@ struct AppSettings: Codable, Equatable {
     }
 }
 
+enum CoachDataConsentStatus: String, Codable, Equatable {
+    case notDetermined = "not_determined"
+    case granted
+    case denied
+
+    var isGranted: Bool {
+        self == .granted
+    }
+}
+
+struct PrivacySettings: Codable, Equatable {
+    static let currentPolicyVersion = "2026-06-06"
+
+    var coachDataConsentStatus: CoachDataConsentStatus
+    var coachDataConsentUpdatedAt: Date?
+    var policyVersion: String
+    var updatedAt: Date
+
+    init(
+        coachDataConsentStatus: CoachDataConsentStatus = .notDetermined,
+        coachDataConsentUpdatedAt: Date? = nil,
+        policyVersion: String = PrivacySettings.currentPolicyVersion,
+        updatedAt: Date = Date()
+    ) {
+        self.coachDataConsentStatus = coachDataConsentStatus
+        self.coachDataConsentUpdatedAt = coachDataConsentUpdatedAt
+        self.policyVersion = policyVersion
+        self.updatedAt = updatedAt
+    }
+}
+
 struct OnboardingPlanInput: Equatable {
     var nickname: String
     var age: Int
@@ -3121,6 +3152,7 @@ struct HistoryDayGroup: Identifiable, Equatable {
 struct PersistedTeoPateoSnapshot: Equatable {
     var appSettings: AppSettings?
     var notificationSettings: NotificationSettings?
+    var privacySettings: PrivacySettings?
     var userProfile: UserProfile?
     var quitReadiness: QuitReadiness?
     var smokingBackground: SmokingBackground?
@@ -3139,6 +3171,7 @@ struct PersistedTeoPateoSnapshot: Equatable {
     init(
         appSettings: AppSettings? = nil,
         notificationSettings: NotificationSettings? = nil,
+        privacySettings: PrivacySettings? = nil,
         userProfile: UserProfile? = nil,
         quitReadiness: QuitReadiness? = nil,
         smokingBackground: SmokingBackground? = nil,
@@ -3156,6 +3189,7 @@ struct PersistedTeoPateoSnapshot: Equatable {
     ) {
         self.appSettings = appSettings
         self.notificationSettings = notificationSettings
+        self.privacySettings = privacySettings
         self.userProfile = userProfile
         self.quitReadiness = quitReadiness
         self.smokingBackground = smokingBackground

@@ -186,11 +186,58 @@ final class RepositoryMutationTests: TeoPateoTestCase {
         XCTAssertTrue(snapshot.slipEvents.isEmpty)
     }
 
+    func testDeleteAllUserDataClearsLocalUserRecordsAndSettings() throws {
+        let repository = try makeRepository()
+        try repository.saveAppSettings(AppSettings(onboardingCompleted: true, updatedAt: fixedDate(10)))
+        try repository.saveNotificationSettings(NotificationSettings(morningPlanEnabled: true, updatedAt: fixedDate(11)))
+        try repository.savePrivacySettings(PrivacySettings(
+            coachDataConsentStatus: .granted,
+            coachDataConsentUpdatedAt: fixedDate(12),
+            updatedAt: fixedDate(12)
+        ))
+        try repository.saveQuitPlan(makeQuitPlan(triggerRules: [
+            TriggerRule(trigger: "Coffee", action: "Water.")
+        ]))
+        try repository.saveDailyCheckIn(makeCheckIn(id: 410, date: fixedDate(410), smokedToday: true))
+        try repository.saveCravingEvent(makeCraving(id: 411, startedAt: fixedDate(411), triggers: ["Coffee"]))
+        try repository.saveSlipEvent(SlipEvent(
+            id: fixedUUID(412),
+            occurredAt: fixedDate(412),
+            cigarettesSmoked: 1,
+            selectedTriggers: ["Coffee"],
+            note: "Slip",
+            recoveryAction: "Water",
+            createdAt: fixedDate(412),
+            updatedAt: fixedDate(413)
+        ))
+        try repository.replaceCoachChats([
+            CoachChat(
+                title: "Coffee",
+                messages: [CoachMessage(text: "I want to smoke.", isUser: true)]
+            )
+        ], selectedChatID: nil)
+
+        try repository.deleteAllUserData()
+
+        let snapshot = try repository.loadSnapshot()
+        XCTAssertNil(snapshot.appSettings)
+        XCTAssertNil(snapshot.notificationSettings)
+        XCTAssertNil(snapshot.privacySettings)
+        XCTAssertNil(snapshot.quitPlan)
+        XCTAssertTrue(snapshot.dailyCheckIns.isEmpty)
+        XCTAssertTrue(snapshot.cravingEvents.isEmpty)
+        XCTAssertTrue(snapshot.slipEvents.isEmpty)
+        XCTAssertTrue(snapshot.coachChats.isEmpty)
+        XCTAssertTrue(snapshot.userReasons.isEmpty)
+        XCTAssertTrue(snapshot.replacementActivities.isEmpty)
+    }
+
     func testDefaultSeedRowsExistBeforeAnyUserSave() throws {
         let repository = try makeRepository()
 
         XCTAssertEqual(try repository.fetchAppSettings(), AppSettings(onboardingCompleted: false, updatedAt: fixedDate(0)))
         XCTAssertEqual(try repository.fetchNotificationSettings()?.morningPlanTime, ReminderTime(hour: 8, minute: 30))
         XCTAssertEqual(try repository.fetchNotificationSettings()?.eveningCheckInTime, ReminderTime(hour: 20, minute: 30))
+        XCTAssertEqual(try repository.fetchPrivacySettings()?.coachDataConsentStatus, .notDetermined)
     }
 }

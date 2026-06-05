@@ -196,7 +196,7 @@ struct PlanView: View {
                     Text("Edit plan details")
                         .font(.rounded(.headline, weight: .bold))
                         .foregroundColor(QuitTheme.ink)
-                    Text("Quit date, taper, rules, reasons, activities, reminders")
+                    Text("Quit date, taper, rules, reasons, activities, reminders, privacy")
                         .font(.rounded(.caption))
                         .foregroundColor(QuitTheme.muted)
                         .lineLimit(2)
@@ -215,6 +215,7 @@ struct PlanView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifier("plan-edit-details-button")
     }
 
     private var todayFocusText: String {
@@ -726,6 +727,8 @@ struct PlanView: View {
             reasons
             replacementActivities
             notifications
+            PrivacyAndDataView()
+                .environmentObject(store)
         }
     }
 

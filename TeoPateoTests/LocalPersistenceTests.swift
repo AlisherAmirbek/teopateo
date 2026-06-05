@@ -42,6 +42,7 @@ final class LocalPersistenceTests: XCTestCase {
             "coach_messages",
             "app_settings",
             "notification_settings",
+            "privacy_settings",
             "risky_situations",
             "user_profile",
             "quit_readiness",
@@ -49,7 +50,7 @@ final class LocalPersistenceTests: XCTestCase {
             "savings_goal"
         ]
 
-        XCTAssertEqual(try repository.schemaVersion(), 8)
+        XCTAssertEqual(try repository.schemaVersion(), 9)
         XCTAssertTrue(try repository.tableNames().isSuperset(of: expectedTables))
     }
 
@@ -87,6 +88,23 @@ final class LocalPersistenceTests: XCTestCase {
 
         XCTAssertEqual(try repository.fetchNotificationSettings(), settings)
         XCTAssertEqual(try repository.loadSnapshot().notificationSettings, settings)
+    }
+
+    func testPrivacySettingsRoundTrip() throws {
+        let repository = try makeRepository()
+        let settings = PrivacySettings(
+            coachDataConsentStatus: .granted,
+            coachDataConsentUpdatedAt: fixedDate(16),
+            policyVersion: "test-policy",
+            updatedAt: fixedDate(17)
+        )
+
+        XCTAssertEqual(try repository.fetchPrivacySettings()?.coachDataConsentStatus, .notDetermined)
+
+        try repository.savePrivacySettings(settings)
+
+        XCTAssertEqual(try repository.fetchPrivacySettings(), settings)
+        XCTAssertEqual(try repository.loadSnapshot().privacySettings, settings)
     }
 
     func testCoachChatsRoundTripWithSelectedChat() throws {

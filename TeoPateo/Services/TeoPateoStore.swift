@@ -32,6 +32,7 @@ final class TeoPateoStore: ObservableObject {
     @Published private(set) var quitReadiness: QuitReadiness?
     @Published private(set) var smokingBackground: SmokingBackground?
     @Published private(set) var savingsGoal: SavingsGoal?
+    @Published private(set) var privacySettings = PrivacySettings()
     @Published private(set) var notificationSettings = NotificationSettings()
     @Published private(set) var notificationPermissionStatus: NotificationPermissionStatus = .unknown
     @Published private(set) var isOnboardingCompleted = false
@@ -157,6 +158,14 @@ final class TeoPateoStore: ObservableObject {
 
     var canDeleteSelectedCoachChat: Bool {
         !isCoachResponding && selectedCoachChat != nil
+    }
+
+    var canSendCoachDataOffDevice: Bool {
+        privacySettings.coachDataConsentStatus.isGranted
+    }
+
+    var coachDataConsentStatus: CoachDataConsentStatus {
+        privacySettings.coachDataConsentStatus
     }
 
     var todayTaperTarget: Double? {
@@ -519,6 +528,10 @@ final class TeoPateoStore: ObservableObject {
     func sendCoachMessage(_ text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isCoachResponding else { return }
+        guard canSendCoachDataOffDevice else {
+            coachResponseState = .failed(Self.coachConsentRequiredMessage)
+            return
+        }
 
         let chatID = ensureSelectedCoachChat()
         appendCoachMessage(
@@ -582,6 +595,49 @@ final class TeoPateoStore: ObservableObject {
             } else {
                 coachResponseState = .failed(Self.coachErrorMessage(for: error))
             }
+        }
+    }
+
+    @discardableResult
+    func grantCoachDataConsent() -> Bool {
+        updateCoachDataConsent(.granted, successMessage: "Coach sharing is on.")
+    }
+
+    @discardableResult
+    func declineCoachDataConsent() -> Bool {
+        updateCoachDataConsent(.denied, successMessage: "Coach sharing is off.")
+    }
+
+    @discardableResult
+    func revokeCoachDataConsent() -> Bool {
+        updateCoachDataConsent(.denied, successMessage: "Coach sharing is off.")
+    }
+
+    @discardableResult
+    func deleteAllLocalData() -> Bool {
+        do {
+            try repository.deleteAllUserData()
+            let wasHydrating = isHydrating
+            isHydrating = true
+            applyDefaultState()
+            isHydrating = wasHydrating
+            selectedTab = .today
+            persistenceError = nil
+            lastSaveStatus = .saved("Local data deleted.")
+            notificationScheduler.cancelScheduledNotifications { [weak self] result in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if case .failure = result {
+                        self.lastSaveStatus = .failed("Local data was deleted, but notifications could not be cleared.")
+                    }
+                }
+            }
+            return true
+        } catch {
+            restorePersistedStateAfterSaveFailure()
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Local data could not be deleted.")
+            return false
         }
     }
 
@@ -1589,6 +1645,7 @@ final class TeoPateoStore: ObservableObject {
         quitReadiness = nil
         smokingBackground = nil
         savingsGoal = nil
+        privacySettings = PrivacySettings()
         notificationSettings = NotificationSettings()
         isOnboardingCompleted = false
         isOnboardingPresented = true
@@ -1601,6 +1658,7 @@ final class TeoPateoStore: ObservableObject {
         isOnboardingCompleted = snapshot.appSettings?.onboardingCompleted ?? false
         isOnboardingPresented = !isOnboardingCompleted
         notificationSettings = snapshot.notificationSettings ?? NotificationSettings()
+        privacySettings = snapshot.privacySettings ?? PrivacySettings()
         userProfile = snapshot.userProfile
         quitReadiness = snapshot.quitReadiness
         smokingBackground = snapshot.smokingBackground
@@ -1652,6 +1710,9 @@ final class TeoPateoStore: ObservableObject {
         }
         if snapshot.notificationSettings == nil {
             try repository.saveNotificationSettings(notificationSettings)
+        }
+        if snapshot.privacySettings == nil {
+            try repository.savePrivacySettings(privacySettings)
         }
         if snapshot.quitPlan == nil {
             try repository.saveQuitPlan(quitPlan)
@@ -1736,6 +1797,35 @@ final class TeoPateoStore: ObservableObject {
             restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Coach chats could not be saved.")
+        }
+    }
+
+    private func updateCoachDataConsent(
+        _ status: CoachDataConsentStatus,
+        successMessage: String
+    ) -> Bool {
+        let previous = privacySettings
+        let timestamp = now()
+        privacySettings = PrivacySettings(
+            coachDataConsentStatus: status,
+            coachDataConsentUpdatedAt: timestamp,
+            policyVersion: PrivacySettings.currentPolicyVersion,
+            updatedAt: timestamp
+        )
+
+        do {
+            try repository.savePrivacySettings(privacySettings)
+            persistenceError = nil
+            lastSaveStatus = .saved(successMessage)
+            if status.isGranted {
+                coachResponseState = .ready
+            }
+            return true
+        } catch {
+            privacySettings = previous
+            persistenceError = error.localizedDescription
+            lastSaveStatus = .failed("Privacy settings could not be saved.")
+            return false
         }
     }
 
@@ -1998,6 +2088,10 @@ final class TeoPateoStore: ObservableObject {
 
     private static var partialCoachReplySavedMessage: String {
         "The coach response was interrupted. Partial reply saved."
+    }
+
+    private static var coachConsentRequiredMessage: String {
+        "Allow coach data sharing before sending a message."
     }
 
     private static func isCancellation(_ error: Error) -> Bool {
@@ -3315,6 +3409,7 @@ enum AppTab: String, CaseIterable {
 private final class InMemoryTeoPateoRepository: TeoPateoRepository {
     private var appSettings: AppSettings?
     private var notificationSettings: NotificationSettings?
+    private var privacySettings: PrivacySettings?
     private var userProfile: UserProfile?
     private var quitReadiness: QuitReadiness?
     private var smokingBackground: SmokingBackground?
@@ -3337,6 +3432,7 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
         PersistedTeoPateoSnapshot(
             appSettings: appSettings,
             notificationSettings: notificationSettings,
+            privacySettings: privacySettings,
             userProfile: userProfile,
             quitReadiness: quitReadiness,
             smokingBackground: smokingBackground,
@@ -3368,6 +3464,14 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
 
     func saveNotificationSettings(_ settings: NotificationSettings) throws {
         notificationSettings = settings
+    }
+
+    func fetchPrivacySettings() throws -> PrivacySettings? {
+        privacySettings
+    }
+
+    func savePrivacySettings(_ settings: PrivacySettings) throws {
+        privacySettings = settings
     }
 
     func fetchUserProfile() throws -> UserProfile? {
@@ -3506,6 +3610,26 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
 
     func fetchSelectedCoachChatID() throws -> UUID? {
         selectedCoachChatID
+    }
+
+    func deleteAllUserData() throws {
+        appSettings = nil
+        notificationSettings = nil
+        privacySettings = nil
+        userProfile = nil
+        quitReadiness = nil
+        smokingBackground = nil
+        savingsGoal = nil
+        quitPlan = nil
+        dailyCheckIns = []
+        cravingEvents = []
+        slipEvents = []
+        replacementActivities = []
+        riskySituations = []
+        supportContacts = []
+        userReasons = []
+        coachChats = []
+        selectedCoachChatID = nil
     }
 }
 

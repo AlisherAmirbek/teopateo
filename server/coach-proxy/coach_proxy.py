@@ -3,10 +3,11 @@ import json
 import os
 import socket
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
-from collections import defaultdict, deque
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -39,7 +40,8 @@ If the user describes immediate danger, self-harm, suicidal intent, severe withd
 def system_prompt(context_summary):
     return f"{SYSTEM_PROMPT}\n\nCurrent TeoPateo user context:\n{context_summary[:MAX_CONTEXT_CHARS]}"
 
-REQUEST_TIMES = defaultdict(deque)
+REQUEST_TIMES = {}
+REQUEST_TIMES_LOCK = threading.Lock()
 
 
 class UpstreamServiceError(RuntimeError):
@@ -91,13 +93,21 @@ def client_ip(handler):
 
 def is_rate_limited(ip):
     now = time.time()
-    times = REQUEST_TIMES[ip]
-    while times and now - times[0] > RATE_LIMIT_WINDOW_SECONDS:
-        times.popleft()
-    if len(times) >= RATE_LIMIT_REQUESTS:
-        return True
-    times.append(now)
-    return False
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+
+    with REQUEST_TIMES_LOCK:
+        for tracked_ip, times in list(REQUEST_TIMES.items()):
+            while times and times[0] <= cutoff:
+                times.popleft()
+            if not times:
+                del REQUEST_TIMES[tracked_ip]
+
+        times = REQUEST_TIMES.setdefault(ip, deque())
+        if len(times) >= RATE_LIMIT_REQUESTS:
+            return True
+
+        times.append(now)
+        return False
 
 
 def authorized(handler):

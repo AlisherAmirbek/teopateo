@@ -74,6 +74,8 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
         XCTAssertEqual(tooLate.displayLabel, "11:59 PM")
 
         XCTAssertEqual(ReminderTime(hour: 12, minute: 5).displayLabel, "12:05 PM")
+        XCTAssertEqual(ReminderTime(hour: 0, minute: 10).addingMinutes(-30), ReminderTime(hour: 23, minute: 40))
+        XCTAssertEqual(ReminderTime(hour: 23, minute: 45).addingMinutes(30), ReminderTime(hour: 0, minute: 15))
     }
 
     func testNotificationSettingsEnablementAndTimesCoverEveryVisibleKind() {
@@ -288,6 +290,25 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
 
         XCTAssertEqual(plan.savingsPlan.weeklySavingsBaseline, 0)
         XCTAssertEqual(plan.savingsPlan.firstMilestoneAmount, 0)
+    }
+
+    func testQuitPlanGeneratorNormalizesAlreadyQuitDate() {
+        let calendar = makeCalendar()
+        let now = makeDate(year: 2026, month: 5, day: 28, hour: 15, calendar: calendar)
+        let selected = makeDate(year: 2026, month: 5, day: 20, hour: 23, calendar: calendar)
+
+        let plan = QuitPlanGenerator.generate(
+            from: makeOnboardingInput(
+                quitStatus: .alreadyQuit,
+                quitDate: selected,
+                quitDatePreference: .alreadyQuit
+            ),
+            existingPlan: makeQuitPlan(),
+            now: now,
+            calendar: calendar
+        ).quitPlan
+
+        XCTAssertEqual(plan.quitDate, calendar.startOfDay(for: selected))
     }
 
     func testPlanAdjustmentEngineCreatesEvidenceBackedSuggestionsAndHonorsDismissal() {

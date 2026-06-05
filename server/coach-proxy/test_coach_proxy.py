@@ -66,6 +66,44 @@ class CoachProxyTests(unittest.TestCase):
         finally:
             coach_proxy.PROXY_TOKEN = original_token
 
+    def test_rate_limiter_prunes_expired_ip_buckets(self):
+        original_window = coach_proxy.RATE_LIMIT_WINDOW_SECONDS
+        original_limit = coach_proxy.RATE_LIMIT_REQUESTS
+        coach_proxy.REQUEST_TIMES.clear()
+        coach_proxy.RATE_LIMIT_WINDOW_SECONDS = 10
+        coach_proxy.RATE_LIMIT_REQUESTS = 2
+        try:
+            with patch.object(coach_proxy.time, "time", return_value=100.0):
+                self.assertFalse(coach_proxy.is_rate_limited("203.0.113.1"))
+                self.assertFalse(coach_proxy.is_rate_limited("203.0.113.2"))
+
+            with patch.object(coach_proxy.time, "time", return_value=111.0):
+                self.assertFalse(coach_proxy.is_rate_limited("203.0.113.3"))
+
+            self.assertNotIn("203.0.113.1", coach_proxy.REQUEST_TIMES)
+            self.assertNotIn("203.0.113.2", coach_proxy.REQUEST_TIMES)
+            self.assertIn("203.0.113.3", coach_proxy.REQUEST_TIMES)
+        finally:
+            coach_proxy.REQUEST_TIMES.clear()
+            coach_proxy.RATE_LIMIT_WINDOW_SECONDS = original_window
+            coach_proxy.RATE_LIMIT_REQUESTS = original_limit
+
+    def test_rate_limiter_check_and_append_share_one_limit_window(self):
+        original_window = coach_proxy.RATE_LIMIT_WINDOW_SECONDS
+        original_limit = coach_proxy.RATE_LIMIT_REQUESTS
+        coach_proxy.REQUEST_TIMES.clear()
+        coach_proxy.RATE_LIMIT_WINDOW_SECONDS = 60
+        coach_proxy.RATE_LIMIT_REQUESTS = 1
+        try:
+            with patch.object(coach_proxy.time, "time", return_value=100.0):
+                self.assertFalse(coach_proxy.is_rate_limited("203.0.113.4"))
+                self.assertTrue(coach_proxy.is_rate_limited("203.0.113.4"))
+            self.assertEqual(len(coach_proxy.REQUEST_TIMES["203.0.113.4"]), 1)
+        finally:
+            coach_proxy.REQUEST_TIMES.clear()
+            coach_proxy.RATE_LIMIT_WINDOW_SECONDS = original_window
+            coach_proxy.RATE_LIMIT_REQUESTS = original_limit
+
 
 if __name__ == "__main__":
     unittest.main()

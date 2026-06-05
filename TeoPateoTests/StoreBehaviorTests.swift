@@ -36,6 +36,32 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(try repository.fetchQuitPlan()?.quitMode, "Cold turkey")
     }
 
+    func testZeroTaperStepIsCorrectedForPositiveTargets() throws {
+        let repository = try makeRepository()
+        let calendar = makeCalendar()
+        let start = makeDate(year: 2026, month: 5, day: 20, calendar: calendar)
+        try repository.saveQuitPlan(makeQuitPlan(
+            baselineCigarettesPerDay: 10,
+            taperTargetCigarettesPerDay: 8,
+            taperReductionStep: 0,
+            taperReductionIntervalDays: 1,
+            attemptStartedAt: start
+        ))
+
+        let store = TeoPateoStore(repository: repository, now: { start }, calendar: calendar)
+
+        XCTAssertEqual(store.taperSchedule(days: 3).map(\.targetCigarettes), [8, 7, 6])
+
+        store.updateTaperSettings(
+            targetCigarettesPerDay: 8,
+            reductionStep: 0,
+            reductionIntervalDays: 1
+        )
+
+        XCTAssertEqual(store.currentQuitPlan.taperReductionStep, 1)
+        XCTAssertEqual(try repository.fetchQuitPlan()?.taperReductionStep, 1)
+    }
+
     func testCurrentWeekPlanAdherenceClassifiesDailyResults() throws {
         let repository = try makeRepository()
         var calendar = makeCalendar()
@@ -422,6 +448,27 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(reloaded.coachMessages.map(\.text), store.coachMessages.map(\.text))
     }
 
+    func testCoachChatPersistenceFailureRestoresPersistedChats() async throws {
+        let baseRepository = try makeRepository()
+        let repository = ThrowingTeoPateoRepository(base: baseRepository)
+        let coachClient = TestCoachClient()
+        let now = fixedDate(530)
+        let store = TeoPateoStore(repository: repository, coachClient: coachClient, now: { now })
+
+        await store.sendCoachMessage("I want to smoke after coffee.")
+        let originalChats = store.coachChats
+        let originalSelectedChatID = store.selectedCoachChatID
+        repository.failingOperations = [.replaceCoachChats]
+
+        store.startNewCoachChat()
+
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.coachChats.stableChatFields, originalChats.stableChatFields)
+        XCTAssertEqual(store.selectedCoachChatID, originalSelectedChatID)
+        XCTAssertEqual(try baseRepository.fetchCoachChats().stableChatFields, originalChats.stableChatFields)
+        XCTAssertEqual(try baseRepository.fetchSelectedCoachChatID(), originalSelectedChatID)
+    }
+
     func testNewCoachChatRequiresCurrentUserInput() async throws {
         let repository = try makeRepository()
         let store = TeoPateoStore(repository: repository, coachClient: TestCoachClient())
@@ -794,6 +841,148 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertTrue(store.lastSaveStatus.isFailure)
     }
 
+    func testCravingAndSlipPersistenceFailuresRestorePersistedHistory() throws {
+        let baseRepository = try makeRepository()
+        let persistedCraving = makeCraving(
+            id: 501,
+            startedAt: fixedDate(501),
+            triggers: ["Persisted craving"]
+        )
+        let persistedSlip = SlipEvent(
+            id: fixedUUID(502),
+            occurredAt: fixedDate(502),
+            cigarettesSmoked: 1,
+            selectedTriggers: ["Persisted slip"],
+            context: "Stored",
+            note: "Already saved.",
+            recoveryAction: "Resume plan.",
+            createdAt: fixedDate(503),
+            updatedAt: fixedDate(504)
+        )
+        try baseRepository.saveCravingEvent(persistedCraving)
+        try baseRepository.saveSlipEvent(persistedSlip)
+
+        let repository = ThrowingTeoPateoRepository(base: baseRepository)
+        let store = TeoPateoStore(repository: repository)
+
+        repository.failingOperations = [.saveCravingEvent]
+        XCTAssertFalse(store.completeCravingWithoutSmoking(
+            startedAt: fixedDate(505),
+            completedAt: fixedDate(506),
+            durationSeconds: 60,
+            selectedTriggers: ["New craving"]
+        ))
+        XCTAssertEqual(store.cravingEvents, [persistedCraving])
+
+        repository.failingOperations = [.saveSlipEvent]
+        XCTAssertFalse(store.saveSlipEvent(
+            cigarettesSmoked: 1,
+            triggers: ["New slip"],
+            context: "Failure test",
+            note: "Should roll back.",
+            recoveryAction: "Return to plan."
+        ))
+        XCTAssertEqual(store.slipEvents, [persistedSlip])
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+    }
+
+    func testQuitPlanPersistenceFailureRestoresPersistedState() throws {
+        let baseRepository = try makeRepository()
+        let originalRules = [
+            TriggerRule(
+                id: fixedUUID(510),
+                trigger: "After coffee",
+                action: "Drink water first.",
+                isEnabled: true
+            )
+        ]
+        try baseRepository.saveQuitPlan(makeQuitPlan(triggerRules: originalRules))
+
+        let repository = ThrowingTeoPateoRepository(base: baseRepository)
+        let store = TeoPateoStore(repository: repository)
+        repository.failingOperations = [.saveQuitPlan]
+
+        store.addTriggerRule(trigger: "Work stress", action: "Walk outside.")
+
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.triggerRules, originalRules)
+        XCTAssertEqual(store.currentQuitPlan.triggerRules, originalRules)
+        XCTAssertEqual(try baseRepository.fetchQuitPlan()?.triggerRules, originalRules)
+    }
+
+    func testCollectionPersistenceFailuresRestorePersistedState() throws {
+        let baseRepository = try makeRepository()
+        let originalReasons = [
+            UserReason(
+                id: fixedUUID(520),
+                text: "I want to breathe easier.",
+                sortOrder: 0,
+                isPrimary: true,
+                createdAt: fixedDate(520),
+                updatedAt: fixedDate(521)
+            )
+        ]
+        let originalActivities = [
+            ReplacementActivity(
+                id: fixedUUID(522),
+                title: "Cold water",
+                instruction: "Finish one glass.",
+                category: .sensory,
+                linkedTrigger: "Coffee",
+                createdAt: fixedDate(522),
+                updatedAt: fixedDate(523)
+            )
+        ]
+        let originalSituations = [
+            RiskySituation(
+                id: fixedUUID(524),
+                title: "After dinner",
+                expectedContext: "Kitchen",
+                preventionPlan: "Leave the table.",
+                backupAction: "Text support.",
+                createdAt: fixedDate(524),
+                updatedAt: fixedDate(525)
+            )
+        ]
+        try baseRepository.saveAppSettings(AppSettings(
+            onboardingCompleted: true,
+            updatedAt: fixedDate(526)
+        ))
+        try baseRepository.replaceUserReasons(originalReasons)
+        try baseRepository.replaceReplacementActivities(originalActivities)
+        try baseRepository.replaceRiskySituations(originalSituations)
+
+        let repository = ThrowingTeoPateoRepository(base: baseRepository)
+        let store = TeoPateoStore(repository: repository)
+
+        repository.failingOperations = [.replaceUserReasons]
+        store.addUserReason("A new reason")
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.userReasons, originalReasons)
+        XCTAssertEqual(try baseRepository.fetchUserReasons(), originalReasons)
+
+        repository.failingOperations = [.replaceReplacementActivities]
+        store.addReplacementActivity(
+            title: "Take a walk",
+            instruction: "Walk one block.",
+            category: .movement
+        )
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.replacementActivities, originalActivities)
+        XCTAssertEqual(try baseRepository.fetchReplacementActivities(), originalActivities)
+
+        repository.failingOperations = [.replaceRiskySituations]
+        store.addRiskySituation(
+            title: "Work stress",
+            expectedContext: "Parking lot",
+            preventionPlan: "Drive a different route.",
+            backupAction: "Call support."
+        )
+        XCTAssertTrue(store.lastSaveStatus.isFailure)
+        XCTAssertEqual(store.riskySituations, originalSituations)
+        XCTAssertEqual(try baseRepository.fetchRiskySituations(), originalSituations)
+    }
+
     func testNotificationPreferenceSaveFailureRollsBackAndDoesNotSchedule() throws {
         let repository = ThrowingTeoPateoRepository(base: try makeRepository())
         let scheduler = TestNotificationScheduler(currentStatus: .authorized)
@@ -826,5 +1015,35 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(scheduler.replaceScheduledCalls, 1)
         XCTAssertNil(store.persistenceError)
         XCTAssertTrue(store.lastSaveStatus.isFailure)
+    }
+}
+
+private struct StableCoachChatFields: Equatable {
+    let id: UUID
+    let title: String
+    let messages: [StableCoachMessageFields]
+}
+
+private struct StableCoachMessageFields: Equatable {
+    let id: UUID
+    let text: String
+    let isUser: Bool
+}
+
+private extension Array where Element == CoachChat {
+    var stableChatFields: [StableCoachChatFields] {
+        map { chat in
+            StableCoachChatFields(
+                id: chat.id,
+                title: chat.title,
+                messages: chat.messages.map { message in
+                    StableCoachMessageFields(
+                        id: message.id,
+                        text: message.text,
+                        isUser: message.isUser
+                    )
+                }
+            )
+        }
     }
 }

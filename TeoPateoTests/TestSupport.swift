@@ -117,6 +117,7 @@ class TeoPateoTestCase: XCTestCase {
         costPerPack: Double = 12,
         cigarettesPerPack: Int = 20,
         quitDate: Date? = nil,
+        quitDatePreference: QuitDatePreference = .chooseDate,
         approachPreference: QuitApproachPreference = .taper,
         firstCigaretteTiming: FirstCigaretteTiming = .withinThirtyMinutes,
         previousQuitAttemptCount: PreviousQuitAttemptCount = .one,
@@ -146,7 +147,7 @@ class TeoPateoTestCase: XCTestCase {
             commonSmokingTimes: commonSmokingTimes,
             emotionalTriggers: emotionalTriggers,
             situationalTriggers: situationalTriggers,
-            quitDatePreference: .chooseDate,
+            quitDatePreference: quitDatePreference,
             costPerPack: costPerPack,
             cigarettesPerPack: cigarettesPerPack,
             quitDate: quitDate ?? fixedDate(50),
@@ -366,9 +367,16 @@ struct TestRepositoryError: Error, Equatable, LocalizedError {
 
 enum TestRepositoryOperation: Hashable {
     case loadSnapshot
+    case saveQuitPlan
     case saveNotificationSettings
     case saveDailyCheckIn
+    case saveCravingEvent
+    case saveSlipEvent
     case saveCravingWithSlip
+    case replaceUserReasons
+    case replaceReplacementActivities
+    case replaceRiskySituations
+    case replaceCoachChats
     case recentCheckIns
 }
 
@@ -453,6 +461,7 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
     }
 
     func saveQuitPlan(_ plan: QuitPlan) throws {
+        try failIfNeeded(.saveQuitPlan)
         try base.saveQuitPlan(plan)
     }
 
@@ -471,6 +480,7 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
     }
 
     func saveCravingEvent(_ event: CravingEvent) throws {
+        try failIfNeeded(.saveCravingEvent)
         try base.saveCravingEvent(event)
     }
 
@@ -488,6 +498,7 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
     }
 
     func saveSlipEvent(_ event: SlipEvent) throws {
+        try failIfNeeded(.saveSlipEvent)
         try base.saveSlipEvent(event)
     }
 
@@ -500,6 +511,7 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
     }
 
     func replaceReplacementActivities(_ activities: [ReplacementActivity]) throws {
+        try failIfNeeded(.replaceReplacementActivities)
         try base.replaceReplacementActivities(activities)
     }
 
@@ -508,6 +520,7 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
     }
 
     func replaceRiskySituations(_ situations: [RiskySituation]) throws {
+        try failIfNeeded(.replaceRiskySituations)
         try base.replaceRiskySituations(situations)
     }
 
@@ -524,6 +537,7 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
     }
 
     func replaceUserReasons(_ reasons: [UserReason]) throws {
+        try failIfNeeded(.replaceUserReasons)
         try base.replaceUserReasons(reasons)
     }
 
@@ -532,6 +546,7 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
     }
 
     func replaceCoachChats(_ chats: [CoachChat], selectedChatID: UUID?) throws {
+        try failIfNeeded(.replaceCoachChats)
         try base.replaceCoachChats(chats, selectedChatID: selectedChatID)
     }
 

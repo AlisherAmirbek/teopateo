@@ -498,6 +498,8 @@ struct OnboardingView: View {
             }
             Slider(value: value, in: 1...10, step: 1)
                 .accentColor(QuitTheme.cocoa)
+                .accessibilityLabel(title)
+                .accessibilityValue("\(Int(value.wrappedValue)) out of 10")
         }
     }
 

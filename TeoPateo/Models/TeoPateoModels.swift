@@ -148,6 +148,13 @@ struct ReminderTime: Codable, Equatable {
         hour * 60 + minute
     }
 
+    func addingMinutes(_ minutes: Int) -> ReminderTime {
+        let minutesPerDay = 24 * 60
+        let normalized = (minuteOfDay + minutes) % minutesPerDay
+        let wrapped = normalized < 0 ? normalized + minutesPerDay : normalized
+        return ReminderTime(hour: wrapped / 60, minute: wrapped % 60)
+    }
+
     var displayLabel: String {
         let displayHour = hour % 12 == 0 ? 12 : hour % 12
         let suffix = hour < 12 ? "AM" : "PM"
@@ -352,7 +359,7 @@ enum NotificationPlanner {
     }
 
     private static func warningTime(beforeStartHour startHour: Int) -> ReminderTime {
-        ReminderTime(hour: (startHour + 23) % 24, minute: 30)
+        ReminderTime(hour: startHour, minute: 0).addingMinutes(-30)
     }
 
     private static func matchingRule(
@@ -2069,7 +2076,7 @@ enum QuitPlanGenerator {
         let today = calendar.startOfDay(for: now)
         switch preference {
         case .alreadyQuit:
-            return min(selectedDate, today)
+            return min(calendar.startOfDay(for: selectedDate), today)
         case .chooseDate:
             return max(calendar.startOfDay(for: selectedDate), today)
         case .helpMeChoose:

@@ -842,6 +842,10 @@ final class LocalPersistenceTests: XCTestCase {
             id: fixedUUID(1),
             quitDate: fixedDate(10),
             quitMode: quitMode,
+            planSummary: PlanSummary(
+                planStartDate: fixedDate(4),
+                quitDate: fixedDate(10)
+            ),
             triggerRules: [
                 TriggerRule(
                     id: fixedUUID(2),

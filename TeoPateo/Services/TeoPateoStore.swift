@@ -271,6 +271,7 @@ final class TeoPateoStore: ObservableObject {
             lastSaveStatus = .saved(existing == nil ? "Check-in saved." : "Today check-in updated.")
             return true
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Check-in could not be saved.")
             return false
@@ -390,6 +391,7 @@ final class TeoPateoStore: ObservableObject {
             syncScheduledNotifications(showSuccess: false)
             return true
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Craving and slip could not be saved.")
             return false
@@ -456,6 +458,7 @@ final class TeoPateoStore: ObservableObject {
             lastSaveStatus = .saved("Slip saved as plan data.")
             return true
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Slip could not be saved.")
             return false
@@ -612,7 +615,10 @@ final class TeoPateoStore: ObservableObject {
             max(targetCigarettesPerDay, 0),
             max(quitPlan.baselineCigarettesPerDay, 0)
         )
-        quitPlan.taperReductionStep = max(reductionStep, 0)
+        let clampedStep = max(reductionStep, 0)
+        quitPlan.taperReductionStep = quitPlan.taperTargetCigarettesPerDay > 0
+            ? max(clampedStep, 1)
+            : 0
         quitPlan.taperReductionIntervalDays = max(reductionIntervalDays, 1)
         quitPlan.strategyPlan.taperTarget = quitPlan.taperTargetCigarettesPerDay
         quitPlan.strategyPlan.taperStep = quitPlan.taperReductionStep
@@ -634,8 +640,16 @@ final class TeoPateoStore: ObservableObject {
         )
         let interval = max(quitPlan.taperReductionIntervalDays, 1)
         let completedIntervals = elapsedDays / interval
-        let reduction = Double(completedIntervals) * max(quitPlan.taperReductionStep, 0)
+        let reduction = Double(completedIntervals) * effectiveTaperReductionStep()
         return max(quitPlan.taperTargetCigarettesPerDay - reduction, 0)
+    }
+
+    private func effectiveTaperReductionStep() -> Double {
+        let step = max(quitPlan.taperReductionStep, 0)
+        guard quitPlan.taperTargetCigarettesPerDay > 0 else {
+            return 0
+        }
+        return max(step, 1)
     }
 
     func taperSchedule(days: Int = 7) -> [TaperScheduleDay] {
@@ -1550,40 +1564,7 @@ final class TeoPateoStore: ObservableObject {
 
         do {
             let snapshot = try repository.loadSnapshot()
-
-            isOnboardingCompleted = snapshot.appSettings?.onboardingCompleted ?? false
-            isOnboardingPresented = !isOnboardingCompleted
-            notificationSettings = snapshot.notificationSettings ?? NotificationSettings()
-            userProfile = snapshot.userProfile
-            quitReadiness = snapshot.quitReadiness
-            smokingBackground = snapshot.smokingBackground
-            savingsGoal = snapshot.savingsGoal
-
-            let loadedPlan = snapshot.quitPlan ?? Self.defaultQuitPlan()
-            quitPlan = loadedPlan
-            quitMode = loadedPlan.quitMode
-            triggerRules = loadedPlan.triggerRules
-
-            supportContacts = snapshot.supportContacts
-            let shouldSeedDefaultData = Self.shouldSeedDefaultData(appSettings: snapshot.appSettings)
-            userReasons = snapshot.userReasons.isEmpty && shouldSeedDefaultData
-                ? Self.defaultUserReasons()
-                : snapshot.userReasons
-            replacementActivities = snapshot.replacementActivities.isEmpty
-                ? Self.defaultReplacementActivities()
-                : snapshot.replacementActivities
-            riskySituations = snapshot.riskySituations
-            coachChats = snapshot.coachChats.isEmpty
-                ? Self.defaultCoachChats()
-                : snapshot.coachChats
-            selectedCoachChatID = Self.validSelectedCoachChatID(
-                snapshot.selectedCoachChatID,
-                in: coachChats
-            )
-            dailyCheckIns = snapshot.dailyCheckIns
-            cravingEvents = snapshot.cravingEvents
-            slipEvents = snapshot.slipEvents
-
+            applyPersistedSnapshot(snapshot)
             try persistDefaultsIfNeeded(snapshot: snapshot)
             persistenceError = nil
         } catch {
@@ -1614,6 +1595,54 @@ final class TeoPateoStore: ObservableObject {
         dailyCheckIns = []
         cravingEvents = []
         slipEvents = []
+    }
+
+    private func applyPersistedSnapshot(_ snapshot: PersistedTeoPateoSnapshot) {
+        isOnboardingCompleted = snapshot.appSettings?.onboardingCompleted ?? false
+        isOnboardingPresented = !isOnboardingCompleted
+        notificationSettings = snapshot.notificationSettings ?? NotificationSettings()
+        userProfile = snapshot.userProfile
+        quitReadiness = snapshot.quitReadiness
+        smokingBackground = snapshot.smokingBackground
+        savingsGoal = snapshot.savingsGoal
+
+        let loadedPlan = snapshot.quitPlan ?? Self.defaultQuitPlan()
+        quitPlan = loadedPlan
+        quitMode = loadedPlan.quitMode
+        triggerRules = loadedPlan.triggerRules
+
+        supportContacts = snapshot.supportContacts
+        let shouldSeedDefaultData = Self.shouldSeedDefaultData(appSettings: snapshot.appSettings)
+        userReasons = snapshot.userReasons.isEmpty && shouldSeedDefaultData
+            ? Self.defaultUserReasons()
+            : snapshot.userReasons
+        replacementActivities = snapshot.replacementActivities.isEmpty
+            ? Self.defaultReplacementActivities()
+            : snapshot.replacementActivities
+        riskySituations = snapshot.riskySituations
+        coachChats = snapshot.coachChats.isEmpty
+            ? Self.defaultCoachChats()
+            : snapshot.coachChats
+        selectedCoachChatID = Self.validSelectedCoachChatID(
+            snapshot.selectedCoachChatID,
+            in: coachChats
+        )
+        dailyCheckIns = snapshot.dailyCheckIns
+        cravingEvents = snapshot.cravingEvents
+        slipEvents = snapshot.slipEvents
+    }
+
+    private func restorePersistedStateAfterSaveFailure() {
+        let wasHydrating = isHydrating
+        isHydrating = true
+        defer { isHydrating = wasHydrating }
+
+        do {
+            applyPersistedSnapshot(try repository.loadSnapshot())
+        } catch {
+            // Keep the local failure status from the original save; a reload failure
+            // should not hide the operation that first failed.
+        }
     }
 
     private func persistDefaultsIfNeeded(snapshot: PersistedTeoPateoSnapshot) throws {
@@ -1657,6 +1686,7 @@ final class TeoPateoStore: ObservableObject {
             lastSaveStatus = .saved(successMessage)
             syncScheduledNotifications(showSuccess: false)
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Quit plan could not be saved.")
         }
@@ -1668,6 +1698,7 @@ final class TeoPateoStore: ObservableObject {
             persistenceError = nil
             lastSaveStatus = .saved(successMessage)
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Reasons could not be saved.")
         }
@@ -1679,6 +1710,7 @@ final class TeoPateoStore: ObservableObject {
             persistenceError = nil
             lastSaveStatus = .saved(successMessage)
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Replacement activities could not be saved.")
         }
@@ -1690,6 +1722,7 @@ final class TeoPateoStore: ObservableObject {
             persistenceError = nil
             lastSaveStatus = .saved(successMessage)
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Risky situations could not be saved.")
         }
@@ -1700,6 +1733,7 @@ final class TeoPateoStore: ObservableObject {
             try repository.replaceCoachChats(coachChats, selectedChatID: selectedCoachChatID)
             persistenceError = nil
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Coach chats could not be saved.")
         }
@@ -2124,6 +2158,7 @@ final class TeoPateoStore: ObservableObject {
             syncScheduledNotifications(showSuccess: false)
             return true
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Craving could not be saved.")
             return false
@@ -2181,6 +2216,7 @@ final class TeoPateoStore: ObservableObject {
             try repository.saveQuitPlan(quitPlan)
             persistenceError = nil
         } catch {
+            restorePersistedStateAfterSaveFailure()
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Plan suggestions could not be saved.")
         }
@@ -2902,7 +2938,7 @@ final class TeoPateoStore: ObservableObject {
         let today = calendar.startOfDay(for: now)
         switch preference {
         case .alreadyQuit:
-            return min(selectedDate, today)
+            return min(calendar.startOfDay(for: selectedDate), today)
         case .chooseDate:
             return max(calendar.startOfDay(for: selectedDate), today)
         case .helpMeChoose:

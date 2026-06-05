@@ -324,11 +324,12 @@ struct CoachProxyClient: CoachResponding {
     }
 
     private static func collectData(from bytes: URLSession.AsyncBytes) async throws -> Data {
-        var data = Data()
+        var collectedBytes: [UInt8] = []
+        collectedBytes.reserveCapacity(16 * 1024)
         for try await byte in bytes {
-            data.append(contentsOf: [byte])
+            collectedBytes.append(byte)
         }
-        return data
+        return Data(collectedBytes)
     }
 
     func makeURLRequest(for request: CoachRequest) throws -> URLRequest {
@@ -503,11 +504,12 @@ struct OpenRouterCoachClient: CoachResponding {
     }
 
     private static func collectData(from bytes: URLSession.AsyncBytes) async throws -> Data {
-        var data = Data()
+        var collectedBytes: [UInt8] = []
+        collectedBytes.reserveCapacity(16 * 1024)
         for try await byte in bytes {
-            data.append(contentsOf: [byte])
+            collectedBytes.append(byte)
         }
-        return data
+        return Data(collectedBytes)
     }
 
     private static func systemPrompt(contextSummary: String) -> String {

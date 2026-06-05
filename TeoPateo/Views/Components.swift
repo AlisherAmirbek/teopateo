@@ -12,8 +12,9 @@ struct FlexibleTags: View {
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
             ForEach(items, id: \.self) { item in
+                let isSelected = selected.contains(item)
                 Button {
-                    if selected.contains(item) {
+                    if isSelected {
                         selected.remove(item)
                     } else {
                         selected.insert(item)
@@ -21,12 +22,16 @@ struct FlexibleTags: View {
                 } label: {
                     Text(item)
                         .font(.rounded(.caption, weight: .bold))
-                        .foregroundColor(selected.contains(item) ? .white : QuitTheme.cocoa)
+                        .foregroundColor(isSelected ? .white : QuitTheme.cocoa)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(selected.contains(item) ? QuitTheme.cocoa : QuitTheme.peach.opacity(0.62))
+                        .background(isSelected ? QuitTheme.cocoa : QuitTheme.peach.opacity(0.62))
                         .cornerRadius(18)
                 }
+                .accessibilityLabel(item)
+                .accessibilityValue(isSelected ? "Selected" : "Not selected")
+                .accessibilityHint(isSelected ? "Double-tap to deselect." : "Double-tap to select.")
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .accessibilityIdentifier("tag-\(item)")
             }
         }

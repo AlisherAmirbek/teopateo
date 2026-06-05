@@ -12,29 +12,30 @@ The app should feel like a relapse-prevention system, not a generic habit tracke
 
 ## Current Stage
 
-The repository is at an early native MVP prototype stage.
+The repository is a native MVP with persisted user data and a working coach integration path. It is still early product software, but the app is no longer just a hard-coded prototype.
 
 Implemented today:
 
 - SwiftUI app shell with tab navigation.
+- Onboarding that generates a personalized quit plan from survey inputs.
 - Today dashboard with mascot, progress facts, and a craving rescue entry point.
-- Full-screen craving mode with a 10-minute timer, replacement activities, motivational copy, and trigger selection.
+- Full-screen craving mode with a wall-clock 10-minute timer, replacement activities, motivational copy, local trigger selection, and craving/slip logging.
 - Quit plan screen with quit date, taper/cold-turkey mode, trigger rules, replacement activities, reasons, and notification settings.
 - Daily check-in screen with mood, stress, confidence, smoke/no-smoke choice, slip recovery notes, and daily focus.
-- Insights screen with static risk patterns, trigger contribution bars, heat map, and suggested plan adjustment.
-- Basic coach mock with quick prompts and canned responses.
+- Insights screen with calculated risk windows, trigger contribution bars, heat map, history, weekly recap, and suggested plan adjustments.
+- SQLite-backed persistence for quit plans, onboarding profile data, check-ins, cravings, slips, reasons, replacement activities, risky situations, coach chats, and notification settings.
+- Local notification scheduling for plan reminders, post-meal prompts, evening check-ins, medication reminders, and calculated risk-window warnings.
+- AI coach chat backed by a local/OpenRouter proxy, with streaming support and persisted chat history.
+- Unit tests for planner logic, persistence, repository mutations, notification planning, coach streaming/failure paths, and store behavior.
 
-Not implemented yet:
+Still rough or not production-complete:
 
-- Onboarding.
-- Persistent storage.
-- Real craving/check-in history.
-- Calculated insights.
-- Notification scheduling.
-- Real AI coach integration.
-- Production tests.
-
-Most current app data is hard-coded or held in memory through `TeoPateoStore`.
+- Production onboarding polish and broader UX validation.
+- App Attest/server-side attestation verification for the coach proxy.
+- Subscription/paywall behavior, if monetization is added.
+- Longitudinal insights beyond the current local-history calculations.
+- Production operations for the proxy, including deployment, monitoring, and secret rotation.
+- UI automation coverage for the highest-risk flows.
 
 ## Repository Structure
 
@@ -83,7 +84,9 @@ Key files:
 - `TeoPateoApp.swift`: App entry point. Creates the shared `TeoPateoStore`.
 - `ContentView.swift`: Main tab navigation and craving-mode full-screen presentation.
 - `Models/TeoPateoModels.swift`: Lightweight view models such as progress metrics, trigger rules, and coach messages.
-- `Services/TeoPateoStore.swift`: Shared observable app state. Currently in-memory only.
+- `Services/TeoPateoStore.swift`: Main-actor observable app state backed by `TeoPateoRepository`.
+- `Services/SQLiteTeoPateoRepository.swift`: Durable local SQLite persistence.
+- `Services/CoachService.swift`: Coach client implementations for the proxy and direct OpenRouter development path.
 - `Views/TodayView.swift`: Home/dashboard screen and rescue button.
 - `Views/CravingModeView.swift`: 10-minute craving intervention flow.
 - `Views/PlanView.swift`: Quit plan UI.

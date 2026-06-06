@@ -1,38 +1,92 @@
 import SwiftUI
 
 struct TodayView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var store: TeoPateoStore
     @State private var isNotificationsPresented = false
 
     var body: some View {
-        ZStack {
-            QuitTheme.background.ignoresSafeArea()
+        GeometryReader { proxy in
+            let metrics = AdaptiveScreenMetrics(
+                width: proxy.size.width,
+                horizontalSizeClass: horizontalSizeClass,
+                dynamicTypeSize: dynamicTypeSize
+            )
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    header
-                    StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
-                        .padding(.top, 8)
-                    if !store.isOnboardingCompleted {
-                        onboardingPrompt
-                    }
-                    nextActionCard
-                    pendingSuggestionCard
-                    mascot
-                    planWeekCard
-                    rescueButton
-                    safetyResources
-                    riskCard
-                    facts
+            ZStack {
+                QuitTheme.background.ignoresSafeArea()
+
+                ScrollView {
+                    content(metrics: metrics)
+                        .padding(.horizontal, metrics.horizontalPadding)
+                        .padding(.top, metrics.usesWideLayout ? 22 : 18)
+                        .padding(.bottom, metrics.verticalPadding)
+                        .frame(maxWidth: metrics.contentMaxWidth, alignment: .leading)
+                        .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 18)
-                .padding(.bottom, 24)
             }
         }
         .sheet(isPresented: $isNotificationsPresented) {
             NotificationSettingsView()
                 .environmentObject(store)
+        }
+    }
+
+    @ViewBuilder
+    private func content(metrics: AdaptiveScreenMetrics) -> some View {
+        if metrics.usesWideLayout {
+            wideContent(metrics: metrics)
+        } else {
+            compactContent
+        }
+    }
+
+    private var compactContent: some View {
+        VStack(spacing: 0) {
+            header
+            StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
+                .padding(.top, 8)
+            if !store.isOnboardingCompleted {
+                onboardingPrompt
+            }
+            nextActionCard
+            pendingSuggestionCard
+            mascot(height: 278)
+            planWeekCard
+            rescueButton
+            safetyResources
+            riskCard
+            facts
+        }
+    }
+
+    private func wideContent(metrics: AdaptiveScreenMetrics) -> some View {
+        VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+            header
+            StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
+
+            if !store.isOnboardingCompleted {
+                onboardingPrompt
+            }
+
+            HStack(alignment: .top, spacing: metrics.columnSpacing) {
+                VStack(spacing: 0) {
+                    nextActionCard
+                    pendingSuggestionCard
+                    mascot(height: 332)
+                    rescueButton
+                    safetyResources
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+
+                VStack(spacing: 0) {
+                    planWeekCard
+                    riskCard
+                    facts
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
         }
     }
 
@@ -143,9 +197,9 @@ struct TodayView: View {
         }
     }
 
-    private var mascot: some View {
+    private func mascot(height: CGFloat) -> some View {
         MascotRoomView()
-            .frame(height: 278)
+            .frame(height: height)
     }
 
     private var planWeekCard: some View {

@@ -253,6 +253,9 @@ private final class TimedVideoPlayerUIView: UIView {
 }
 
 struct RootScreen<Content: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     let content: Content
 
     init(@ViewBuilder content: () -> Content) {
@@ -260,15 +263,61 @@ struct RootScreen<Content: View>: View {
     }
 
     var body: some View {
-        ZStack {
-            QuitTheme.background.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    content
+        GeometryReader { proxy in
+            let metrics = AdaptiveScreenMetrics(
+                width: proxy.size.width,
+                horizontalSizeClass: horizontalSizeClass,
+                dynamicTypeSize: dynamicTypeSize
+            )
+
+            ZStack {
+                QuitTheme.background.ignoresSafeArea()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                        content
+                    }
+                    .padding(.horizontal, metrics.horizontalPadding)
+                    .padding(.top, metrics.verticalPadding)
+                    .padding(.bottom, metrics.verticalPadding)
+                    .frame(maxWidth: metrics.readingMaxWidth, alignment: .leading)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(24)
             }
         }
+    }
+}
+
+struct AdaptiveScreenMetrics {
+    let width: CGFloat
+    let horizontalSizeClass: UserInterfaceSizeClass?
+    let dynamicTypeSize: DynamicTypeSize
+
+    var usesWideLayout: Bool {
+        horizontalSizeClass == .regular && width >= 760 && !dynamicTypeSize.isAccessibilitySize
+    }
+
+    var horizontalPadding: CGFloat {
+        usesWideLayout ? 32 : 24
+    }
+
+    var verticalPadding: CGFloat {
+        usesWideLayout ? 28 : 24
+    }
+
+    var contentMaxWidth: CGFloat {
+        usesWideLayout ? 1080 : 620
+    }
+
+    var readingMaxWidth: CGFloat {
+        usesWideLayout ? 680 : 620
+    }
+
+    var cardSpacing: CGFloat {
+        usesWideLayout ? 18 : 14
+    }
+
+    var columnSpacing: CGFloat {
+        usesWideLayout ? 18 : 14
     }
 }
 

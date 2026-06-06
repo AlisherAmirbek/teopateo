@@ -4,6 +4,7 @@ struct CravingModeView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var store: TeoPateoStore
     @ScaledMetric(relativeTo: .largeTitle) private var timerDiameter: CGFloat = 168
     @ScaledMetric(relativeTo: .largeTitle) private var timerStroke: CGFloat = 18
@@ -24,30 +25,33 @@ struct CravingModeView: View {
     @State private var selectedTriggers: Set<String> = []
 
     var body: some View {
-        ZStack {
-            QuitTheme.background.ignoresSafeArea()
+        GeometryReader { proxy in
+            let metrics = AdaptiveScreenMetrics(
+                width: proxy.size.width,
+                horizontalSizeClass: horizontalSizeClass,
+                dynamicTypeSize: dynamicTypeSize
+            )
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    header
-                    StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
+            ZStack {
+                QuitTheme.background.ignoresSafeArea()
 
-                    switch step {
-                    case .rescue:
-                        rescueContent
-                    case .recovered:
-                        recoveredContent
-                    case .slipped:
-                        slippedContent
+                ScrollView {
+                    VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                        header
+                        StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
+                        stepContent(metrics: metrics)
                     }
+                    .padding(.horizontal, metrics.horizontalPadding)
+                    .padding(.top, metrics.verticalPadding)
+                    .padding(.bottom, step == .rescue ? (metrics.usesWideLayout ? 104 : 126) : metrics.verticalPadding)
+                    .frame(maxWidth: metrics.contentMaxWidth, alignment: .leading)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(24)
-                .padding(.bottom, step == .rescue ? 126 : 24)
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            if step == .rescue {
-                rescueOutcomeBar
+            .safeAreaInset(edge: .bottom) {
+                if step == .rescue {
+                    rescueOutcomeBar(isWide: metrics.usesWideLayout)
+                }
             }
         }
         .onAppear {
@@ -62,6 +66,18 @@ struct CravingModeView: View {
         .onDisappear {
             timer?.invalidate()
             timer = nil
+        }
+    }
+
+    @ViewBuilder
+    private func stepContent(metrics: AdaptiveScreenMetrics) -> some View {
+        switch step {
+        case .rescue:
+            rescueContent(metrics: metrics)
+        case .recovered:
+            recoveredContent(metrics: metrics)
+        case .slipped:
+            slippedContent(metrics: metrics)
         }
     }
 
@@ -102,58 +118,127 @@ struct CravingModeView: View {
         }
     }
 
-    private var rescueContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            timerPanel
-            rescueScriptPanel
-            motivationPanel
-            intensityNowPanel
-            activityPanel(title: "Pick one action now", subtitle: "Do one small replacement while the timer runs.")
-            triggerPanel(title: "Optional trigger")
+    @ViewBuilder
+    private func rescueContent(metrics: AdaptiveScreenMetrics) -> some View {
+        if metrics.usesWideLayout {
+            HStack(alignment: .top, spacing: metrics.columnSpacing) {
+                VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                    timerPanel(metrics: metrics)
+                    motivationPanel
+                    intensityNowPanel
+                }
+                .frame(maxWidth: 420, alignment: .top)
+
+                VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                    rescueScriptPanel
+                    activityPanel(title: "Pick one action now", subtitle: "Do one small replacement while the timer runs.")
+                    triggerPanel(title: "Optional trigger")
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                timerPanel(metrics: metrics)
+                rescueScriptPanel
+                motivationPanel
+                intensityNowPanel
+                activityPanel(title: "Pick one action now", subtitle: "Do one small replacement while the timer runs.")
+                triggerPanel(title: "Optional trigger")
+            }
         }
     }
 
-    private var recoveredContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            outcomeIntro(
-                title: "Craving handled",
-                message: "Save the parts that made this easier so the next rescue can be sharper."
-            )
-            sliderPanel(title: "Craving after rescue", value: $finalIntensity)
-            activityPanel(title: "What helped?", subtitle: "Pick the action that worked best, if any.")
-            triggerPanel(title: "What set it off?")
-            notePanel(title: "Short note", placeholder: "What helped this pass?", text: $reflectionNote)
-            outcomeSaveButtons(
-                primaryTitle: "Save rescue",
-                primaryAction: saveRecoveredCraving
-            )
+    @ViewBuilder
+    private func recoveredContent(metrics: AdaptiveScreenMetrics) -> some View {
+        if metrics.usesWideLayout {
+            HStack(alignment: .top, spacing: metrics.columnSpacing) {
+                VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                    outcomeIntro(
+                        title: "Craving handled",
+                        message: "Save the parts that made this easier so the next rescue can be sharper."
+                    )
+                    sliderPanel(title: "Craving after rescue", value: $finalIntensity)
+                    notePanel(title: "Short note", placeholder: "What helped this pass?", text: $reflectionNote)
+                    outcomeSaveButtons(
+                        primaryTitle: "Save rescue",
+                        primaryAction: saveRecoveredCraving
+                    )
+                }
+                .frame(maxWidth: 420, alignment: .top)
+
+                VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                    activityPanel(title: "What helped?", subtitle: "Pick the action that worked best, if any.")
+                    triggerPanel(title: "What set it off?")
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                outcomeIntro(
+                    title: "Craving handled",
+                    message: "Save the parts that made this easier so the next rescue can be sharper."
+                )
+                sliderPanel(title: "Craving after rescue", value: $finalIntensity)
+                activityPanel(title: "What helped?", subtitle: "Pick the action that worked best, if any.")
+                triggerPanel(title: "What set it off?")
+                notePanel(title: "Short note", placeholder: "What helped this pass?", text: $reflectionNote)
+                outcomeSaveButtons(
+                    primaryTitle: "Save rescue",
+                    primaryAction: saveRecoveredCraving
+                )
+            }
         }
     }
 
-    private var slippedContent: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            outcomeIntro(
-                title: "No reset needed",
-                message: store.currentQuitPlan.slipRecoveryPlan.message
-            )
-            sliderPanel(title: "Craving after smoking", value: $finalIntensity)
-            triggerPanel(title: "What set it off?")
-            notePanel(title: "What happened?", placeholder: "A quick note for tomorrow's pattern", text: $slipNote)
-            outcomeSaveButtons(
-                primaryTitle: "Save slip",
-                primaryAction: saveSlippedCraving
-            )
+    @ViewBuilder
+    private func slippedContent(metrics: AdaptiveScreenMetrics) -> some View {
+        if metrics.usesWideLayout {
+            HStack(alignment: .top, spacing: metrics.columnSpacing) {
+                VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                    outcomeIntro(
+                        title: "No reset needed",
+                        message: store.currentQuitPlan.slipRecoveryPlan.message
+                    )
+                    sliderPanel(title: "Craving after smoking", value: $finalIntensity)
+                    notePanel(title: "What happened?", placeholder: "A quick note for tomorrow's pattern", text: $slipNote)
+                    outcomeSaveButtons(
+                        primaryTitle: "Save slip",
+                        primaryAction: saveSlippedCraving
+                    )
+                }
+                .frame(maxWidth: 420, alignment: .top)
+
+                triggerPanel(title: "What set it off?")
+                    .frame(maxWidth: .infinity, alignment: .top)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                outcomeIntro(
+                    title: "No reset needed",
+                    message: store.currentQuitPlan.slipRecoveryPlan.message
+                )
+                sliderPanel(title: "Craving after smoking", value: $finalIntensity)
+                triggerPanel(title: "What set it off?")
+                notePanel(title: "What happened?", placeholder: "A quick note for tomorrow's pattern", text: $slipNote)
+                outcomeSaveButtons(
+                    primaryTitle: "Save slip",
+                    primaryAction: saveSlippedCraving
+                )
+            }
         }
     }
 
-    private var timerPanel: some View {
-        VStack(spacing: 18) {
+    private func timerPanel(metrics: AdaptiveScreenMetrics) -> some View {
+        let diameter = metrics.usesWideLayout ? max(timerDiameter, 220) : timerDiameter
+        let stroke = metrics.usesWideLayout ? max(timerStroke, 20) : timerStroke
+
+        return VStack(spacing: 18) {
             ZStack {
                 Circle()
-                    .stroke(QuitTheme.peach, lineWidth: timerStroke)
+                    .stroke(QuitTheme.peach, lineWidth: stroke)
                 Circle()
                     .trim(from: 0, to: timerProgress)
-                    .stroke(QuitTheme.cocoa, style: StrokeStyle(lineWidth: timerStroke, lineCap: .round))
+                    .stroke(QuitTheme.cocoa, style: StrokeStyle(lineWidth: stroke, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 4) {
                     Text(formattedTime)
@@ -166,7 +251,7 @@ struct CravingModeView: View {
                         .foregroundColor(QuitTheme.muted)
                 }
             }
-            .frame(width: timerDiameter, height: timerDiameter)
+            .frame(width: diameter, height: diameter)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(L10n.string("Craving timer"))
             .accessibilityValue(timerAccessibilityValue)
@@ -318,23 +403,30 @@ struct CravingModeView: View {
         .quietCard()
     }
 
-    private var rescueOutcomeBar: some View {
-        VStack(spacing: 10) {
-            rescueOutcomeChoices
-
-            Button("Save for later") {
-                saveForLaterAndDismiss()
+    @ViewBuilder
+    private func rescueOutcomeBar(isWide: Bool) -> some View {
+        if isWide {
+            HStack(spacing: 12) {
+                recoveredButton
+                smokedButton
+                saveForLaterButton
             }
-            .font(.rounded(.caption, weight: .bold))
-            .foregroundColor(QuitTheme.muted)
+            .padding(.horizontal, 24)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
+            .frame(maxWidth: 760)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            .accessibilityIdentifier("craving-save-later-button")
+            .background(QuitTheme.background)
+        } else {
+            VStack(spacing: 10) {
+                rescueOutcomeChoices
+                saveForLaterButton
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+            .padding(.bottom, 10)
+            .background(QuitTheme.background)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
-        .background(QuitTheme.background)
     }
 
     @ViewBuilder
@@ -366,6 +458,17 @@ struct CravingModeView: View {
         }
         .buttonStyle(QuietButtonStyle())
         .accessibilityIdentifier("craving-smoked-button")
+    }
+
+    private var saveForLaterButton: some View {
+        Button("Save for later") {
+            saveForLaterAndDismiss()
+        }
+        .font(.rounded(.caption, weight: .bold))
+        .foregroundColor(QuitTheme.muted)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .accessibilityIdentifier("craving-save-later-button")
     }
 
     private func outcomeSaveButtons(primaryTitle: String, primaryAction: @escaping () -> Void) -> some View {

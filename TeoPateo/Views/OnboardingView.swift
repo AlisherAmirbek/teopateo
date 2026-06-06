@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OnboardingView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var store: TeoPateoStore
 
     @State private var step = 0
@@ -57,28 +58,38 @@ struct OnboardingView: View {
     ]
 
     var body: some View {
-        ZStack {
-            QuitTheme.background.ignoresSafeArea()
+        GeometryReader { proxy in
+            let metrics = AdaptiveScreenMetrics(
+                width: proxy.size.width,
+                horizontalSizeClass: horizontalSizeClass,
+                dynamicTypeSize: dynamicTypeSize
+            )
 
-            VStack(spacing: 0) {
-                topBar
-                progress
+            ZStack {
+                QuitTheme.background.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        stepContent
+                VStack(spacing: 0) {
+                    topBar(metrics: metrics)
+                    progress(metrics: metrics)
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                            stepContent
+                        }
+                        .padding(.horizontal, metrics.horizontalPadding)
+                        .padding(.top, metrics.usesWideLayout ? 28 : 22)
+                        .padding(.bottom, 22)
+                        .frame(maxWidth: metrics.readingMaxWidth, alignment: .leading)
+                        .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 22)
-                    .padding(.bottom, 22)
-                }
 
-                bottomBar
+                    bottomBar(metrics: metrics)
+                }
             }
         }
     }
 
-    private var topBar: some View {
+    private func topBar(metrics: AdaptiveScreenMetrics) -> some View {
         HStack {
             Button {
                 if step == 0 {
@@ -106,11 +117,13 @@ struct OnboardingView: View {
             .font(.rounded(.caption, weight: .bold))
             .foregroundColor(QuitTheme.muted)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 14)
+        .padding(.horizontal, metrics.horizontalPadding)
+        .padding(.top, metrics.usesWideLayout ? 18 : 14)
+        .frame(maxWidth: metrics.readingMaxWidth)
+        .frame(maxWidth: .infinity)
     }
 
-    private var progress: some View {
+    private func progress(metrics: AdaptiveScreenMetrics) -> some View {
         HStack(spacing: 7) {
             ForEach(0...finalStep, id: \.self) { index in
                 Capsule()
@@ -118,8 +131,10 @@ struct OnboardingView: View {
                     .frame(height: 5)
             }
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, metrics.horizontalPadding)
         .padding(.top, 14)
+        .frame(maxWidth: metrics.readingMaxWidth)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -415,7 +430,7 @@ struct OnboardingView: View {
         }
     }
 
-    private var bottomBar: some View {
+    private func bottomBar(metrics: AdaptiveScreenMetrics) -> some View {
         VStack(spacing: 10) {
             Button {
                 advance()
@@ -431,9 +446,11 @@ struct OnboardingView: View {
             .opacity(canAdvance ? 1 : 0.45)
             .accessibilityIdentifier("onboarding-next-button")
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, metrics.horizontalPadding)
         .padding(.top, 12)
         .padding(.bottom, 20)
+        .frame(maxWidth: metrics.readingMaxWidth)
+        .frame(maxWidth: .infinity)
         .background(QuitTheme.background)
     }
 

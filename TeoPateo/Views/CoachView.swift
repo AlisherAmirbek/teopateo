@@ -2,14 +2,17 @@ import Foundation
 import SwiftUI
 
 struct CoachView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: TeoPateoStore
     @State private var input = ""
     @State private var chatPendingDeletion: CoachChat?
     @State private var pendingConsent: PendingCoachConsent?
 
-    private let promptColumns = [
-        GridItem(.adaptive(minimum: 140), spacing: 8)
-    ]
+    private var promptColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 180 : 140), spacing: 8)
+        ]
+    }
     private let promptOptions = [
         CoachPromptOption(
             title: "I want to smoke now",
@@ -81,7 +84,7 @@ struct CoachView: View {
                 } label: {
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(store.canStartNewCoachChat ? QuitTheme.onCocoa : QuitTheme.paper)
                         .frame(width: 44, height: 44)
                         .background(store.canStartNewCoachChat ? QuitTheme.cocoa : QuitTheme.faint)
                         .clipShape(Circle())
@@ -189,7 +192,8 @@ struct CoachView: View {
             TextField("Describe the craving or trigger...", text: $input)
                 .font(.rounded(.subheadline))
                 .padding(.horizontal, 14)
-                .frame(height: 52)
+                .frame(minHeight: 52)
+                .padding(.vertical, 6)
                 .background(QuitTheme.paper)
                 .cornerRadius(14)
                 .submitLabel(.send)
@@ -199,7 +203,7 @@ struct CoachView: View {
             Button(action: sendCurrentInput) {
                 Image(systemName: "paperplane")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(canSendInput ? QuitTheme.onCocoa : QuitTheme.paper)
                     .frame(width: 52, height: 52)
                     .background(canSendInput ? QuitTheme.cocoa : QuitTheme.faint)
                     .cornerRadius(14)
@@ -215,8 +219,9 @@ struct CoachView: View {
             requestCoachSend(option.message)
         } label: {
             Text(option.title)
-                .lineLimit(2)
+                .lineLimit(nil)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 34)
         }
         .font(.rounded(.caption, weight: .bold))
@@ -239,7 +244,7 @@ struct CoachView: View {
         } label: {
             Text(chat.displayTitle)
                 .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(isSelected ? .white : QuitTheme.cocoa)
+                .foregroundColor(isSelected ? QuitTheme.onCocoa : QuitTheme.cocoa)
                 .lineLimit(1)
                 .padding(.vertical, 9)
                 .padding(.horizontal, 12)
@@ -247,6 +252,8 @@ struct CoachView: View {
                 .cornerRadius(18)
         }
         .accessibilityLabel(chat.displayTitle)
+        .accessibilityValue(L10n.selectedState(isSelected))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("coach-chat-\(chat.id.uuidString)")
     }
 
@@ -322,7 +329,7 @@ private struct CoachConsentSheet: View {
                 .font(.rounded(.caption, weight: .bold))
                 .foregroundColor(QuitTheme.muted)
             Text("Allow AI coach replies?")
-                .font(.system(size: 30, weight: .heavy, design: .rounded))
+                .font(.rounded(.largeTitle, weight: .heavy))
                 .foregroundColor(QuitTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -395,7 +402,10 @@ private struct CoachConsentSheet: View {
                     .font(.rounded(.headline, weight: .bold))
                     .foregroundColor(QuitTheme.cocoa)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    .frame(minHeight: 52)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
                     .background(QuitTheme.paper)
                     .cornerRadius(14)
             }
@@ -455,7 +465,7 @@ private struct CoachMessageContent: View {
         if message.isUser {
             Text(message.text)
                 .font(.rounded(.subheadline))
-                .foregroundColor(.white)
+                .foregroundColor(QuitTheme.onCocoa)
         } else {
             CoachMarkdownText(text: message.text)
                 .foregroundColor(QuitTheme.ink)

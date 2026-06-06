@@ -25,12 +25,11 @@ final class TeoPateoUITests: XCTestCase {
         reasonField.typeText("I want clear mornings")
 
         app.staticTexts["Where are you in the quit journey?"].tap()
-        app.buttons["onboarding-next-button"].tap()
-        app.buttons["onboarding-next-button"].tap()
-        app.buttons["onboarding-next-button"].tap()
-        app.buttons["onboarding-next-button"].tap()
-        app.buttons["onboarding-next-button"].tap()
-        XCTAssertTrue(app.staticTexts["TeoPateo will start with this rescue setup."].waitForExistence(timeout: 3))
+        tapOnboardingNextAndWaitFor("Set the baseline your plan should respect.")
+        tapOnboardingNextAndWaitFor("Pick the moments TeoPateo should protect first.")
+        tapOnboardingNextAndWaitFor("Turn intent into the first plan.")
+        tapOnboardingNextAndWaitFor("Make progress accurate and concrete.")
+        tapOnboardingNextAndWaitFor("TeoPateo will start with this rescue setup.")
         app.buttons["onboarding-next-button"].tap()
 
         XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 5))
@@ -265,6 +264,11 @@ final class TeoPateoUITests: XCTestCase {
         }
         XCTAssertTrue(element.waitForExistence(timeout: 1), "Expected \(element) to exist")
         element.tap()
+    }
+
+    private func tapOnboardingNextAndWaitFor(_ label: String) {
+        app.buttons["onboarding-next-button"].tap()
+        XCTAssertTrue(app.staticTexts[label].waitForExistence(timeout: 5))
     }
 
     private func waitUntil(timeout: TimeInterval, predicate: () -> Bool) -> Bool {

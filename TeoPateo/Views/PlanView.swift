@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PlanView: View {
     @EnvironmentObject private var store: TeoPateoStore
+    @ScaledMetric(relativeTo: .caption) private var rescueStepSize: CGFloat = 22
 
     @State private var newTrigger = ""
     @State private var newAction = ""
@@ -97,7 +98,10 @@ struct PlanView: View {
                         .font(.rounded(.subheadline, weight: .bold))
                         .foregroundColor(QuitTheme.cocoa)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 54)
+                        .frame(minHeight: 54)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
                         .background(QuitTheme.paper)
                         .cornerRadius(14)
                 }
@@ -362,8 +366,8 @@ struct PlanView: View {
         HStack(spacing: 6) {
             Text("\(index)")
                 .font(.rounded(.caption, weight: .heavy))
-                .foregroundColor(.white)
-                .frame(width: 22, height: 22)
+                .foregroundColor(QuitTheme.onCocoa)
+                .frame(width: rescueStepSize, height: rescueStepSize)
                 .background(QuitTheme.cocoa)
                 .clipShape(Circle())
 
@@ -781,7 +785,10 @@ struct PlanView: View {
                 .font(.rounded(.subheadline, weight: .bold))
                 .foregroundColor(QuitTheme.cocoa)
                 .frame(maxWidth: .infinity)
-                .frame(height: 44)
+                .frame(minHeight: 44)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
                 .background(QuitTheme.peach.opacity(0.55))
                 .cornerRadius(12)
         }
@@ -880,7 +887,10 @@ struct PlanView: View {
         .font(.rounded(.headline, weight: .bold))
         .foregroundColor(QuitTheme.cocoa)
         .frame(maxWidth: .infinity)
-        .frame(height: 52)
+        .frame(minHeight: 52)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 14)
         .background(QuitTheme.background)
         .cornerRadius(12)
     }

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct CheckInView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: TeoPateoStore
     @State private var slipNote = ""
     @State private var slipContext = ""
@@ -76,16 +77,36 @@ struct CheckInView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Did you smoke today?")
                 .font(.rounded(.headline, weight: .bold))
-            HStack(spacing: 10) {
-                smokeChoice("No smoke", selected: store.smokedToday == false) {
-                    store.smokedToday = false
-                }
-                smokeChoice("I smoked", selected: store.smokedToday == true) {
-                    store.smokedToday = true
-                }
-            }
+            smokeChoices
         }
         .quietCard()
+    }
+
+    @ViewBuilder
+    private var smokeChoices: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 10) {
+                noSmokeChoice
+                smokedChoice
+            }
+        } else {
+            HStack(spacing: 10) {
+                noSmokeChoice
+                smokedChoice
+            }
+        }
+    }
+
+    private var noSmokeChoice: some View {
+        smokeChoice("No smoke", selected: store.smokedToday == false) {
+            store.smokedToday = false
+        }
+    }
+
+    private var smokedChoice: some View {
+        smokeChoice("I smoked", selected: store.smokedToday == true) {
+            store.smokedToday = true
+        }
     }
 
     @ViewBuilder
@@ -132,6 +153,7 @@ struct CheckInView: View {
                 .padding(8)
                 .background(QuitTheme.background)
                 .cornerRadius(12)
+                .accessibilityLabel("Slip note")
                 .accessibilityIdentifier("checkin-slip-note-editor")
             TextField("Recovery action", text: $recoveryAction)
                 .textFieldStyle(.roundedBorder)
@@ -142,14 +164,21 @@ struct CheckInView: View {
 
     private func smokeChoice(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
+            Text(L10n.key(title))
                 .font(.rounded(.headline, weight: .bold))
-                .foregroundColor(selected ? .white : QuitTheme.cocoa)
+                .foregroundColor(selected ? QuitTheme.onCocoa : QuitTheme.cocoa)
+                .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
-                .frame(height: 52)
+                .frame(minHeight: 52)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 12)
                 .background(selected ? QuitTheme.cocoa : QuitTheme.peach.opacity(0.85))
                 .cornerRadius(12)
         }
+        .accessibilityLabel(L10n.string(title))
+        .accessibilityValue(L10n.selectedState(selected))
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("checkin-choice-\(title)")
     }
 
@@ -166,7 +195,7 @@ struct CheckInView: View {
             Slider(value: value, in: 1...10, step: 1)
                 .accentColor(QuitTheme.cocoa)
                 .accessibilityLabel(title)
-                .accessibilityValue("\(Int(value.wrappedValue)) out of 10")
+                .accessibilityValue(L10n.scoreValue(Int(value.wrappedValue)))
         }
     }
 

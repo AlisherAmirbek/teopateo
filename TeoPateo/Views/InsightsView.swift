@@ -32,9 +32,9 @@ struct InsightsView: View {
                 Text("Today's risk")
                     .font(.rounded(.headline, weight: .bold))
                 Spacer()
-                Text(risk.level.rawValue)
+                Text(risk.level.title)
                     .font(.rounded(.caption, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(risk.level == .high ? QuitTheme.onCocoa : QuitTheme.onSage)
                     .padding(.vertical, 6)
                     .padding(.horizontal, 10)
                     .background(risk.level == .high ? QuitTheme.cocoa : QuitTheme.sage)
@@ -86,7 +86,7 @@ struct InsightsView: View {
                     RoundedRectangle(cornerRadius: 5)
                         .fill(color(for: day.level))
                         .frame(height: 34)
-                        .accessibilityLabel("\(day.count) logged cravings")
+                        .accessibilityLabel("\(day.date.formatted(.dateTime.weekday(.wide).month(.wide).day())), \(day.count) logged cravings")
                 }
             }
         }

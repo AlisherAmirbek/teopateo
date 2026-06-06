@@ -1,5 +1,9 @@
 import Foundation
 
+private func localizedCopy(_ key: String) -> String {
+    NSLocalizedString(key, comment: "")
+}
+
 struct ProgressMetric: Identifiable, Equatable {
     let id: UUID
     let label: String
@@ -49,13 +53,13 @@ enum SupportRole: String, Codable, Equatable {
     var title: String {
         switch self {
         case .cravingAlert:
-            return "Craving alert"
+            return localizedCopy("Craving alert")
         case .eveningCheckIn:
-            return "Evening check-in"
+            return localizedCopy("Evening check-in")
         case .quitline:
-            return "Quitline"
+            return localizedCopy("Quitline")
         case .backup:
-            return "Backup"
+            return localizedCopy("Backup")
         }
     }
 }
@@ -80,13 +84,13 @@ enum NotificationPermissionStatus: String, Equatable {
     var title: String {
         switch self {
         case .unknown:
-            return "Checking permission"
+            return localizedCopy("Checking permission")
         case .notDetermined:
-            return "Permission needed"
+            return localizedCopy("Permission needed")
         case .denied:
-            return "Notifications blocked"
+            return localizedCopy("Notifications blocked")
         case .authorized, .provisional, .ephemeral:
-            return "Notifications allowed"
+            return localizedCopy("Notifications allowed")
         }
     }
 }
@@ -107,26 +111,26 @@ enum NotificationKind: String, CaseIterable, Codable, Equatable {
     var title: String {
         switch self {
         case .morningPlan:
-            return "Morning plan"
+            return localizedCopy("Morning plan")
         case .riskyWindow:
-            return "Risk-window warning"
+            return localizedCopy("Risk-window warning")
         case .postMeal:
-            return "Post-meal reminder"
+            return localizedCopy("Post-meal reminder")
         case .eveningCheckIn:
-            return "Evening check-in"
+            return localizedCopy("Evening check-in")
         }
     }
 
     var detail: String {
         switch self {
         case .morningPlan:
-            return "Review the day's target and one substitute before the first routine cue."
+            return localizedCopy("Review the day's target and one substitute before the first routine cue.")
         case .riskyWindow:
-            return "Warn before your highest-risk craving windows once history reveals them."
+            return localizedCopy("Warn before your highest-risk craving windows once history reveals them.")
         case .postMeal:
-            return "Prompt the after-meal replacement action before autopilot starts."
+            return localizedCopy("Prompt the after-meal replacement action before autopilot starts.")
         case .eveningCheckIn:
-            return "Close the day with a short check-in and recovery note if needed."
+            return localizedCopy("Close the day with a short check-in and recovery note if needed.")
         }
     }
 
@@ -402,17 +406,17 @@ enum ReplacementActivityCategory: String, Codable, CaseIterable, Equatable {
     var title: String {
         switch self {
         case .movement:
-            return "Movement"
+            return localizedCopy("Movement")
         case .breathing:
-            return "Breathing"
+            return localizedCopy("Breathing")
         case .sensory:
-            return "Sensory"
+            return localizedCopy("Sensory")
         case .support:
-            return "Distraction"
+            return localizedCopy("Distraction")
         case .journaling:
-            return "Journaling"
+            return localizedCopy("Journaling")
         case .distraction:
-            return "Distraction"
+            return localizedCopy("Distraction")
         }
     }
 }
@@ -463,45 +467,45 @@ enum QuitStatus: String, Codable, CaseIterable, Equatable, Identifiable {
     var title: String {
         switch self {
         case .alreadyQuit:
-            return "Already quit"
+            return localizedCopy("Already quit")
         case .readyToQuit:
-            return "Ready to quit"
+            return localizedCopy("Ready to quit")
         case .cuttingDown:
-            return "Cutting down"
+            return localizedCopy("Cutting down")
         case .thinkingAboutIt:
-            return "Thinking about it"
+            return localizedCopy("Thinking about it")
         case .unsure:
-            return "Unsure"
+            return localizedCopy("Unsure")
         }
     }
 
     var readinessStage: String {
         switch self {
         case .alreadyQuit:
-            return "Relapse prevention"
+            return localizedCopy("Relapse prevention")
         case .readyToQuit:
-            return "Quit-date preparation"
+            return localizedCopy("Quit-date preparation")
         case .cuttingDown:
-            return "Taper planning"
+            return localizedCopy("Taper planning")
         case .thinkingAboutIt:
-            return "Motivation and preparation"
+            return localizedCopy("Motivation and preparation")
         case .unsure:
-            return "Awareness and motivation"
+            return localizedCopy("Awareness and motivation")
         }
     }
 
     var defaultDailyFocus: String {
         switch self {
         case .alreadyQuit:
-            return "Protect the riskiest craving window before it starts."
+            return localizedCopy("Protect the riskiest craving window before it starts.")
         case .readyToQuit:
-            return "Rehearse the 10-minute rescue before the quit date."
+            return localizedCopy("Rehearse the 10-minute rescue before the quit date.")
         case .cuttingDown:
-            return "Protect one cigarette you can delay today."
+            return localizedCopy("Protect one cigarette you can delay today.")
         case .thinkingAboutIt:
-            return "Notice one cue and try one replacement without pressure."
+            return localizedCopy("Notice one cue and try one replacement without pressure.")
         case .unsure:
-            return "Track one smoking moment and what it was trying to solve."
+            return localizedCopy("Track one smoking moment and what it was trying to solve.")
         }
     }
 }
@@ -517,13 +521,13 @@ enum FirstCigaretteTiming: String, Codable, CaseIterable, Equatable, Identifiabl
     var title: String {
         switch self {
         case .withinFiveMinutes:
-            return "Within 5 minutes"
+            return localizedCopy("Within 5 minutes")
         case .withinThirtyMinutes:
-            return "Within 30 minutes"
+            return localizedCopy("Within 30 minutes")
         case .laterMorning:
-            return "Later in the morning"
+            return localizedCopy("Later in the morning")
         case .afternoonOrEvening:
-            return "Afternoon or evening"
+            return localizedCopy("Afternoon or evening")
         }
     }
 }
@@ -539,13 +543,13 @@ enum PreviousQuitAttemptCount: String, Codable, CaseIterable, Equatable, Identif
     var title: String {
         switch self {
         case .none:
-            return "None"
+            return localizedCopy("None")
         case .one:
-            return "1"
+            return localizedCopy("1")
         case .twoToThree:
-            return "2-3"
+            return localizedCopy("2-3")
         case .fourOrMore:
-            return "4 or more"
+            return localizedCopy("4 or more")
         }
     }
 }
@@ -562,15 +566,15 @@ enum LongestQuitAttempt: String, Codable, CaseIterable, Equatable, Identifiable 
     var title: String {
         switch self {
         case .lessThanDay:
-            return "Less than a day"
+            return localizedCopy("Less than a day")
         case .fewDays:
-            return "A few days"
+            return localizedCopy("A few days")
         case .fewWeeks:
-            return "A few weeks"
+            return localizedCopy("A few weeks")
         case .fewMonths:
-            return "A few months"
+            return localizedCopy("A few months")
         case .yearOrMore:
-            return "A year or more"
+            return localizedCopy("A year or more")
         }
     }
 }
@@ -591,34 +595,34 @@ enum SmokingChallenge: String, Codable, CaseIterable, Equatable, Identifiable {
     var title: String {
         switch self {
         case .cravings:
-            return "Cravings"
+            return localizedCopy("Cravings")
         case .stress:
-            return "Stress"
+            return localizedCopy("Stress")
         case .habitRoutine:
-            return "Habit or routine"
+            return localizedCopy("Habit or routine")
         case .alcohol:
-            return "Alcohol"
+            return localizedCopy("Alcohol")
         case .socialPressure:
-            return "Social pressure"
+            return localizedCopy("Social pressure")
         case .boredom:
-            return "Boredom"
+            return localizedCopy("Boredom")
         case .withdrawal:
-            return "Withdrawal"
+            return localizedCopy("Withdrawal")
         case .weightGain:
-            return "Weight gain"
+            return localizedCopy("Weight gain")
         case .other:
-            return "Other"
+            return localizedCopy("Other")
         }
     }
 
     var triggerLabel: String {
         switch self {
         case .habitRoutine:
-            return "Routine"
+            return localizedCopy("Routine")
         case .socialPressure:
-            return "Social pressure"
+            return localizedCopy("Social pressure")
         case .weightGain:
-            return "Weight concern"
+            return localizedCopy("Weight concern")
         default:
             return title
         }
@@ -635,11 +639,11 @@ enum QuitDatePreference: String, Codable, CaseIterable, Equatable, Identifiable 
     var title: String {
         switch self {
         case .chooseDate:
-            return "Choose date"
+            return localizedCopy("Choose date")
         case .alreadyQuit:
-            return "Already quit"
+            return localizedCopy("Already quit")
         case .helpMeChoose:
-            return "Help me choose"
+            return localizedCopy("Help me choose")
         }
     }
 }
@@ -654,11 +658,11 @@ enum QuitApproachPreference: String, Codable, CaseIterable, Equatable, Identifia
     var title: String {
         switch self {
         case .taper:
-            return "Taper"
+            return localizedCopy("Taper")
         case .coldTurkey:
-            return "Cold turkey"
+            return localizedCopy("Cold turkey")
         case .notSure:
-            return "Not sure"
+            return localizedCopy("Not sure")
         }
     }
 }
@@ -766,6 +770,17 @@ enum RiskLevel: String, Equatable {
     case low = "Low"
     case moderate = "Moderate"
     case high = "High"
+
+    var title: String {
+        switch self {
+        case .low:
+            return localizedCopy("Low")
+        case .moderate:
+            return localizedCopy("Moderate")
+        case .high:
+            return localizedCopy("High")
+        }
+    }
 }
 
 struct RiskLevelInsight: Equatable {
@@ -871,15 +886,15 @@ enum QuitStrategyType: String, Codable, Equatable {
     var title: String {
         switch self {
         case .taper:
-            return "Taper"
+            return localizedCopy("Taper")
         case .coldTurkey:
-            return "Cold turkey"
+            return localizedCopy("Cold turkey")
         case .relapsePrevention:
-            return "Relapse prevention"
+            return localizedCopy("Relapse prevention")
         case .preparation:
-            return "Preparation"
+            return localizedCopy("Preparation")
         case .awareness:
-            return "Awareness"
+            return localizedCopy("Awareness")
         }
     }
 }
@@ -1107,23 +1122,23 @@ enum PlanSuggestionType: String, Codable, Equatable {
     var title: String {
         switch self {
         case .addTriggerRule:
-            return "Add trigger rule"
+            return localizedCopy("Add trigger rule")
         case .updateTriggerRule:
-            return "Update trigger rule"
+            return localizedCopy("Update trigger rule")
         case .reorderTriggerRules:
-            return "Reorder trigger rules"
+            return localizedCopy("Reorder trigger rules")
         case .addReplacementActivity:
-            return "Add replacement activity"
+            return localizedCopy("Add replacement activity")
         case .reorderReplacementActivities:
-            return "Reorder activities"
+            return localizedCopy("Reorder activities")
         case .adjustTaperPace:
-            return "Adjust taper pace"
+            return localizedCopy("Adjust taper pace")
         case .addRiskyWindowReminder:
-            return "Add reminder"
+            return localizedCopy("Add reminder")
         case .changeDailyFocus:
-            return "Change today's focus"
+            return localizedCopy("Change today's focus")
         case .updateSlipRecovery:
-            return "Update slip recovery"
+            return localizedCopy("Update slip recovery")
         }
     }
 }

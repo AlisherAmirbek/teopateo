@@ -158,7 +158,8 @@ struct TodayView: View {
         } label: {
             Text("I want to smoke")
                 .font(.rounded(.title3, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundColor(QuitTheme.onCocoa)
+                .multilineTextAlignment(.center)
                 .padding(.horizontal, 30)
                 .padding(.vertical, 17)
                 .background(QuitTheme.cocoa)
@@ -166,6 +167,8 @@ struct TodayView: View {
         }
         .padding(.top, 28)
         .frame(maxWidth: .infinity)
+        .accessibilityLabel("Start craving rescue")
+        .accessibilityHint("Opens the 10-minute craving mode.")
         .accessibilityIdentifier("start-rescue-button")
     }
 
@@ -177,9 +180,9 @@ struct TodayView: View {
                 Text("Today risk")
                     .font(.rounded(.headline, weight: .bold))
                 Spacer()
-                Text(risk.level.rawValue)
+                Text(risk.level.title)
                     .font(.rounded(.caption, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(risk.level == .high ? QuitTheme.onCocoa : QuitTheme.onSage)
                     .padding(.vertical, 6)
                     .padding(.horizontal, 10)
                     .background(risk.level == .high ? QuitTheme.cocoa : QuitTheme.sage)
@@ -239,7 +242,8 @@ struct TodayView: View {
                 .font(.rounded(.headline, weight: .bold))
                 .foregroundColor(QuitTheme.ink)
         }
-        .frame(height: 56)
+        .frame(minHeight: 56)
+        .padding(.vertical, 4)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(QuitTheme.line)
@@ -249,6 +253,8 @@ struct TodayView: View {
 }
 
 private struct PlanWeekCard: View {
+    @ScaledMetric(relativeTo: .headline) private var dayDiameter: CGFloat = 40
+
     let days: [DailyPlanAdherenceDay]
 
     private var titleDate: Date? {
@@ -273,13 +279,13 @@ private struct PlanWeekCard: View {
                             .font(.rounded(.subheadline, weight: .bold))
                             .foregroundColor(QuitTheme.faint)
 
-                        Text(day.date.formatted(.dateTime.day()))
-                            .font(.rounded(.headline, weight: .bold))
-                            .foregroundColor(dayTextColor(for: day.status))
-                            .minimumScaleFactor(0.75)
-                            .frame(width: 40, height: 40)
-                            .background(dayColor(for: day.status))
-                            .clipShape(Circle())
+                            Text(day.date.formatted(.dateTime.day()))
+                                .font(.rounded(.headline, weight: .bold))
+                                .foregroundColor(dayTextColor(for: day.status))
+                                .minimumScaleFactor(0.75)
+                                .frame(width: dayDiameter, height: dayDiameter)
+                                .background(dayColor(for: day.status))
+                                .clipShape(Circle())
                             .overlay {
                                 Circle()
                                     .stroke(day.isToday ? QuitTheme.cocoa.opacity(0.34) : Color.clear, lineWidth: 2)
@@ -308,7 +314,7 @@ private struct PlanWeekCard: View {
         case .slightMiss:
             return QuitTheme.peach
         case .missed:
-            return Color(red: 0.690, green: 0.259, blue: 0.184)
+            return QuitTheme.danger
         case nil:
             return QuitTheme.background.opacity(0.72)
         }
@@ -316,7 +322,9 @@ private struct PlanWeekCard: View {
 
     private func dayTextColor(for status: DailyPlanAdherenceStatus?) -> Color {
         switch status {
-        case .achieved, .missed:
+        case .achieved:
+            return QuitTheme.onSage
+        case .missed:
             return .white
         case .slightMiss:
             return QuitTheme.cocoa

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct OnboardingView: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: TeoPateoStore
 
     @State private var step = 0
@@ -30,9 +31,11 @@ struct OnboardingView: View {
     @State private var customSavingsGoal = ""
 
     private let finalStep = 6
-    private let choiceColumns = [
-        GridItem(.adaptive(minimum: 138), spacing: 8)
-    ]
+    private var choiceColumns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 172 : 138), spacing: 8)
+        ]
+    }
     private let replacementActions = [
         "Drink water",
         "Walk",
@@ -93,7 +96,7 @@ struct OnboardingView: View {
                     .background(QuitTheme.peach.opacity(0.72))
                     .clipShape(Circle())
             }
-            .accessibilityLabel(step == 0 ? "Skip onboarding" : "Back")
+            .accessibilityLabel(L10n.string(step == 0 ? "Skip onboarding" : "Back"))
 
             Spacer()
 
@@ -416,7 +419,7 @@ struct OnboardingView: View {
                 advance()
             } label: {
                 HStack {
-                    Text(step == finalStep ? "Create my plan" : "Continue")
+                    Text(L10n.key(step == finalStep ? "Create my plan" : "Continue"))
                     Image(systemName: step == finalStep ? "checkmark" : "arrow.right")
                 }
                 .frame(maxWidth: .infinity)
@@ -471,18 +474,21 @@ struct OnboardingView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Text(title)
+            Text(L10n.key(title))
                 .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(isSelected ? .white : QuitTheme.cocoa)
+                .foregroundColor(isSelected ? QuitTheme.onCocoa : QuitTheme.cocoa)
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .minimumScaleFactor(0.82)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(.horizontal, 10)
+                .padding(.vertical, 10)
+                .fixedSize(horizontal: false, vertical: true)
                 .background(isSelected ? QuitTheme.cocoa : QuitTheme.peach.opacity(0.62))
                 .cornerRadius(14)
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(L10n.string(title))
+        .accessibilityValue(L10n.selectedState(isSelected))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("onboarding-choice-\(title)")
     }
 
@@ -499,7 +505,7 @@ struct OnboardingView: View {
             Slider(value: value, in: 1...10, step: 1)
                 .accentColor(QuitTheme.cocoa)
                 .accessibilityLabel(title)
-                .accessibilityValue("\(Int(value.wrappedValue)) out of 10")
+                .accessibilityValue(L10n.scoreValue(Int(value.wrappedValue)))
         }
     }
 
@@ -724,11 +730,12 @@ private struct OnboardingHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(eyebrow)
+            Text(L10n.key(eyebrow))
+                .accessibilityHidden(true)
                 .font(.rounded(.caption, weight: .bold))
                 .foregroundColor(QuitTheme.muted)
-            Text(title)
-                .font(.system(size: 31, weight: .heavy, design: .rounded))
+            Text(L10n.key(title))
+                .font(.rounded(.largeTitle, weight: .heavy))
                 .foregroundColor(QuitTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -741,7 +748,7 @@ private struct OnboardingReviewRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label)
+            Text(L10n.key(label))
                 .font(.rounded(.caption, weight: .bold))
                 .foregroundColor(QuitTheme.muted)
             Text(value.isEmpty ? "Not set" : value)

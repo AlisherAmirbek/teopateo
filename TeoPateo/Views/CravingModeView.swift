@@ -3,7 +3,10 @@ import SwiftUI
 struct CravingModeView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: TeoPateoStore
+    @ScaledMetric(relativeTo: .largeTitle) private var timerDiameter: CGFloat = 168
+    @ScaledMetric(relativeTo: .largeTitle) private var timerStroke: CGFloat = 18
     @State private var secondsRemaining = CravingCountdownClock.totalSeconds
     @State private var isRunning = false
     @State private var timer: Timer?
@@ -68,8 +71,8 @@ struct CravingModeView: View {
                 Text("Craving mode")
                     .font(.rounded(.caption, weight: .bold))
                     .foregroundColor(QuitTheme.muted)
-                Text(headerTitle)
-                    .font(.system(size: 32, weight: .heavy, design: .rounded))
+                Text(L10n.key(headerTitle))
+                    .font(.rounded(.largeTitle, weight: .heavy))
                     .foregroundColor(QuitTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -147,28 +150,36 @@ struct CravingModeView: View {
         VStack(spacing: 18) {
             ZStack {
                 Circle()
-                    .stroke(QuitTheme.peach, lineWidth: 18)
+                    .stroke(QuitTheme.peach, lineWidth: timerStroke)
                 Circle()
                     .trim(from: 0, to: timerProgress)
-                    .stroke(QuitTheme.cocoa, style: StrokeStyle(lineWidth: 18, lineCap: .round))
+                    .stroke(QuitTheme.cocoa, style: StrokeStyle(lineWidth: timerStroke, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 VStack(spacing: 4) {
                     Text(formattedTime)
-                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .font(.rounded(.largeTitle, weight: .heavy))
+                        .monospacedDigit()
                         .foregroundColor(QuitTheme.ink)
                         .accessibilityIdentifier("craving-timer-label")
-                    Text(timerStatusText)
+                    Text(L10n.key(timerStatusText))
                         .font(.rounded(.caption, weight: .bold))
                         .foregroundColor(QuitTheme.muted)
                 }
             }
-            .frame(width: 168, height: 168)
+            .frame(width: timerDiameter, height: timerDiameter)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L10n.string("Craving timer"))
+            .accessibilityValue(timerAccessibilityValue)
+            .accessibilityAddTraits(.updatesFrequently)
 
             HStack(spacing: 10) {
-                Button(timerActionTitle) {
+                Button {
                     toggleTimer()
+                } label: {
+                    Text(L10n.key(timerActionTitle))
                 }
                 .buttonStyle(FilledButtonStyle())
+                .accessibilityLabel(L10n.string(timerActionTitle))
                 .accessibilityIdentifier("craving-start-pause-button")
 
                 Button("Reset") {
@@ -257,11 +268,12 @@ struct CravingModeView: View {
             }
 
             ForEach(store.activitiesForCurrentCraving(triggers: selectedTriggers)) { activity in
+                let isSelected = selectedActivityID == activity.id
                 Button {
                     selectedActivityID = activity.id
                 } label: {
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: selectedActivityID == activity.id ? "checkmark.circle.fill" : "circle")
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                             .foregroundColor(QuitTheme.cocoa)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(activity.title)
@@ -275,6 +287,11 @@ struct CravingModeView: View {
                     }
                     .padding(.vertical, 4)
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(activity.title). \(activity.instruction)")
+                .accessibilityValue(L10n.selectedState(isSelected))
+                .accessibilityHint(isSelected ? L10n.string("Selected replacement activity.") : L10n.string("Double-tap to choose this replacement activity."))
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .quietCard()
@@ -303,19 +320,7 @@ struct CravingModeView: View {
 
     private var rescueOutcomeBar: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Button("I got through it") {
-                    moveToRecovered()
-                }
-                .buttonStyle(FilledButtonStyle())
-                .accessibilityIdentifier("craving-recovered-button")
-
-                Button("I smoked") {
-                    moveToSlipped()
-                }
-                .buttonStyle(QuietButtonStyle())
-                .accessibilityIdentifier("craving-smoked-button")
-            }
+            rescueOutcomeChoices
 
             Button("Save for later") {
                 saveForLaterAndDismiss()
@@ -330,6 +335,37 @@ struct CravingModeView: View {
         .padding(.top, 14)
         .padding(.bottom, 10)
         .background(QuitTheme.background)
+    }
+
+    @ViewBuilder
+    private var rescueOutcomeChoices: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 10) {
+                recoveredButton
+                smokedButton
+            }
+        } else {
+            HStack(spacing: 10) {
+                recoveredButton
+                smokedButton
+            }
+        }
+    }
+
+    private var recoveredButton: some View {
+        Button("I got through it") {
+            moveToRecovered()
+        }
+        .buttonStyle(FilledButtonStyle())
+        .accessibilityIdentifier("craving-recovered-button")
+    }
+
+    private var smokedButton: some View {
+        Button("I smoked") {
+            moveToSlipped()
+        }
+        .buttonStyle(QuietButtonStyle())
+        .accessibilityIdentifier("craving-smoked-button")
     }
 
     private func outcomeSaveButtons(primaryTitle: String, primaryAction: @escaping () -> Void) -> some View {
@@ -360,7 +396,7 @@ struct CravingModeView: View {
             Slider(value: value, in: 1...10, step: 1)
                 .accentColor(QuitTheme.cocoa)
                 .accessibilityLabel(title)
-                .accessibilityValue("\(Int(value.wrappedValue)) out of 10")
+                .accessibilityValue(L10n.scoreValue(Int(value.wrappedValue)))
         }
     }
 
@@ -385,6 +421,20 @@ struct CravingModeView: View {
         }
 
         return hasTimerStarted ? "Paused" : "Ready"
+    }
+
+    private var timerAccessibilityValue: String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.minute, .second]
+        formatter.unitsStyle = .spellOut
+        formatter.zeroFormattingBehavior = [.dropLeading]
+
+        let remaining = formatter.string(from: TimeInterval(max(secondsRemaining, 0))) ?? formattedTime
+        return String(
+            format: L10n.string("%@ remaining, %@"),
+            remaining,
+            L10n.string(timerStatusText)
+        )
     }
 
     private var timerActionTitle: String {
@@ -647,9 +697,13 @@ struct FilledButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.rounded(.headline, weight: .bold))
-            .foregroundColor(.white)
+            .foregroundColor(QuitTheme.onCocoa)
+            .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
+            .frame(minHeight: 52)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
             .background(QuitTheme.cocoa.opacity(configuration.isPressed ? 0.82 : 1))
             .cornerRadius(12)
     }
@@ -660,8 +714,12 @@ struct QuietButtonStyle: ButtonStyle {
         configuration.label
             .font(.rounded(.headline, weight: .bold))
             .foregroundColor(QuitTheme.cocoa)
+            .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
+            .frame(minHeight: 52)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
             .background(QuitTheme.peach.opacity(configuration.isPressed ? 0.55 : 0.85))
             .cornerRadius(12)
     }

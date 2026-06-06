@@ -2,12 +2,16 @@ import AVFoundation
 import SwiftUI
 
 struct FlexibleTags: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     let items: [String]
     @Binding var selected: Set<String>
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 104), spacing: 8)
-    ]
+    private var columns: [GridItem] {
+        [
+            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 148 : 104), spacing: 8)
+        ]
+    }
 
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
@@ -20,17 +24,21 @@ struct FlexibleTags: View {
                         selected.insert(item)
                     }
                 } label: {
-                    Text(item)
+                    Text(L10n.key(item))
                         .font(.rounded(.caption, weight: .bold))
-                        .foregroundColor(isSelected ? .white : QuitTheme.cocoa)
+                        .foregroundColor(isSelected ? QuitTheme.onCocoa : QuitTheme.cocoa)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity)
+                        .frame(minHeight: 24)
                         .padding(.vertical, 10)
+                        .padding(.horizontal, 6)
                         .background(isSelected ? QuitTheme.cocoa : QuitTheme.peach.opacity(0.62))
                         .cornerRadius(18)
                 }
-                .accessibilityLabel(item)
-                .accessibilityValue(isSelected ? "Selected" : "Not selected")
-                .accessibilityHint(isSelected ? "Double-tap to deselect." : "Double-tap to select.")
+                .accessibilityLabel(L10n.string(item))
+                .accessibilityValue(L10n.selectedState(isSelected))
+                .accessibilityHint(isSelected ? L10n.string("Double-tap to deselect.") : L10n.string("Double-tap to select."))
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
                 .accessibilityIdentifier("tag-\(item)")
             }
@@ -44,11 +52,12 @@ struct ScreenHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(eyebrow)
+            Text(L10n.key(eyebrow))
+                .accessibilityHidden(true)
                 .font(.rounded(.caption, weight: .bold))
                 .foregroundColor(QuitTheme.muted)
-            Text(title)
-                .font(.system(size: 31, weight: .heavy, design: .rounded))
+            Text(L10n.key(title))
+                .font(.rounded(.largeTitle, weight: .heavy))
                 .foregroundColor(QuitTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -338,7 +347,10 @@ struct PrivacyAndDataView: View {
                     .font(.rounded(.headline, weight: .bold))
                     .foregroundColor(QuitTheme.cocoa)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
+                    .frame(minHeight: 52)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
                     .background(QuitTheme.background)
                     .cornerRadius(14)
             }

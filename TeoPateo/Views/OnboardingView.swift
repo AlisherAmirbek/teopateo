@@ -153,6 +153,8 @@ struct OnboardingView: View {
                 title: "What should TeoPateo call you?"
             )
 
+            MedicalBoundaryNotice()
+
             VStack(alignment: .leading, spacing: 14) {
                 TextField("Name or nickname", text: $nickname)
                     .textFieldStyle(.roundedBorder)

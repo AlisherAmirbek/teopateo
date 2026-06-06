@@ -50,7 +50,7 @@ final class LocalPersistenceTests: XCTestCase {
             "savings_goal"
         ]
 
-        XCTAssertEqual(try repository.schemaVersion(), 9)
+        XCTAssertEqual(try repository.schemaVersion(), 10)
         XCTAssertTrue(try repository.tableNames().isSuperset(of: expectedTables))
     }
 
@@ -124,6 +124,7 @@ final class LocalPersistenceTests: XCTestCase {
                         id: fixedUUID(82),
                         text: "**Start water first**, then walk for 10 minutes.",
                         isUser: false,
+                        isReportedUnsafe: true,
                         createdAt: fixedDate(82)
                     )
                 ],

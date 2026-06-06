@@ -21,6 +21,7 @@ struct TodayView: View {
                     mascot
                     planWeekCard
                     rescueButton
+                    safetyResources
                     riskCard
                     facts
                 }
@@ -170,6 +171,11 @@ struct TodayView: View {
         .accessibilityLabel("Start craving rescue")
         .accessibilityHint("Opens the 10-minute craving mode.")
         .accessibilityIdentifier("start-rescue-button")
+    }
+
+    private var safetyResources: some View {
+        SafetyResourcesView()
+            .padding(.top, 18)
     }
 
     private var riskCard: some View {

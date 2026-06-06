@@ -410,6 +410,19 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
         XCTAssertFalse(body.contains("Authorization"))
     }
 
+    #if DEBUG
+    func testOpenRouterCoachPromptRetainsSafetyBoundaries() {
+        let prompt = OpenRouterCoachClient.safetySystemPromptForTesting
+
+        XCTAssertTrue(prompt.contains("not medical care"))
+        XCTAssertTrue(prompt.contains("Do not diagnose"))
+        XCTAssertTrue(prompt.contains("doctor, pharmacist, or quitline counselor"))
+        XCTAssertTrue(prompt.contains("988"))
+        XCTAssertTrue(prompt.contains("911"))
+        XCTAssertTrue(prompt.contains("1-800-QUIT-NOW"))
+    }
+    #endif
+
     #if !DEBUG
     func testReleaseBuildWithoutProxyCannotUseDirectOpenRouter() async {
         let client = LiveCoachClient(proxyConfiguration: nil)

@@ -12,6 +12,7 @@ final class TeoPateoUITests: XCTestCase {
         launchApp(seedCompleted: false)
 
         XCTAssertTrue(app.staticTexts["What should TeoPateo call you?"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["TeoPateo is quit support, not medical care."].waitForExistence(timeout: 3))
         let nicknameField = app.textFields["onboarding-nickname-field"]
         XCTAssertTrue(nicknameField.waitForExistence(timeout: 3))
         nicknameField.tap()
@@ -176,14 +177,20 @@ final class TeoPateoUITests: XCTestCase {
 
         app.tabBars.buttons["Coach"].tap()
         XCTAssertTrue(app.staticTexts["Get help before you smoke."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Coach replies are not medical care."].waitForExistence(timeout: 3))
+        XCTAssertTrue(element("safety-resources-card").waitForExistence(timeout: 3))
 
-        app.buttons["coach-prompt-I want to smoke now"].tap()
+        tapWhenVisible(app.buttons["coach-prompt-I want to smoke now"])
         XCTAssertTrue(app.staticTexts["Allow AI coach replies?"].waitForExistence(timeout: 3))
         app.buttons["coach-consent-allow-button"].tap()
         XCTAssertTrue(app.staticTexts["I want to smoke now. Help me get through the next 10 minutes."].waitForExistence(timeout: 3))
+        XCTAssertTrue(element("coach-ai-generated-label").waitForExistence(timeout: 3))
+        let reportButton = app.buttons["coach-report-unsafe-reply-button"].firstMatch
+        tapWhenVisible(reportButton)
+        XCTAssertTrue(app.staticTexts["Coach reply marked for review. Use 988, 911, or a trusted person now if safety feels urgent."].waitForExistence(timeout: 3))
 
         let input = app.textFields["coach-input-field"]
-        input.tap()
+        tapWhenVisible(input)
         input.typeText("Coffee craving")
         app.buttons["coach-send-button"].tap()
 

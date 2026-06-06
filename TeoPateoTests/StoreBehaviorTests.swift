@@ -648,6 +648,32 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         )
     }
 
+    func testCoachUnsafeReplyReportPersistsAndIgnoresUserMessages() async throws {
+        let repository = try makeRepository()
+        let coachClient = TestCoachClient()
+        let store = TeoPateoStore(repository: repository, coachClient: coachClient)
+        allowCoachDataSharing(store)
+
+        await store.sendCoachMessage("I want to smoke after coffee.")
+
+        let userMessage = try XCTUnwrap(store.coachMessages.first)
+        let assistantMessage = try XCTUnwrap(store.coachMessages.last)
+        XCTAssertTrue(userMessage.isUser)
+        XCTAssertFalse(assistantMessage.isUser)
+        XCTAssertFalse(assistantMessage.isReportedUnsafe)
+
+        XCTAssertFalse(store.reportUnsafeCoachMessage(userMessage.id))
+        XCTAssertTrue(store.reportUnsafeCoachMessage(assistantMessage.id))
+        XCTAssertTrue(store.coachMessages.last?.isReportedUnsafe ?? false)
+        XCTAssertEqual(
+            store.coachResponseState.message,
+            "Coach reply marked for review. Use 988, 911, or a trusted person now if safety feels urgent."
+        )
+
+        let reloaded = TeoPateoStore(repository: repository, coachClient: coachClient)
+        XCTAssertTrue(reloaded.coachMessages.last?.isReportedUnsafe ?? false)
+    }
+
     func testInsightEdgesCoverSparseModerateAndStrongHistory() throws {
         let repository = try makeRepository()
         let calendar = makeCalendar()

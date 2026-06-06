@@ -1283,12 +1283,20 @@ struct CoachMessage: Identifiable, Codable, Equatable {
     let id: UUID
     var text: String
     let isUser: Bool
+    var isReportedUnsafe: Bool
     let createdAt: Date
 
-    init(id: UUID = UUID(), text: String, isUser: Bool, createdAt: Date = Date()) {
+    init(
+        id: UUID = UUID(),
+        text: String,
+        isUser: Bool,
+        isReportedUnsafe: Bool = false,
+        createdAt: Date = Date()
+    ) {
         self.id = id
         self.text = text
         self.isUser = isUser
+        self.isReportedUnsafe = isReportedUnsafe
         self.createdAt = createdAt
     }
 }

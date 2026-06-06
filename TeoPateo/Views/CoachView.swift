@@ -31,6 +31,8 @@ struct CoachView: View {
     var body: some View {
         RootScreen {
             header
+            coachSafetyNotice
+            coachSafetyResources
             chatSwitcher
             messages
             responseStatus
@@ -110,6 +112,17 @@ struct CoachView: View {
         }
     }
 
+    private var coachSafetyNotice: some View {
+        MedicalBoundaryNotice(
+            title: "Coach replies are not medical care.",
+            detail: "The coach can help with quit-plan moments. For medication, withdrawal symptoms, severe mood changes, or treatment questions, talk with a doctor, pharmacist, or quitline counselor."
+        )
+    }
+
+    private var coachSafetyResources: some View {
+        SafetyResourcesView()
+    }
+
     private var chatSwitcher: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -129,7 +142,9 @@ struct CoachView: View {
 
             ForEach(store.coachMessages) { message in
                 if !message.text.isEmpty {
-                    CoachMessageBubble(message: message)
+                    CoachMessageBubble(message: message) { messageID in
+                        store.reportUnsafeCoachMessage(messageID)
+                    }
                 }
             }
 
@@ -437,6 +452,7 @@ private struct CoachConsentSheet: View {
 
 private struct CoachMessageBubble: View {
     let message: CoachMessage
+    let report: (UUID) -> Void
 
     var body: some View {
         HStack {
@@ -444,7 +460,7 @@ private struct CoachMessageBubble: View {
                 Spacer(minLength: 48)
             }
 
-            CoachMessageContent(message: message)
+            CoachMessageContent(message: message, report: report)
                 .lineSpacing(3)
                 .padding(12)
                 .background(message.isUser ? QuitTheme.cocoa : QuitTheme.paper)
@@ -460,6 +476,7 @@ private struct CoachMessageBubble: View {
 
 private struct CoachMessageContent: View {
     let message: CoachMessage
+    let report: (UUID) -> Void
 
     var body: some View {
         if message.isUser {
@@ -467,8 +484,29 @@ private struct CoachMessageContent: View {
                 .font(.rounded(.subheadline))
                 .foregroundColor(QuitTheme.onCocoa)
         } else {
-            CoachMarkdownText(text: message.text)
-                .foregroundColor(QuitTheme.ink)
+            VStack(alignment: .leading, spacing: 9) {
+                Text("AI-generated coach reply")
+                    .font(.rounded(.caption, weight: .bold))
+                    .foregroundColor(QuitTheme.faint)
+                    .textCase(.uppercase)
+                    .accessibilityIdentifier("coach-ai-generated-label")
+
+                CoachMarkdownText(text: message.text)
+                    .foregroundColor(QuitTheme.ink)
+
+                Button {
+                    report(message.id)
+                } label: {
+                    Label(
+                        message.isReportedUnsafe ? "Reported for review" : "Report unsafe reply",
+                        systemImage: message.isReportedUnsafe ? "checkmark.circle.fill" : "exclamationmark.bubble"
+                    )
+                    .font(.rounded(.caption, weight: .bold))
+                    .foregroundColor(message.isReportedUnsafe ? QuitTheme.faint : QuitTheme.cocoa)
+                }
+                .disabled(message.isReportedUnsafe)
+                .accessibilityIdentifier("coach-report-unsafe-reply-button")
+            }
         }
     }
 }

@@ -1224,13 +1224,14 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 for (messagePosition, message) in chat.messages.enumerated() {
                     try db.execute(literal: """
                         INSERT INTO coach_messages (
-                            id, chat_id, text, is_user, created_at, position
+                            id, chat_id, text, is_user, is_reported_unsafe, created_at, position
                         )
                         VALUES (
                             \(message.id.uuidString),
                             \(chat.id.uuidString),
                             \(message.text),
                             \(message.isUser ? 1 : 0),
+                            \(message.isReportedUnsafe ? 1 : 0),
                             \(message.createdAt.timeIntervalSince1970),
                             \(messagePosition)
                         );
@@ -1311,7 +1312,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
         let rows = try Row.fetchAll(
             db,
             sql: """
-            SELECT id, text, is_user, created_at
+            SELECT id, text, is_user, is_reported_unsafe, created_at
             FROM coach_messages
             WHERE chat_id = ?
             ORDER BY position ASC, created_at ASC;
@@ -1324,6 +1325,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 id: try uuid(row, "id"),
                 text: row["text"],
                 isUser: bool(row, "is_user"),
+                isReportedUnsafe: bool(row, "is_reported_unsafe"),
                 createdAt: date(row, "created_at")
             )
         }
@@ -1690,6 +1692,14 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
                 VALUES (0, 0);
 
                 PRAGMA user_version = 9;
+                """)
+        }
+
+        migrator.registerMigration("v10") { db in
+            try db.execute(sql: """
+                ALTER TABLE coach_messages ADD COLUMN is_reported_unsafe INTEGER NOT NULL DEFAULT 0;
+
+                PRAGMA user_version = 10;
                 """)
         }
 

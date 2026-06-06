@@ -289,6 +289,133 @@ struct StatusBanner: View {
     }
 }
 
+struct MedicalBoundaryNotice: View {
+    var title = "TeoPateo is quit support, not medical care."
+    var detail = "For medication, nicotine replacement, withdrawal symptoms, pregnancy, chest pain, severe mood changes, or treatment questions, talk with a doctor, pharmacist, or quitline counselor."
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "cross.case.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(QuitTheme.cocoa)
+                .frame(width: 34, height: 34)
+                .background(QuitTheme.peach.opacity(0.62))
+                .clipShape(Circle())
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(L10n.key(title))
+                    .font(.rounded(.subheadline, weight: .bold))
+                    .foregroundColor(QuitTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(L10n.key(detail))
+                    .font(.rounded(.caption))
+                    .foregroundColor(QuitTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .quietCard()
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("medical-boundary-notice")
+    }
+}
+
+struct SafetyResourcesView: View {
+    var title = "Crisis and quitline support"
+    var detail = "These options work without the AI coach."
+
+    private let resources = SafetyResource.all
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.key(title))
+                    .font(.rounded(.headline, weight: .bold))
+                    .foregroundColor(QuitTheme.ink)
+                Text(L10n.key(detail))
+                    .font(.rounded(.caption))
+                    .foregroundColor(QuitTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(resources) { resource in
+                    resourceLink(resource)
+                }
+            }
+        }
+        .quietCard()
+        .accessibilityIdentifier("safety-resources-card")
+    }
+
+    private func resourceLink(_ resource: SafetyResource) -> some View {
+        Link(destination: resource.url) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: resource.icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .frame(width: 30, height: 30)
+                    .background(QuitTheme.peach.opacity(0.54))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.key(resource.title))
+                        .font(.rounded(.subheadline, weight: .bold))
+                        .foregroundColor(QuitTheme.ink)
+                    Text(L10n.key(resource.detail))
+                        .font(.rounded(.caption))
+                        .foregroundColor(QuitTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "arrow.up.forward")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(QuitTheme.faint)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 6)
+        }
+        .accessibilityIdentifier(resource.accessibilityIdentifier)
+    }
+}
+
+private struct SafetyResource: Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let icon: String
+    let url: URL
+
+    var accessibilityIdentifier: String {
+        "safety-resource-\(id)"
+    }
+
+    static let all = [
+        SafetyResource(
+            id: "988",
+            title: "Call 988",
+            detail: "Crisis support if you might hurt yourself or cannot stay safe.",
+            icon: "phone.fill",
+            url: URL(string: "tel:988")!
+        ),
+        SafetyResource(
+            id: "911",
+            title: "Call 911",
+            detail: "Immediate emergency help in the United States.",
+            icon: "exclamationmark.triangle.fill",
+            url: URL(string: "tel:911")!
+        ),
+        SafetyResource(
+            id: "quitline",
+            title: "Call 1-800-QUIT-NOW",
+            detail: "Free quit-smoking support from a quitline counselor.",
+            icon: "person.line.dotted.person.fill",
+            url: URL(string: "tel:18007848669")!
+        )
+    ]
+}
+
 struct PrivacyAndDataView: View {
     @EnvironmentObject private var store: TeoPateoStore
     @State private var isPolicyPresented = false

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 @MainActor
 final class TeoPateoStore: ObservableObject {
@@ -46,6 +47,10 @@ final class TeoPateoStore: ObservableObject {
     private let calendar: Calendar
     private var quitPlan = TeoPateoStore.defaultQuitPlan()
     private var isHydrating = false
+    private static let coachSafetyLogger = Logger(
+        subsystem: "com.teopateo.TeoPateo",
+        category: "CoachSafety"
+    )
 
     convenience init() {
         do {
@@ -596,6 +601,38 @@ final class TeoPateoStore: ObservableObject {
                 coachResponseState = .failed(Self.coachErrorMessage(for: error))
             }
         }
+    }
+
+    @discardableResult
+    func reportUnsafeCoachMessage(_ messageID: UUID) -> Bool {
+        guard !isCoachResponding,
+              let chatIndex = coachChats.firstIndex(where: { chat in
+                  chat.messages.contains { $0.id == messageID }
+              }),
+              let messageIndex = coachChats[chatIndex].messages.firstIndex(where: { $0.id == messageID })
+        else {
+            return false
+        }
+
+        let message = coachChats[chatIndex].messages[messageIndex]
+        guard !message.isUser else { return false }
+
+        if message.isReportedUnsafe {
+            coachResponseState = .failed(Self.coachReplyAlreadyReportedMessage)
+            return true
+        }
+
+        var chat = coachChats[chatIndex]
+        chat.messages[messageIndex].isReportedUnsafe = true
+        chat.updatedAt = now()
+        coachChats[chatIndex] = chat
+        persistCoachChats()
+
+        Self.coachSafetyLogger.warning(
+            "Unsafe coach reply reported. chatID=\(chat.id.uuidString, privacy: .public) messageID=\(message.id.uuidString, privacy: .public) characters=\(message.text.count, privacy: .public)"
+        )
+        coachResponseState = .failed(Self.coachReplyReportedMessage)
+        return true
     }
 
     @discardableResult
@@ -2092,6 +2129,14 @@ final class TeoPateoStore: ObservableObject {
 
     private static var coachConsentRequiredMessage: String {
         "Allow coach data sharing before sending a message."
+    }
+
+    private static var coachReplyReportedMessage: String {
+        "Coach reply marked for review. Use 988, 911, or a trusted person now if safety feels urgent."
+    }
+
+    private static var coachReplyAlreadyReportedMessage: String {
+        "Coach reply is already marked for review."
     }
 
     private static func isCancellation(_ error: Error) -> Bool {

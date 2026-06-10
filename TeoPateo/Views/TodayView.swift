@@ -5,6 +5,7 @@ struct TodayView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var store: TeoPateoStore
     @State private var isNotificationsPresented = false
+    @State private var tutorialTarget: TutorialTarget?
 
     var body: some View {
         GeometryReader { proxy in
@@ -17,13 +18,18 @@ struct TodayView: View {
             ZStack {
                 QuitTheme.background.ignoresSafeArea()
 
-                ScrollView {
-                    content(metrics: metrics)
-                        .padding(.horizontal, metrics.horizontalPadding)
-                        .padding(.top, metrics.usesWideLayout ? 22 : 18)
-                        .padding(.bottom, metrics.verticalPadding)
-                        .frame(maxWidth: metrics.contentMaxWidth, alignment: .leading)
-                        .frame(maxWidth: .infinity)
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        content(metrics: metrics)
+                            .padding(.horizontal, metrics.horizontalPadding)
+                            .padding(.top, metrics.usesWideLayout ? 22 : 18)
+                            .padding(.bottom, metrics.verticalPadding)
+                            .frame(maxWidth: metrics.contentMaxWidth, alignment: .leading)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .onChange(of: tutorialTarget) { newTarget in
+                        scrollToTutorialTarget(newTarget, using: scrollProxy)
+                    }
                 }
             }
             .safeAreaInset(edge: .bottom) {
@@ -33,6 +39,44 @@ struct TodayView: View {
         .sheet(isPresented: $isNotificationsPresented) {
             NotificationSettingsView()
                 .environmentObject(store)
+        }
+        .overlayPreferenceValue(TutorialAnchorKey.self) { anchors in
+            tutorialOverlay(anchors: anchors)
+        }
+    }
+
+    @ViewBuilder
+    private func tutorialOverlay(anchors: [String: Anchor<CGRect>]) -> some View {
+        if store.isTutorialActive {
+            // Outer reader keeps the real safe-area insets (for card placement);
+            // the inner reader spans the full screen so the dim covers everything,
+            // including the pinned rescue bar, with the cut-outs in the same space.
+            GeometryReader { outer in
+                let safeInsets = outer.safeAreaInsets
+                GeometryReader { full in
+                    TutorialCoachMarks(
+                        rects: anchors.reduce(into: [String: CGRect]()) { result, entry in
+                            result[entry.key] = full[entry.value]
+                        },
+                        size: full.size,
+                        safeInsets: safeInsets,
+                        onDone: { store.completeTutorial() },
+                        onActiveTargetChange: { tutorialTarget = $0 }
+                    )
+                }
+                .ignoresSafeArea()
+            }
+            .transition(.opacity)
+            .zIndex(10)
+        }
+    }
+
+    /// Brings the spotlighted element into view before the cut-out lands on it.
+    /// The rescue bar and tabs are fixed, so they need no scrolling.
+    private func scrollToTutorialTarget(_ target: TutorialTarget?, using proxy: ScrollViewProxy) {
+        guard let target, target != .rescue else { return }
+        withAnimation(.easeInOut(duration: 0.35)) {
+            proxy.scrollTo(target.rawValue, anchor: .center)
         }
     }
 
@@ -135,6 +179,7 @@ struct TodayView: View {
         VStack(spacing: Spacing.smd) {
             MascotRoomView()
                 .frame(height: height)
+                .tutorialAnchor(.teo)
             Text(streakCaption)
                 .typeBodySecondary()
                 .multilineTextAlignment(.center)
@@ -211,6 +256,7 @@ struct TodayView: View {
                 }
             }
             .quietCard()
+            .tutorialAnchor(.nextAction)
         }
     }
 
@@ -244,6 +290,7 @@ struct TodayView: View {
 
     private var planWeekCard: some View {
         PlanWeekCard(days: store.currentWeekPlanAdherence)
+            .tutorialAnchor(.calendar)
     }
 
     private var safetyResources: some View {
@@ -305,6 +352,7 @@ struct TodayView: View {
             .accessibilityLabel("Start craving rescue")
             .accessibilityHint("Opens the 10-minute craving mode.")
             .accessibilityIdentifier("start-rescue-button")
+            .tutorialAnchor(.rescue)
             .padding(.horizontal, metrics.horizontalPadding)
             .padding(.top, Spacing.smd)
             .padding(.bottom, Spacing.sm)
@@ -463,6 +511,222 @@ private struct MascotRoomView: View {
 
             path.move(to: CGPoint(x: cornerX, y: floorY))
             path.addLine(to: CGPoint(x: width - 8, y: floorY + 52))
+        }
+    }
+}
+
+// MARK: - First-run tutorial (one-time coach marks)
+
+/// Elements on Today that the tutorial can spotlight.
+private enum TutorialTarget: String {
+    case teo, calendar, nextAction, rescue
+}
+
+private struct TutorialAnchorKey: PreferenceKey {
+    static var defaultValue: [String: Anchor<CGRect>] = [:]
+    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+private extension View {
+    /// Reports this view's frame so the tutorial overlay can spotlight it, and
+    /// tags it with a scroll id so the tour can bring it into view.
+    func tutorialAnchor(_ target: TutorialTarget) -> some View {
+        self
+            .id(target.rawValue)
+            .anchorPreference(key: TutorialAnchorKey.self, value: .bounds) { anchor in
+                [target.rawValue: anchor]
+            }
+    }
+}
+
+/// A small downward triangle used as the tab-bar tip's tail.
+private struct DownCaret: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct TutorialTip {
+    /// `nil` means there's no Today element to spotlight (e.g. a tab-bar tip).
+    let target: TutorialTarget?
+    let title: String
+    let text: String
+    /// Anchors the card to the bottom with a caret aimed at the tab bar.
+    var pointsAtTabBar = false
+}
+
+/// A dimmed overlay that spotlights one Today element at a time with a short
+/// instruction and a "Got it!" button. Warm, minimalist, and dismissible.
+private struct TutorialCoachMarks: View {
+    let rects: [String: CGRect]
+    let size: CGSize
+    let safeInsets: EdgeInsets
+    let onDone: () -> Void
+    let onActiveTargetChange: (TutorialTarget?) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var index = 0
+
+    private static let allTips: [TutorialTip] = [
+        TutorialTip(
+            target: .teo,
+            title: "Meet Teo",
+            text: "Your companion through this. Tap Teo any time for a little lift."
+        ),
+        TutorialTip(
+            target: .calendar,
+            title: "Your week at a glance",
+            text: "Each day fills in as you check in, so your streak is easy to see."
+        ),
+        TutorialTip(
+            target: .nextAction,
+            title: "Start here",
+            text: "Teo's next best action — the one small step to focus on today."
+        ),
+        TutorialTip(
+            target: .rescue,
+            title: "When a craving hits",
+            text: "Tap “I want to smoke” for a 10-minute rescue. Teo stays with you until it passes."
+        ),
+        TutorialTip(
+            target: nil,
+            title: "Check in daily",
+            text: "Tap Check-in to tell Teo how your day went. Plan, Insights, and Coach are here too.",
+            pointsAtTabBar: true
+        )
+    ]
+
+    /// Only show tips whose target is actually on screen (plus the centered one).
+    private var tips: [TutorialTip] {
+        Self.allTips.filter { tip in
+            guard let target = tip.target else { return true }
+            return rects[target.rawValue] != nil
+        }
+    }
+
+    var body: some View {
+        let safeIndex = min(index, max(tips.count - 1, 0))
+        let tip = tips[safeIndex]
+        let hole = tip.target.flatMap { rects[$0.rawValue] }
+
+        ZStack {
+            spotlight(hole: hole)
+                .frame(width: size.width, height: size.height)
+                .contentShape(Rectangle())
+                .onTapGesture { }
+
+            cardLayer(tip: tip, hole: hole, index: safeIndex)
+        }
+        .accessibilityAddTraits(.isModal)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: index)
+        .onAppear { onActiveTargetChange(tip.target) }
+        .onChange(of: index) { newIndex in
+            let safe = min(newIndex, max(tips.count - 1, 0))
+            onActiveTargetChange(tips[safe].target)
+        }
+    }
+
+    private func spotlight(hole: CGRect?) -> some View {
+        Path { path in
+            path.addRect(CGRect(origin: .zero, size: size))
+            if let hole {
+                let padded = hole.insetBy(dx: -10, dy: -10)
+                path.addRoundedRect(in: padded, cornerSize: CGSize(width: 18, height: 18))
+            }
+        }
+        .fill(Color.black.opacity(0.58), style: FillStyle(eoFill: true))
+    }
+
+    @ViewBuilder
+    private func cardLayer(tip: TutorialTip, hole: CGRect?, index: Int) -> some View {
+        // Keep the card clear of the highlight: top-half targets (and the tab-bar
+        // tip) push the card to the bottom, lower targets push it to the top.
+        let placeAtBottom = tip.pointsAtTabBar
+            || (hole?.midY ?? size.height / 2) < size.height / 2
+
+        VStack(spacing: 0) {
+            if placeAtBottom {
+                Spacer(minLength: 0)
+                cardWithCaret(tip: tip, index: index)
+            } else {
+                cardWithCaret(tip: tip, index: index)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, Spacing.lg)
+        .padding(.top, safeInsets.top + Spacing.md)
+        .padding(.bottom, safeInsets.bottom + (tip.pointsAtTabBar ? Spacing.xs : Spacing.md))
+        .frame(width: size.width, height: size.height)
+    }
+
+    /// The card, plus a downward tail aimed at the centered Check-in tab for
+    /// tab-bar tips. The tail sits flush against the card so it reads as one piece.
+    private func cardWithCaret(tip: TutorialTip, index: Int) -> some View {
+        VStack(spacing: 0) {
+            card(tip: tip, index: index)
+            if tip.pointsAtTabBar {
+                DownCaret()
+                    .fill(QuitTheme.paper)
+                    .frame(width: 28, height: 13)
+                    .padding(.top, -1)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private func card(tip: TutorialTip, index: Int) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            Text(verbatim: String(format: L10n.string("%d of %d"), index + 1, tips.count))
+                .typeLabel()
+            Text(L10n.key(tip.title))
+                .typeSection()
+            Text(L10n.key(tip.text))
+                .typeBodySecondary()
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Button(action: onDone) {
+                    Text(L10n.key("Skip"))
+                        .font(.rounded(.subheadline, weight: .semibold))
+                        .foregroundColor(QuitTheme.muted)
+                }
+                .accessibilityIdentifier("tutorial-skip")
+
+                Spacer()
+
+                Button(action: advance) {
+                    Text(L10n.key("Got it!"))
+                        .font(.rounded(.subheadline, weight: .bold))
+                        .foregroundColor(QuitTheme.onCocoa)
+                        .padding(.horizontal, Spacing.md)
+                        .padding(.vertical, Spacing.sm)
+                        .background(QuitTheme.cocoa)
+                        .clipShape(Capsule())
+                }
+                .accessibilityIdentifier("tutorial-got-it")
+            }
+            .padding(.top, Spacing.xs)
+        }
+        .quietCard()
+        .frame(maxWidth: 360)
+        .shadow(color: Color.black.opacity(0.18), radius: 18, x: 0, y: 8)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func advance() {
+        Haptics.selection()
+        if index >= tips.count - 1 {
+            onDone()
+        } else {
+            index += 1
         }
     }
 }

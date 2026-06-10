@@ -3,6 +3,7 @@
 "%@" = "%@";
 "%@." = "%@.";
 "%@: %@" = "%1$@: %2$@";
+"%d of %d" = "%d of %d";
 "%d out of %d" = "%d out of %d";
 "%d:%02d %@" = "%d:%02d %@";
 "-" = "-";
@@ -103,6 +104,7 @@
 "Change the first 10 minutes: water, shower, or a short walk before coffee." = "Change the first 10 minutes: water, shower, or a short walk before coffee.";
 "Change the first 10" = "Change the first 10";
 "Change today's focus" = "Change today's focus";
+"Check in daily" = "Check in daily";
 "Check in without judgment" = "Check in without judgment";
 "Check what a smoke-free day would put toward your savings goal." = "Check what a smoke-free day would put toward your savings goal.";
 "Check your support path" = "Check your support path";
@@ -230,6 +232,7 @@
 "Driving or commute" = "Driving or commute";
 "Driving" = "Driving";
 "Duration" = "Duration";
+"Each day fills in as you check in, so your streak is easy to see." = "Each day fills in as you check in, so your streak is easy to see.";
 "Early pattern. Log a few more cravings before trusting percentages." = "Early pattern. Log a few more cravings before trusting percentages.";
 "Edit activity" = "Edit activity";
 "Edit notes" = "Edit notes";
@@ -266,6 +269,7 @@
 "For trigger" = "For trigger";
 "Friends who smoke" = "Friends who smoke";
 "Get help before you smoke." = "Get help before you smoke.";
+"Got it!" = "Got it!";
 "HTTP-Referer" = "HTTP-Referer";
 "Habit or routine" = "Habit or routine";
 "Handled" = "Handled";
@@ -352,6 +356,7 @@
 "Map one moment" = "Map one moment";
 "Map the cues and practice one low-pressure pause." = "Map the cues and practice one low-pressure pause.";
 "Mascot" = "Mascot";
+"Meet Teo" = "Meet Teo";
 "Message a person" = "Message a person";
 "Message someone" = "Message someone";
 "Message waiting" = "Message waiting";
@@ -612,6 +617,7 @@
 "Situational triggers" = "Situational triggers";
 "Skip for now" = "Skip for now";
 "Skip onboarding" = "Skip onboarding";
+"Skip" = "Skip";
 "Slip could not be saved." = "Slip could not be saved.";
 "Slip note could not be updated." = "Slip note could not be updated.";
 "Slip note updated." = "Slip note updated.";
@@ -637,6 +643,7 @@
 "Start a 10-minute substitute before deciding whether to smoke." = "Start a 10-minute substitute before deciding whether to smoke.";
 "Start a five-minute reset task before making any smoking decision." = "Start a five-minute reset task before making any smoking decision.";
 "Start craving rescue" = "Start craving rescue";
+"Start here" = "Start here";
 "Start new coach chat" = "Start new coach chat";
 "Start rescue" = "Start rescue";
 "Start the 10-minute rescue before deciding." = "Start the 10-minute rescue before deciding.";
@@ -661,6 +668,8 @@
 "Suggestion marked for editing." = "Suggestion marked for editing.";
 "Suggestion not found." = "Suggestion not found.";
 "Take five slow breaths before starting the car or leaving transit." = "Take five slow breaths before starting the car or leaving transit.";
+"Tap Check-in to tell Teo how your day went. Plan, Insights, and Coach are here too." = "Tap Check-in to tell Teo how your day went. Plan, Insights, and Coach are here too.";
+"Tap “I want to smoke” for a 10-minute rescue. Teo stays with you until it passes." = "Tap “I want to smoke” for a 10-minute rescue. Teo stays with you until it passes.";
 "Taper planning" = "Taper planning";
 "Taper schedule updated." = "Taper schedule updated.";
 "Taper target" = "Taper target";
@@ -668,6 +677,7 @@
 "Target date" = "Target date";
 "Target" = "Target";
 "Tell one person you are pausing for 10 minutes and stay away from the smoking spot." = "Tell one person you are pausing for 10 minutes and stay away from the smoking spot.";
+"Teo's next best action — the one small step to focus on today." = "Teo's next best action — the one small step to focus on today.";
 "TeoPateo does not sell data or use coach data for ads." = "TeoPateo does not sell data or use coach data for ads.";
 "TeoPateo does not sell your data and does not use health-related coach data for advertising or cross-app tracking." = "TeoPateo does not sell your data and does not use health-related coach data for advertising or cross-app tracking.";
 "TeoPateo is checking whether iOS allows local reminders." = "TeoPateo is checking whether iOS allows local reminders.";
@@ -783,6 +793,7 @@
 "What set it off?" = "What set it off?";
 "What should TeoPateo call you?" = "What should TeoPateo call you?";
 "What trigger showed up?" = "What trigger showed up?";
+"When a craving hits" = "When a craving hits";
 "When coach sharing is on, TeoPateo sends your message plus limited quit context through the coach proxy to an AI provider." = "When coach sharing is on, TeoPateo sends your message plus limited quit context through the coach proxy to an AI provider.";
 "When this happens" = "When this happens";
 "Where are you in the quit journey?" = "Where are you in the quit journey?";
@@ -809,6 +820,7 @@
 "You chose cold turkey, so the plan adds extra rescue preparation before the quit date." = "You chose cold turkey, so the plan adds extra rescue preparation before the quit date.";
 "Your choice" = "Your choice";
 "Your coach message and a short quit-plan context: smoking history, check-ins, cravings, slips, triggers, reasons, and replacement activities." = "Your coach message and a short quit-plan context: smoking history, check-ins, cravings, slips, triggers, reasons, and replacement activities.";
+"Your companion through this. Tap Teo any time for a little lift." = "Your companion through this. Tap Teo any time for a little lift.";
 "Your confidence is high enough to prepare for a direct quit attempt with rescue actions ready." = "Your confidence is high enough to prepare for a direct quit attempt with rescue actions ready.";
 "Your local data remains on this device until you delete it or remove the app. Coach requests are used to return a reply. Production provider configuration should prefer no retention and no training on your data." = "Your local data remains on this device until you delete it or remove the app. Coach requests are used to return a reply. Production provider configuration should prefer no retention and no training on your data.";
 "Your profile stays focused on your quit plan." = "Your profile stays focused on your quit plan.";
@@ -816,6 +828,7 @@
 "Your quit plan" = "Your quit plan";
 "Your relapse-prevention plan" = "Your relapse-prevention plan";
 "Your risk is predictable." = "Your risk is predictable.";
+"Your week at a glance" = "Your week at a glance";
 "[DONE]" = "[DONE]";
 "application/json" = "application/json";
 "before deciding whether to smoke" = "before deciding whether to smoke";

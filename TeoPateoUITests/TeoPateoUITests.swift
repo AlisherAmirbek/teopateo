@@ -218,16 +218,44 @@ final class TeoPateoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Coffee craving"].waitForExistence(timeout: 3))
     }
 
+    func testTutorialWalksThroughAndDismisses() {
+        launchApp(seedCompleted: true, showTutorial: true)
+
+        // Lands on Today with the coach-mark tour on the first tip.
+        XCTAssertTrue(app.staticTexts["Meet Teo"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["tutorial-got-it"].waitForExistence(timeout: 3))
+
+        // Step through every tip via "Got it!"; the cap is only a safety stop
+        // so a tour that fails to dismiss can't hang the test.
+        let maxCoachMarks = 10
+        var tipsSeen = 0
+        while tipsSeen < maxCoachMarks {
+            let gotIt = app.buttons["tutorial-got-it"]
+            if !gotIt.waitForExistence(timeout: 1) { break }
+            gotIt.tap()
+            tipsSeen += 1
+        }
+        XCTAssertGreaterThanOrEqual(tipsSeen, 4, "Expected at least four coach-mark tips")
+
+        // Tour is gone and the app is usable again.
+        XCTAssertFalse(app.buttons["tutorial-got-it"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["start-rescue-button"].isHittable)
+    }
+
     private func launchApp(
         seedCompleted: Bool = true,
         seedHistory: Bool = false,
         seedPlanWeek: Bool = false,
+        showTutorial: Bool = false,
         notificationStatus: String = "authorized"
     ) {
         app = XCUIApplication()
         app.launchArguments = ["-teopateo-ui-testing"]
         if seedCompleted {
             app.launchArguments.append("-teopateo-ui-seed-completed")
+        }
+        if showTutorial {
+            app.launchArguments.append("-teopateo-ui-show-tutorial")
         }
         if seedHistory {
             app.launchArguments.append("-teopateo-ui-seed-history")

@@ -52,3 +52,6 @@ yarn-error.log*
 # Editor folders
 .vscode/
 .idea/
+.claude/
+
+.sentryclirc

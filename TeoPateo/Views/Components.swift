@@ -521,6 +521,7 @@ struct PrivacyAndDataView: View {
     @EnvironmentObject private var store: TeoPateoStore
     @State private var isPolicyPresented = false
     @State private var isDeleteConfirmationPresented = false
+    @State private var isRestoreConfirmationPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -529,6 +530,8 @@ struct PrivacyAndDataView: View {
                 .foregroundColor(QuitTheme.ink)
 
             dataFlowSummary
+
+            iCloudBackupSection
 
             Toggle(
                 "AI coach data sharing",
@@ -594,7 +597,7 @@ struct PrivacyAndDataView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes your quit plan, onboarding profile, check-ins, cravings, slips, coach chats, reasons, activities, risky situations, notification settings, and coach sharing consent from this device.")
+            Text("This removes your quit plan, onboarding profile, check-ins, cravings, slips, coach chats, reasons, activities, risky situations, notification settings, and coach sharing consent from this device. If iCloud backup is on, your iCloud backup is deleted too.")
         }
     }
 
@@ -603,6 +606,10 @@ struct PrivacyAndDataView: View {
             privacyRow(
                 title: "Stored on this device",
                 detail: "Quit plan, profile, check-ins, cravings, slips, reasons, activities, risky situations, coach chats, and notification settings."
+            )
+            privacyRow(
+                title: "Backed up to your iCloud",
+                detail: "When iCloud backup is on, your quit journey is copied to your private iCloud so it survives losing your phone. Only you can reach it — TeoPateo's developers cannot."
             )
             privacyRow(
                 title: "Shared only for coach replies",
@@ -626,6 +633,93 @@ struct PrivacyAndDataView: View {
                 .foregroundColor(QuitTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var iCloudBackupSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(
+                "Back up to iCloud",
+                isOn: Binding(
+                    get: { store.isCloudBackupEnabled },
+                    set: { store.setCloudBackupEnabled($0) }
+                )
+            )
+            .font(.rounded(.subheadline, weight: .bold))
+            .tint(QuitTheme.cocoa)
+            .accessibilityIdentifier("cloud-backup-toggle")
+
+            Text(cloudBackupStatusText)
+                .font(.rounded(.footnote))
+                .foregroundColor(cloudBackupStatusColor)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("cloud-backup-status")
+
+            if store.isCloudBackupEnabled {
+                HStack(spacing: 10) {
+                    Button {
+                        store.backUpNow()
+                    } label: {
+                        Label("Back up now", systemImage: "arrow.up.to.line")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                    .disabled(store.cloudBackupStatus == .inProgress)
+                    .accessibilityIdentifier("cloud-backup-now-button")
+
+                    Button {
+                        isRestoreConfirmationPresented = true
+                    } label: {
+                        Label("Restore", systemImage: "arrow.down.to.line")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                    .accessibilityIdentifier("cloud-restore-button")
+                }
+            }
+        }
+        .alert("Restore from iCloud?", isPresented: $isRestoreConfirmationPresented) {
+            Button("Restore", role: .destructive) {
+                store.requestCloudRestore()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This replaces the data on this device with your most recent iCloud backup. Anything newer on this device will be lost.")
+        }
+    }
+
+    private var cloudBackupStatusText: String {
+        switch store.cloudBackupStatus {
+        case .inProgress:
+            return "Backing up…"
+        case .failed(let message):
+            return message
+        case .idle, .success:
+            if !store.isCloudBackupEnabled {
+                return "Your quit journey is stored only on this device."
+            }
+            switch store.cloudBackupAvailability {
+            case .available:
+                if let date = store.lastCloudBackupAt {
+                    let when = date.formatted(date: .abbreviated, time: .shortened)
+                    if let device = store.lastCloudBackupDevice, !device.isEmpty {
+                        return "Last backed up \(when) from \(device)."
+                    }
+                    return "Last backed up \(when)."
+                }
+                return "Your quit journey backs up automatically to your private iCloud."
+            case .noAccount, .restricted, .temporarilyUnavailable:
+                return "iCloud is unavailable. Sign in to iCloud in Settings to protect your data."
+            case .couldNotDetermine:
+                return "Checking iCloud…"
+            }
+        }
+    }
+
+    private var cloudBackupStatusColor: Color {
+        if case .failed = store.cloudBackupStatus {
+            return QuitTheme.danger
+        }
+        return QuitTheme.muted
     }
 }
 
@@ -682,13 +776,17 @@ private struct PrivacyPolicySheet: View {
 }
 
 private enum PrivacyPolicyCopy {
-    static let effectiveDate = "June 6, 2026"
+    static let effectiveDate = "June 10, 2026"
     static let onlineURL = URL(string: "https://teopateo.app/privacy")!
 
     static let sections = [
         PrivacyPolicySection(
             title: "What TeoPateo Stores Locally",
             body: "TeoPateo stores your quit plan, onboarding profile, smoking background, check-ins, cravings, slips, triggers, reasons, replacement activities, risky situations, coach chats, and notification settings on this device."
+        ),
+        PrivacyPolicySection(
+            title: "iCloud Backup",
+            body: "If you turn on iCloud backup, TeoPateo copies your quit data to your own private iCloud account so it survives losing or replacing your phone and follows you to a new device. The backup lives in your private iCloud database under your Apple ID — only you can access it, and TeoPateo's developers cannot read it. The data is not sent to TeoPateo's servers. You can turn iCloud backup off at any time in Privacy & Data."
         ),
         PrivacyPolicySection(
             title: "What Leaves This Device",

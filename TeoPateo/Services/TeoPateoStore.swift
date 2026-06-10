@@ -1,5 +1,8 @@
 import Foundation
 import OSLog
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @MainActor
 final class TeoPateoStore: ObservableObject {
@@ -38,13 +41,39 @@ final class TeoPateoStore: ObservableObject {
     @Published private(set) var notificationPermissionStatus: NotificationPermissionStatus = .unknown
     @Published private(set) var isOnboardingCompleted = false
     @Published private(set) var persistenceError: String?
-    @Published private(set) var lastSaveStatus: SaveStatus = .idle
+    @Published private(set) var lastSaveStatus: SaveStatus = .idle {
+        didSet {
+            // Any successful local save is a change worth backing up. This single hook covers
+            // every `.saved` site. Suppressed during hydration and while applying a cloud
+            // restore (the data already matches the cloud in that case).
+            guard !isHydrating, !isApplyingCloudRestore else { return }
+            if case .saved = lastSaveStatus {
+                scheduleCloudPushDebounced()
+            }
+        }
+    }
+    @Published private(set) var isTutorialActive = false
+
+    // iCloud backup state (see the "iCloud Backup" extension below).
+    @Published private(set) var isCloudBackupEnabled = true
+    @Published private(set) var cloudBackupAvailability: CloudBackupAvailability = .couldNotDetermine
+    @Published private(set) var lastCloudBackupAt: Date?
+    @Published private(set) var lastCloudBackupDevice: String?
+    @Published private(set) var cloudBackupStatus: CloudBackupStatus = .idle
+
+    private var hasSeenTutorial = false
+    private static let tutorialDefaultsKey = "teopateo.hasSeenTutorial"
 
     private let repository: TeoPateoRepository
     private let notificationScheduler: NotificationScheduling
     private let coachClient: CoachResponding
     private let now: () -> Date
     private let calendar: Calendar
+    private let cloudBackup: CloudBackupService
+    private let cloudBackupSettings: CloudBackupSettings
+    private var cloudPushTask: Task<Void, Never>?
+    private var isApplyingCloudRestore = false
+    private var hasAttemptedCloudRestore = false
     private var quitPlan = TeoPateoStore.defaultQuitPlan()
     private var isHydrating = false
     private static let coachSafetyLogger = Logger(
@@ -54,8 +83,14 @@ final class TeoPateoStore: ObservableObject {
 
     convenience init() {
         do {
-            try self.init(repository: SQLiteTeoPateoRepository.live())
+            try self.init(
+                repository: SQLiteTeoPateoRepository.live(),
+                cloudBackup: CloudKitBackupService()
+            )
         } catch {
+            // SQLite is unavailable. Stay fully local with a no-op backup so we never push
+            // empty in-memory data over a good iCloud backup, and never try to restore into a
+            // throwaway store.
             self.init(repository: InMemoryTeoPateoRepository())
             persistenceError = error.localizedDescription
             lastSaveStatus = .failed("Local storage is unavailable. Changes may not persist.")
@@ -67,14 +102,23 @@ final class TeoPateoStore: ObservableObject {
         notificationScheduler: NotificationScheduling = LocalNotificationScheduler(),
         coachClient: CoachResponding = LiveCoachClient(),
         now: @escaping () -> Date = Date.init,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        cloudBackup: CloudBackupService = NoopCloudBackupService(),
+        cloudBackupSettings: CloudBackupSettings = CloudBackupSettings()
     ) {
         self.repository = repository
         self.notificationScheduler = notificationScheduler
         self.coachClient = coachClient
         self.now = now
         self.calendar = calendar
+        self.cloudBackup = cloudBackup
+        self.cloudBackupSettings = cloudBackupSettings
+        self.isCloudBackupEnabled = cloudBackupSettings.isEnabled
+        self.lastCloudBackupAt = cloudBackupSettings.lastBackupAt
+        self.lastCloudBackupDevice = cloudBackupSettings.lastBackupDevice
+        self.hasSeenTutorial = Self.loadHasSeenTutorial()
         hydrateFromPersistence()
+        maybeStartTutorial()
     }
 
     var currentQuitPlan: QuitPlan {
@@ -661,6 +705,12 @@ final class TeoPateoStore: ObservableObject {
             selectedTab = .today
             persistenceError = nil
             lastSaveStatus = .saved("Local data deleted.")
+            // Honor the deletion in iCloud too: cancel the debounced push the line above just
+            // scheduled, then remove the cloud backup so the deleted data cannot resurface on
+            // this or another device.
+            cloudPushTask?.cancel()
+            let backupService = cloudBackup
+            Task { try? await backupService.deleteBackup() }
             notificationScheduler.cancelScheduledNotifications { [weak self] result in
                 DispatchQueue.main.async {
                     guard let self else { return }
@@ -886,6 +936,7 @@ final class TeoPateoStore: ObservableObject {
 
             persistenceError = nil
             lastSaveStatus = .saved("Your quit plan is ready.")
+            scheduleTutorialStart()
             return true
         } catch {
             isHydrating = false
@@ -902,6 +953,48 @@ final class TeoPateoStore: ObservableObject {
     func dismissOnboardingForNow() {
         isOnboardingPresented = false
         selectedTab = .today
+    }
+
+    // MARK: - Tutorial (one-time coach marks on Today)
+
+    /// Ends the tour and remembers it so it never auto-shows again.
+    func completeTutorial() {
+        isTutorialActive = false
+        guard !hasSeenTutorial else { return }
+        hasSeenTutorial = true
+        if !Self.isUITesting {
+            UserDefaults.standard.set(true, forKey: Self.tutorialDefaultsKey)
+        }
+    }
+
+    /// Shows the tour once the user is on Today with a finished plan.
+    private func maybeStartTutorial() {
+        guard !isTutorialActive, !hasSeenTutorial else { return }
+        guard isOnboardingCompleted, !isOnboardingPresented else { return }
+        if Self.isUITesting && !Self.forceShowTutorial { return }
+        isTutorialActive = true
+    }
+
+    /// Used right after onboarding so the coach marks fade in once the
+    /// onboarding cover has dismissed, not on top of it.
+    private func scheduleTutorialStart() {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            self?.maybeStartTutorial()
+        }
+    }
+
+    private static func loadHasSeenTutorial() -> Bool {
+        if isUITesting { return false }
+        return UserDefaults.standard.bool(forKey: tutorialDefaultsKey)
+    }
+
+    private static var isUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("-teopateo-ui-testing")
+    }
+
+    private static var forceShowTutorial: Bool {
+        ProcessInfo.processInfo.arguments.contains("-teopateo-ui-show-tutorial")
     }
 
     func addTriggerRule(trigger: String, action: String) {
@@ -3443,6 +3536,241 @@ final class TeoPateoStore: ObservableObject {
     }
 }
 
+// MARK: - iCloud Backup
+
+extension TeoPateoStore {
+    private enum CloudPushReason { case automatic, manual, background }
+    private enum CloudRestoreReason { case automatic, manual }
+
+    /// Turn automatic iCloud backup on or off (device-local preference). Turning it on triggers
+    /// an immediate backup so the user's data is protected right away.
+    func setCloudBackupEnabled(_ enabled: Bool) {
+        cloudBackupSettings.isEnabled = enabled
+        isCloudBackupEnabled = enabled
+        if enabled {
+            backUpNow()
+        } else {
+            cloudPushTask?.cancel()
+            cloudBackupStatus = .idle
+        }
+    }
+
+    /// User-initiated "Back up now".
+    func backUpNow() {
+        Task { [weak self] in await self?.backUpAndWait() }
+    }
+
+    /// Awaitable backup used by `backUpNow()` and tests.
+    func backUpAndWait() async {
+        cloudPushTask?.cancel()
+        await performCloudPush(reason: .manual)
+    }
+
+    /// User-initiated "Restore from iCloud" (overwrites local data — gate behind a confirmation).
+    func requestCloudRestore() {
+        Task { [weak self] in _ = await self?.restoreFromCloud() }
+    }
+
+    /// Awaitable manual restore used by `requestCloudRestore()` and tests.
+    @discardableResult
+    func restoreFromCloud() async -> Bool {
+        await applyCloudRestore(reason: .manual)
+    }
+
+    /// Refresh the cached account availability so the UI can show the current state.
+    func refreshCloudBackupAvailability() {
+        Task { [weak self] in
+            guard let self else { return }
+            self.cloudBackupAvailability = await self.cloudBackup.accountAvailability()
+        }
+    }
+
+    /// Called when the app enters the foreground.
+    func onEnterForeground() {
+        refreshCloudBackupAvailability()
+    }
+
+    /// Called when the app enters the background: flush a backup immediately (cancelling any
+    /// pending debounce) under a background-task assertion so the upload can finish.
+    func onEnterBackground() {
+        guard isCloudBackupEnabled else { return }
+        cloudPushTask?.cancel()
+        #if canImport(UIKit)
+        var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "CloudBackupFlush") {
+            if backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTask)
+                backgroundTask = .invalid
+            }
+        }
+        Task { [weak self] in
+            await self?.performCloudPush(reason: .background)
+            if backgroundTask != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTask)
+                backgroundTask = .invalid
+            }
+        }
+        #else
+        Task { [weak self] in await self?.performCloudPush(reason: .background) }
+        #endif
+    }
+
+    /// Restores from iCloud on a fresh device. Safe to call on launch: it only overwrites local
+    /// data when onboarding has NOT been completed (so there is nothing worth keeping locally)
+    /// and a backup actually exists. Runs at most once per launch.
+    func attemptAutomaticCloudRestoreIfEligible() {
+        Task { [weak self] in _ = await self?.runAutomaticRestoreIfEligible() }
+    }
+
+    /// Awaitable automatic restore (with the fresh-device gate) used on launch and by tests.
+    /// Restores only when onboarding has not been completed and a backup exists.
+    @discardableResult
+    func runAutomaticRestoreIfEligible() async -> Bool {
+        guard !hasAttemptedCloudRestore else { return false }
+        hasAttemptedCloudRestore = true
+        guard isCloudBackupEnabled, !isOnboardingCompleted else { return false }
+        return await applyCloudRestore(reason: .automatic)
+    }
+
+    private func scheduleCloudPushDebounced() {
+        guard isCloudBackupEnabled else { return }
+        cloudPushTask?.cancel()
+        cloudPushTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if Task.isCancelled { return }
+            await self?.performCloudPush(reason: .automatic)
+        }
+    }
+
+    private func performCloudPush(reason: CloudPushReason) async {
+        guard isCloudBackupEnabled else { return }
+
+        let availability = await cloudBackup.accountAvailability()
+        cloudBackupAvailability = availability
+        guard availability.canSync else {
+            if reason == .manual {
+                cloudBackupStatus = .failed(cloudBackupMessage(for: CloudBackupError.accountUnavailable(availability)))
+            }
+            return
+        }
+
+        let envelope: BackupEnvelope
+        do {
+            envelope = BackupEnvelope(
+                schemaVersion: try repository.schemaVersion(),
+                exportedAt: now(),
+                deviceName: BackupEnvelope.currentDeviceName,
+                snapshot: try repository.loadSnapshot()
+            )
+        } catch {
+            if reason == .manual { cloudBackupStatus = .failed("Could not read local data to back up.") }
+            return
+        }
+
+        if reason == .manual { cloudBackupStatus = .inProgress }
+        do {
+            try await cloudBackup.push(envelope)
+            recordSuccessfulBackup(at: envelope.exportedAt, device: envelope.deviceName)
+        } catch {
+            // Automatic/background failures stay quiet; they retry on the next change, foreground,
+            // or background. Only a user-initiated backup surfaces an error.
+            if reason == .manual { cloudBackupStatus = .failed(cloudBackupMessage(for: error)) }
+        }
+    }
+
+    @discardableResult
+    private func applyCloudRestore(reason: CloudRestoreReason) async -> Bool {
+        let availability = await cloudBackup.accountAvailability()
+        cloudBackupAvailability = availability
+        guard availability.canSync else {
+            if reason == .manual {
+                cloudBackupStatus = .failed(cloudBackupMessage(for: CloudBackupError.accountUnavailable(availability)))
+            }
+            return false
+        }
+
+        let fetched: BackupEnvelope?
+        do {
+            fetched = try await cloudBackup.fetchLatest()
+        } catch {
+            if reason == .manual { cloudBackupStatus = .failed(cloudBackupMessage(for: error)) }
+            return false
+        }
+
+        guard let envelope = fetched else {
+            if reason == .manual { cloudBackupStatus = .failed("No iCloud backup found yet.") }
+            return false
+        }
+
+        let currentSchema = (try? repository.schemaVersion()) ?? 0
+        guard envelope.schemaVersion <= currentSchema else {
+            cloudBackupStatus = .failed(cloudBackupMessage(for: CloudBackupError.incompatibleVersion))
+            return false
+        }
+
+        do {
+            isApplyingCloudRestore = true
+            defer { isApplyingCloudRestore = false }
+            try repository.importSnapshot(envelope.snapshot)
+            reloadFromPersistenceAfterRestore()
+            recordSuccessfulBackup(at: envelope.exportedAt, device: envelope.deviceName)
+            lastSaveStatus = .saved("Restored your data from iCloud.")
+            return true
+        } catch {
+            persistenceError = error.localizedDescription
+            cloudBackupStatus = .failed("Could not restore from iCloud.")
+            return false
+        }
+    }
+
+    /// Re-applies persisted state into the published properties after a restore overwrote the
+    /// database. Mirrors the safe core of `hydrateFromPersistence` without re-seeding defaults or
+    /// restarting the tutorial, and wraps the apply in `isHydrating` so the property `didSet`s do
+    /// not fire a write/push storm.
+    private func reloadFromPersistenceAfterRestore() {
+        let wasHydrating = isHydrating
+        isHydrating = true
+        defer { isHydrating = wasHydrating }
+
+        do {
+            applyPersistedSnapshot(try repository.loadSnapshot())
+            persistenceError = nil
+        } catch {
+            persistenceError = error.localizedDescription
+        }
+        selectedTab = .today
+        syncScheduledNotifications(showSuccess: false)
+    }
+
+    private func recordSuccessfulBackup(at date: Date, device: String) {
+        cloudBackupSettings.lastBackupAt = date
+        cloudBackupSettings.lastBackupDevice = device
+        lastCloudBackupAt = date
+        lastCloudBackupDevice = device
+        cloudBackupStatus = .success
+    }
+
+    private func cloudBackupMessage(for error: Error) -> String {
+        guard let error = error as? CloudBackupError else { return "iCloud backup failed." }
+        switch error {
+        case .accountUnavailable:
+            return "Sign in to iCloud in Settings to back up your quit journey."
+        case .network:
+            return "No connection. Your backup will retry automatically."
+        case .quotaExceeded:
+            return "Your iCloud storage is full, so the backup couldn't be saved."
+        case .serviceUnavailable:
+            return "iCloud is busy right now. Try again in a moment."
+        case .incompatibleVersion:
+            return "This backup was made with a newer version of TeoPateo. Update the app to restore it."
+        case .corruptBackup:
+            return "The iCloud backup couldn't be read."
+        case .unknown:
+            return "iCloud backup failed."
+        }
+    }
+}
+
 enum AppTab: String, CaseIterable {
     case today = "Today"
     case plan = "Plan"
@@ -3675,6 +4003,26 @@ private final class InMemoryTeoPateoRepository: TeoPateoRepository {
         userReasons = []
         coachChats = []
         selectedCoachChatID = nil
+    }
+
+    func importSnapshot(_ snapshot: PersistedTeoPateoSnapshot) throws {
+        appSettings = snapshot.appSettings
+        notificationSettings = snapshot.notificationSettings
+        privacySettings = snapshot.privacySettings
+        userProfile = snapshot.userProfile
+        quitReadiness = snapshot.quitReadiness
+        smokingBackground = snapshot.smokingBackground
+        savingsGoal = snapshot.savingsGoal
+        quitPlan = snapshot.quitPlan
+        dailyCheckIns = snapshot.dailyCheckIns
+        cravingEvents = snapshot.cravingEvents
+        slipEvents = snapshot.slipEvents
+        replacementActivities = snapshot.replacementActivities
+        riskySituations = snapshot.riskySituations
+        supportContacts = snapshot.supportContacts
+        userReasons = snapshot.userReasons
+        coachChats = snapshot.coachChats
+        selectedCoachChatID = snapshot.selectedCoachChatID
     }
 }
 

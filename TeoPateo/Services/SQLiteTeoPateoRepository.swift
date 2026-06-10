@@ -60,6 +60,9 @@ protocol TeoPateoRepository {
     func fetchSelectedCoachChatID() throws -> UUID?
 
     func deleteAllUserData() throws
+
+    /// Atomically replaces all persisted data with `snapshot` (used by iCloud restore).
+    func importSnapshot(_ snapshot: PersistedTeoPateoSnapshot) throws
 }
 
 enum TeoPateoRepositoryError: Error, LocalizedError {
@@ -1283,28 +1286,391 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
 
     func deleteAllUserData() throws {
         try dbQueue.write { db in
-            try db.execute(sql: """
-                DELETE FROM coach_messages;
-                DELETE FROM coach_chats;
-                DELETE FROM craving_event_triggers;
-                DELETE FROM craving_events;
-                DELETE FROM slip_event_triggers;
-                DELETE FROM slip_events;
-                DELETE FROM daily_check_ins;
-                DELETE FROM trigger_rules;
-                DELETE FROM quit_plans;
-                DELETE FROM replacement_activities;
-                DELETE FROM risky_situations;
-                DELETE FROM support_contacts;
-                DELETE FROM user_reasons;
-                DELETE FROM user_profile;
-                DELETE FROM quit_readiness;
-                DELETE FROM smoking_background;
-                DELETE FROM savings_goal;
-                DELETE FROM notification_settings;
-                DELETE FROM privacy_settings;
-                DELETE FROM app_settings;
-                """)
+            try deleteAllRows(in: db)
+        }
+    }
+
+    /// Clears every user-data table, child rows first so foreign keys stay satisfied.
+    /// Shared by `deleteAllUserData()` and `importSnapshot(_:)`.
+    private func deleteAllRows(in db: Database) throws {
+        try db.execute(sql: """
+            DELETE FROM coach_messages;
+            DELETE FROM coach_chats;
+            DELETE FROM craving_event_triggers;
+            DELETE FROM craving_events;
+            DELETE FROM slip_event_triggers;
+            DELETE FROM slip_events;
+            DELETE FROM daily_check_ins;
+            DELETE FROM trigger_rules;
+            DELETE FROM quit_plans;
+            DELETE FROM replacement_activities;
+            DELETE FROM risky_situations;
+            DELETE FROM support_contacts;
+            DELETE FROM user_reasons;
+            DELETE FROM user_profile;
+            DELETE FROM quit_readiness;
+            DELETE FROM smoking_background;
+            DELETE FROM savings_goal;
+            DELETE FROM notification_settings;
+            DELETE FROM privacy_settings;
+            DELETE FROM app_settings;
+            """)
+    }
+
+    /// Atomically replaces all persisted data with `snapshot`.
+    ///
+    /// Everything happens inside one transaction: clear all tables, then re-insert in
+    /// foreign-key-safe order (parents before children). Any throw rolls the whole thing
+    /// back, so a failed restore can never leave a half-wiped database. Callers decode and
+    /// version-check the backup envelope *before* calling this, so a corrupt/incompatible
+    /// payload never reaches the database.
+    ///
+    /// The INSERTs below mirror the per-entity `saveX`/`replaceX` methods; tables are empty
+    /// after the clear, so plain inserts replace the upsert/ON CONFLICT forms. The child
+    /// `craving_event_triggers`/`slip_event_triggers` rows reuse `writeCravingEvent`/
+    /// `writeSlipEvent`. `CloudBackupTests` round-trips real data through this method and
+    /// asserts equality, which is the guard against drift from the `saveX` SQL.
+    func importSnapshot(_ snapshot: PersistedTeoPateoSnapshot) throws {
+        try dbQueue.write { db in
+            try deleteAllRows(in: db)
+
+            if let settings = snapshot.appSettings {
+                try db.execute(literal: """
+                    INSERT INTO app_settings (id, onboarding_completed, updated_at)
+                    VALUES (0, \(settings.onboardingCompleted ? 1 : 0), \(settings.updatedAt.timeIntervalSince1970));
+                    """)
+            }
+
+            if let settings = snapshot.notificationSettings {
+                try db.execute(literal: """
+                    INSERT INTO notification_settings (
+                        id, morning_plan_enabled, risky_window_enabled,
+                        post_meal_enabled, evening_check_in_enabled,
+                        medication_enabled, morning_plan_hour, morning_plan_minute,
+                        post_meal_hour, post_meal_minute, evening_check_in_hour,
+                        evening_check_in_minute, medication_hour, medication_minute,
+                        updated_at
+                    )
+                    VALUES (
+                        0,
+                        \(settings.morningPlanEnabled ? 1 : 0),
+                        \(settings.riskyWindowEnabled ? 1 : 0),
+                        \(settings.postMealEnabled ? 1 : 0),
+                        \(settings.eveningCheckInEnabled ? 1 : 0),
+                        \(settings.medicationEnabled ? 1 : 0),
+                        \(settings.morningPlanTime.hour),
+                        \(settings.morningPlanTime.minute),
+                        \(settings.postMealTime.hour),
+                        \(settings.postMealTime.minute),
+                        \(settings.eveningCheckInTime.hour),
+                        \(settings.eveningCheckInTime.minute),
+                        \(settings.medicationTime.hour),
+                        \(settings.medicationTime.minute),
+                        \(settings.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            if let settings = snapshot.privacySettings {
+                try db.execute(literal: """
+                    INSERT INTO privacy_settings (
+                        id, coach_data_consent_status, coach_data_consent_updated_at,
+                        policy_version, updated_at
+                    )
+                    VALUES (
+                        0,
+                        \(settings.coachDataConsentStatus.rawValue),
+                        \(settings.coachDataConsentUpdatedAt?.timeIntervalSince1970),
+                        \(settings.policyVersion),
+                        \(settings.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            if let profile = snapshot.userProfile {
+                try db.execute(literal: """
+                    INSERT INTO user_profile (id, nickname, age, created_at, updated_at)
+                    VALUES (
+                        0,
+                        \(profile.nickname),
+                        \(profile.age),
+                        \(profile.createdAt.timeIntervalSince1970),
+                        \(profile.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            if let readiness = snapshot.quitReadiness {
+                try db.execute(literal: """
+                    INSERT INTO quit_readiness (
+                        id, status, confidence, opened_app_reason, created_at, updated_at
+                    )
+                    VALUES (
+                        0,
+                        \(readiness.status.rawValue),
+                        \(readiness.confidence),
+                        \(readiness.openedAppReason),
+                        \(readiness.createdAt.timeIntervalSince1970),
+                        \(readiness.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            if let background = snapshot.smokingBackground {
+                try db.execute(literal: """
+                    INSERT INTO smoking_background (
+                        id, age_started_smoking, years_smoking, first_cigarette_timing,
+                        previous_quit_attempt_count, longest_quit_attempt,
+                        main_challenge, created_at, updated_at
+                    )
+                    VALUES (
+                        0,
+                        \(background.ageStartedSmoking),
+                        \(background.yearsSmoking),
+                        \(background.firstCigaretteTiming.rawValue),
+                        \(background.previousQuitAttemptCount.rawValue),
+                        \(background.longestQuitAttempt.rawValue),
+                        \(background.mainChallenge.rawValue),
+                        \(background.createdAt.timeIntervalSince1970),
+                        \(background.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            if let goal = snapshot.savingsGoal {
+                try db.execute(literal: """
+                    INSERT INTO savings_goal (id, title, custom_text, created_at, updated_at)
+                    VALUES (
+                        0,
+                        \(goal.title),
+                        \(goal.customText),
+                        \(goal.createdAt.timeIntervalSince1970),
+                        \(goal.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            if let plan = snapshot.quitPlan {
+                let planSummaryJSON = try encodeJSON(plan.planSummary)
+                let strategyPlanJSON = try encodeJSON(plan.strategyPlan)
+                let generatedTriggerRulesJSON = try encodeJSON(plan.generatedTriggerRules)
+                let cravingRescuePlanJSON = try encodeJSON(plan.cravingRescuePlan)
+                let slipRecoveryPlanJSON = try encodeJSON(plan.slipRecoveryPlan)
+                let dailyFocusPlanJSON = try encodeJSON(plan.dailyFocusPlan)
+                let savingsPlanJSON = try encodeJSON(plan.savingsPlan)
+                let pendingPlanSuggestionsJSON = try encodeJSON(plan.pendingPlanSuggestions)
+
+                try db.execute(literal: """
+                    INSERT INTO quit_plans (
+                        id, quit_date, quit_mode, medication_note,
+                        quit_status, readiness_stage, generated_daily_focus,
+                        generated_plan_summary, plan_summary_json,
+                        first_week_goal, next_best_action, strategy_plan_json,
+                        generated_trigger_rules_json, craving_rescue_plan_json,
+                        slip_recovery_plan_json, daily_focus_plan_json,
+                        savings_plan_json, pending_plan_suggestions_json,
+                        baseline_cigarettes_per_day, cost_per_pack, cigarettes_per_pack,
+                        taper_target_cigarettes_per_day, taper_reduction_step,
+                        taper_reduction_interval_days, attempt_started_at,
+                        created_at, updated_at
+                    )
+                    VALUES (
+                        \(plan.id.uuidString),
+                        \(plan.quitDate.timeIntervalSince1970),
+                        \(plan.quitMode),
+                        \(plan.medicationNote),
+                        \(plan.quitStatus.rawValue),
+                        \(plan.readinessStage),
+                        \(plan.generatedDailyFocus),
+                        \(plan.generatedPlanSummary),
+                        \(planSummaryJSON),
+                        \(plan.firstWeekGoal),
+                        \(plan.nextBestAction),
+                        \(strategyPlanJSON),
+                        \(generatedTriggerRulesJSON),
+                        \(cravingRescuePlanJSON),
+                        \(slipRecoveryPlanJSON),
+                        \(dailyFocusPlanJSON),
+                        \(savingsPlanJSON),
+                        \(pendingPlanSuggestionsJSON),
+                        \(plan.baselineCigarettesPerDay),
+                        \(plan.costPerPack),
+                        \(plan.cigarettesPerPack),
+                        \(plan.taperTargetCigarettesPerDay),
+                        \(plan.taperReductionStep),
+                        \(plan.taperReductionIntervalDays),
+                        \(plan.attemptStartedAt.timeIntervalSince1970),
+                        \(plan.createdAt.timeIntervalSince1970),
+                        \(plan.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+
+                for (position, rule) in plan.triggerRules.enumerated() {
+                    let supportContactID = rule.supportContactID?.uuidString
+                    try db.execute(literal: """
+                        INSERT INTO trigger_rules (
+                            id, quit_plan_id, trigger, action, is_enabled,
+                            support_contact_id, position
+                        )
+                        VALUES (
+                            \(rule.id.uuidString),
+                            \(plan.id.uuidString),
+                            \(rule.trigger),
+                            \(rule.action),
+                            \(rule.isEnabled ? 1 : 0),
+                            \(supportContactID),
+                            \(position)
+                        );
+                        """)
+                }
+            }
+
+            for checkIn in snapshot.dailyCheckIns {
+                let smokedToday = checkIn.smokedToday.map { $0 ? 1 : 0 }
+                let stayedWithinTaperTarget = checkIn.stayedWithinTaperTarget.map { $0 ? 1 : 0 }
+                let emptyFocusNote = ""
+                try db.execute(literal: """
+                    INSERT INTO daily_check_ins (
+                        id, date, mood, stress, confidence, smoked_today, cigarettes_smoked,
+                        taper_target_cigarettes, stayed_within_taper_target,
+                        focus_note, slip_note, created_at, updated_at
+                    )
+                    VALUES (
+                        \(checkIn.id.uuidString),
+                        \(checkIn.date.timeIntervalSince1970),
+                        \(checkIn.mood),
+                        \(checkIn.stress),
+                        \(checkIn.confidence),
+                        \(smokedToday),
+                        \(checkIn.cigarettesSmoked),
+                        \(checkIn.taperTargetCigarettes),
+                        \(stayedWithinTaperTarget),
+                        \(emptyFocusNote),
+                        \(checkIn.slipNote),
+                        \(checkIn.createdAt.timeIntervalSince1970),
+                        \(checkIn.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            for craving in snapshot.cravingEvents {
+                try writeCravingEvent(craving, in: db)
+            }
+
+            for slip in snapshot.slipEvents {
+                try writeSlipEvent(slip, in: db)
+            }
+
+            for (position, activity) in snapshot.replacementActivities.enumerated() {
+                try db.execute(literal: """
+                    INSERT INTO replacement_activities (
+                        id, title, instruction, category, duration_seconds,
+                        linked_trigger, is_enabled, position, created_at, updated_at
+                    )
+                    VALUES (
+                        \(activity.id.uuidString),
+                        \(activity.title),
+                        \(activity.instruction),
+                        \(activity.category.rawValue),
+                        \(activity.durationSeconds),
+                        \(activity.linkedTrigger),
+                        \(activity.isEnabled ? 1 : 0),
+                        \(position),
+                        \(activity.createdAt.timeIntervalSince1970),
+                        \(activity.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            for (position, situation) in snapshot.riskySituations.enumerated() {
+                try db.execute(literal: """
+                    INSERT INTO risky_situations (
+                        id, title, expected_context, prevention_plan,
+                        backup_action, is_enabled, position, created_at, updated_at
+                    )
+                    VALUES (
+                        \(situation.id.uuidString),
+                        \(situation.title),
+                        \(situation.expectedContext),
+                        \(situation.preventionPlan),
+                        \(situation.backupAction),
+                        \(situation.isEnabled ? 1 : 0),
+                        \(position),
+                        \(situation.createdAt.timeIntervalSince1970),
+                        \(situation.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            for contact in snapshot.supportContacts {
+                try db.execute(literal: """
+                    INSERT INTO support_contacts (
+                        id, name, detail, phone_number, preferred_role,
+                        default_message, created_at, updated_at
+                    )
+                    VALUES (
+                        \(contact.id.uuidString),
+                        \(contact.name),
+                        \(contact.detail),
+                        \(contact.phoneNumber),
+                        \(contact.preferredRole.rawValue),
+                        \(contact.defaultMessage),
+                        \(contact.createdAt.timeIntervalSince1970),
+                        \(contact.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            for (position, reason) in snapshot.userReasons.enumerated() {
+                try db.execute(literal: """
+                    INSERT INTO user_reasons (
+                        id, text, sort_order, is_primary, category,
+                        created_at, updated_at
+                    )
+                    VALUES (
+                        \(reason.id.uuidString),
+                        \(reason.text),
+                        \(reason.sortOrder == 0 ? position : reason.sortOrder),
+                        \(reason.isPrimary ? 1 : 0),
+                        \(reason.category),
+                        \(reason.createdAt.timeIntervalSince1970),
+                        \(reason.updatedAt.timeIntervalSince1970)
+                    );
+                    """)
+            }
+
+            for (chatPosition, chat) in snapshot.coachChats.enumerated() {
+                try db.execute(literal: """
+                    INSERT INTO coach_chats (
+                        id, title, is_selected, created_at, updated_at, position
+                    )
+                    VALUES (
+                        \(chat.id.uuidString),
+                        \(chat.title),
+                        \(chat.id == snapshot.selectedCoachChatID ? 1 : 0),
+                        \(chat.createdAt.timeIntervalSince1970),
+                        \(chat.updatedAt.timeIntervalSince1970),
+                        \(chatPosition)
+                    );
+                    """)
+
+                for (messagePosition, message) in chat.messages.enumerated() {
+                    try db.execute(literal: """
+                        INSERT INTO coach_messages (
+                            id, chat_id, text, is_user, is_reported_unsafe, created_at, position
+                        )
+                        VALUES (
+                            \(message.id.uuidString),
+                            \(chat.id.uuidString),
+                            \(message.text),
+                            \(message.isUser ? 1 : 0),
+                            \(message.isReportedUnsafe ? 1 : 0),
+                            \(message.createdAt.timeIntervalSince1970),
+                            \(messagePosition)
+                        );
+                        """)
+                }
+            }
         }
     }
 

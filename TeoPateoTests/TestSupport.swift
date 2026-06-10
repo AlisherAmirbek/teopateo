@@ -380,6 +380,7 @@ enum TestRepositoryOperation: Hashable {
     case replaceCoachChats
     case recentCheckIns
     case deleteAllUserData
+    case importSnapshot
 }
 
 final class ThrowingTeoPateoRepository: TeoPateoRepository {
@@ -574,9 +575,55 @@ final class ThrowingTeoPateoRepository: TeoPateoRepository {
         try base.deleteAllUserData()
     }
 
+    func importSnapshot(_ snapshot: PersistedTeoPateoSnapshot) throws {
+        try failIfNeeded(.importSnapshot)
+        try base.importSnapshot(snapshot)
+    }
+
     private func failIfNeeded(_ operation: TestRepositoryOperation) throws {
         if failingOperations.contains(operation) {
             throw error
         }
+    }
+}
+
+/// In-memory `CloudBackupService` for tests: stores one envelope, counts calls, and lets a test
+/// inject availability and errors.
+final class FakeCloudBackupService: CloudBackupService {
+    var availability: CloudBackupAvailability
+    var stored: BackupEnvelope?
+    var pushError: Error?
+    var fetchError: Error?
+
+    private(set) var pushCount = 0
+    private(set) var fetchCount = 0
+    private(set) var deleteCount = 0
+
+    init(availability: CloudBackupAvailability = .available, stored: BackupEnvelope? = nil) {
+        self.availability = availability
+        self.stored = stored
+    }
+
+    func accountAvailability() async -> CloudBackupAvailability {
+        availability
+    }
+
+    func push(_ envelope: BackupEnvelope) async throws {
+        pushCount += 1
+        if let pushError { throw pushError }
+        guard availability.canSync else { throw CloudBackupError.accountUnavailable(availability) }
+        stored = envelope
+    }
+
+    func fetchLatest() async throws -> BackupEnvelope? {
+        fetchCount += 1
+        if let fetchError { throw fetchError }
+        guard availability.canSync else { throw CloudBackupError.accountUnavailable(availability) }
+        return stored
+    }
+
+    func deleteBackup() async throws {
+        deleteCount += 1
+        stored = nil
     }
 }

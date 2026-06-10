@@ -1,6 +1,6 @@
 # TeoPateo Privacy Policy
 
-Effective date: June 6, 2026
+Effective date: June 10, 2026
 
 TeoPateo is a quit-smoking companion. The app handles sensitive health-related information, so the default product posture is local-first storage and explicit consent before AI coach data leaves the device.
 
@@ -13,7 +13,16 @@ TeoPateo stores the following data locally on your device:
 - Check-ins, cravings, slips, triggers, reasons for quitting, replacement activities, and risky situations.
 - Coach chat history and notification settings.
 
-This local-only data is not collected by TeoPateo unless you choose to use an off-device feature such as the AI coach.
+This local-only data is not collected by TeoPateo unless you choose to use an off-device feature such as the AI coach or iCloud backup.
+
+## iCloud Backup
+
+If you turn on iCloud backup, TeoPateo copies the quit data listed above to your own private iCloud database so it survives losing or replacing your phone and follows you to a new device signed in to the same Apple ID.
+
+- The backup is stored in your private iCloud database under your Apple ID. Only you can access it. TeoPateo's developers cannot read it, and it is not sent to TeoPateo's servers.
+- The transfer goes directly between your device and Apple iCloud over an encrypted connection.
+- iCloud backup is a per-device setting. You can turn it on or off at any time from Privacy & Data in the app.
+- If you delete your local data while iCloud backup is on, TeoPateo also deletes the iCloud backup so the deleted data cannot be restored later.
 
 ## AI Coach Data Sharing
 
@@ -45,7 +54,9 @@ You can decline AI coach sharing and continue using the rest of TeoPateo.
 
 You can revoke AI coach sharing from Privacy & Data in the app. Revoking consent stops future coach sends unless you allow sharing again.
 
-You can delete local TeoPateo data from Privacy & Data in the app. This removes your quit plan, onboarding profile, check-ins, cravings, slips, coach chats, reasons, activities, risky situations, notification settings, and coach sharing consent from this device.
+You can turn iCloud backup on or off from Privacy & Data in the app. When it is on, your quit data is copied to your private iCloud; when it is off, your data stays only on this device.
+
+You can delete local TeoPateo data from Privacy & Data in the app. This removes your quit plan, onboarding profile, check-ins, cravings, slips, coach chats, reasons, activities, risky situations, notification settings, and coach sharing consent from this device. If iCloud backup is on, your iCloud backup is deleted at the same time.
 
 You can request an export of data TeoPateo controls through the contact path on the hosted privacy-policy page.
 

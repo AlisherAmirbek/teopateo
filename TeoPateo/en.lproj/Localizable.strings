@@ -853,3 +853,10 @@
 "TeoPateo is quit support, not medical care." = "TeoPateo is quit support, not medical care.";
 "The coach can help with quit-plan moments. For medication, withdrawal symptoms, severe mood changes, or treatment questions, talk with a doctor, pharmacist, or quitline counselor." = "The coach can help with quit-plan moments. For medication, withdrawal symptoms, severe mood changes, or treatment questions, talk with a doctor, pharmacist, or quitline counselor.";
 "These options work without the AI coach." = "These options work without the AI coach.";
+
+/* iCloud backup */
+"Back up to iCloud" = "Back up to iCloud";
+"Back up now" = "Back up now";
+"Restore" = "Restore";
+"Restore from iCloud?" = "Restore from iCloud?";
+"This replaces the data on this device with your most recent iCloud backup. Anything newer on this device will be lost." = "This replaces the data on this device with your most recent iCloud backup. Anything newer on this device will be lost.";

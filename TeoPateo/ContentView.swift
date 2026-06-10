@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: TeoPateoStore
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView(selection: $store.selectedTab) {
@@ -46,6 +47,18 @@ struct ContentView: View {
         }
         .onAppear {
             store.refreshNotificationAuthorization()
+            store.refreshCloudBackupAvailability()
+            store.attemptAutomaticCloudRestoreIfEligible()
+        }
+        .onChange(of: scenePhase) { phase in
+            switch phase {
+            case .active:
+                store.onEnterForeground()
+            case .background:
+                store.onEnterBackground()
+            default:
+                break
+            }
         }
     }
 }

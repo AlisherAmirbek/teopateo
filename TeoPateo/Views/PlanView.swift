@@ -979,10 +979,10 @@ struct PlanView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("When this happens", text: trigger)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(QuietFieldStyle())
                 .accessibilityIdentifier("plan-trigger-field")
             TextField("Do this instead", text: action)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(QuietFieldStyle())
                 .accessibilityIdentifier("plan-action-field")
             if let isEnabled = isEnabled {
                 Toggle("Turned on", isOn: isEnabled)
@@ -999,7 +999,7 @@ struct PlanView: View {
                 sheetShell(title: "Edit reason") {
                     VStack(alignment: .leading, spacing: 12) {
                         TextField("Reason for quitting", text: $editReason)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(QuietFieldStyle())
                         editButtons(
                             saveTitle: "Save reason",
                             save: {
@@ -1053,7 +1053,7 @@ struct PlanView: View {
         sheetShell(title: "Add reason") {
             VStack(alignment: .leading, spacing: 12) {
                 TextField("Reason for quitting", text: $newReason)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(QuietFieldStyle())
                     .accessibilityIdentifier("plan-reason-field")
                 editButtons(
                     saveTitle: "Add reason",
@@ -1160,13 +1160,13 @@ struct PlanView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             TextField("Activity", text: title)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(QuietFieldStyle())
                 .accessibilityIdentifier("plan-activity-title-field")
             TextField("Instruction", text: instruction)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(QuietFieldStyle())
                 .accessibilityIdentifier("plan-activity-instruction-field")
             TextField("Linked trigger, optional", text: linkedTrigger)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(QuietFieldStyle())
                 .accessibilityIdentifier("plan-activity-trigger-field")
             Picker("Category", selection: category) {
                 ForEach(ReplacementActivityCategory.userVisibleCases, id: \.self) { category in
@@ -1208,19 +1208,17 @@ struct PlanView: View {
         .quietCard()
     }
 
+    // Cancel via the sheet's X (or swipe-down) — no redundant Cancel button.
+    // The `cancel` parameter is kept so inline-edit callers (which use it to
+    // reset their `editingXxxID` state) compile unchanged.
     private func editButtons(
         saveTitle: String,
         save: @escaping () -> Void,
-        cancel: @escaping () -> Void
+        cancel _: @escaping () -> Void
     ) -> some View {
-        HStack(spacing: 10) {
-            Button(saveTitle, action: save)
-                .buttonStyle(QuietButtonStyle())
-                .accessibilityIdentifier("plan-sheet-save-button")
-            Button("Cancel", action: cancel)
-                .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(QuitTheme.muted)
-        }
+        Button(saveTitle, action: save)
+            .buttonStyle(QuietButtonStyle())
+            .accessibilityIdentifier("plan-sheet-save-button")
     }
 
     private func beginRuleEdit(_ rule: TriggerRule) {

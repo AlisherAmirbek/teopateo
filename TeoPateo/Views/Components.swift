@@ -18,6 +18,7 @@ struct FlexibleTags: View {
             ForEach(items, id: \.self) { item in
                 let isSelected = selected.contains(item)
                 Button {
+                    Haptics.selection()
                     if isSelected {
                         selected.remove(item)
                     } else {
@@ -51,18 +52,16 @@ struct ScreenHeader: View {
     let title: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
             Text(L10n.key(eyebrow))
                 .accessibilityHidden(true)
-                .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(QuitTheme.muted)
+                .typeLabel()
             Text(L10n.key(title))
-                .font(.rounded(.largeTitle, weight: .heavy))
-                .foregroundColor(QuitTheme.ink)
+                .typeDisplay()
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 10)
+        .padding(.bottom, Spacing.smd)
     }
 }
 
@@ -90,6 +89,77 @@ struct AnimatedMascotView: View {
             .resizable()
             .scaledToFit()
             .opacity(0.98)
+    }
+}
+
+/// A single expressive Teo pose used with restraint. Breathes gently when idle,
+/// can be tapped for a quiet, haptic reaction, and can animate in for a win
+/// moment. Honours Reduce Motion (no idle/spring motion, no pose swap).
+struct TeoMascotView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let pose: MascotPose
+    var breathing = true
+    var interactive = false
+    var entrance = false
+    var reactionPose: MascotPose = .playful
+
+    @State private var breathingIn = false
+    @State private var reacting = false
+    @State private var appeared = false
+
+    var body: some View {
+        Image(pose: reacting ? reactionPose : pose)
+            .resizable()
+            .scaledToFit()
+            .scaleEffect(scale)
+            .opacity(entrance && !appeared ? 0 : 1)
+            .animation(breathingAnimation, value: breathingIn)
+            .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.5), value: reacting)
+            .animation(reduceMotion ? nil : .spring(response: 0.55, dampingFraction: 0.72), value: appeared)
+            .contentShape(Rectangle())
+            .onTapGesture { react() }
+            .allowsHitTesting(interactive)
+            .onAppear {
+                if breathing && !reduceMotion {
+                    breathingIn = true
+                }
+                appeared = true
+            }
+            .accessibilityElement()
+            .accessibilityLabel(pose.accessibilityMood)
+            .accessibilityAddTraits(interactive ? .isButton : [])
+            .accessibilityHint(interactive ? L10n.string("Double-tap for a little encouragement.") : "")
+            .accessibilityIdentifier("teo-mascot")
+    }
+
+    private var scale: CGFloat {
+        if entrance && !appeared {
+            return reduceMotion ? 1 : 0.82
+        }
+        if reacting {
+            return 1.08
+        }
+        if breathing && !reduceMotion {
+            return breathingIn ? 1.015 : 0.985
+        }
+        return 1
+    }
+
+    private var breathingAnimation: Animation? {
+        breathing && !reduceMotion
+            ? .easeInOut(duration: 3.6).repeatForever(autoreverses: true)
+            : nil
+    }
+
+    private func react() {
+        guard interactive else { return }
+        Haptics.selection()
+        guard !reduceMotion else { return }
+        reacting = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            reacting = false
+        }
     }
 }
 
@@ -750,7 +820,7 @@ struct MotivationVaultView: View {
         if editingReasonID == reason.id {
             VStack(alignment: .leading, spacing: 8) {
                 TextField("Reason", text: $editReason)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(QuietFieldStyle())
                 HStack(spacing: 10) {
                     Button("Save reason") {
                         store.updateUserReason(reason.id, text: editReason)
@@ -807,7 +877,7 @@ struct MotivationVaultView: View {
             Text("Add reason")
                 .font(.rounded(.headline, weight: .bold))
             TextField("Example: I want mornings without chest tightness.", text: $newReason)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(QuietFieldStyle())
             Button("Add to vault") {
                 store.addUserReason(newReason, isPrimary: store.userReasons.isEmpty)
                 newReason = ""

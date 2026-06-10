@@ -31,8 +31,6 @@ struct CoachView: View {
     var body: some View {
         RootScreen {
             header
-            coachSafetyNotice
-            coachSafetyResources
             chatSwitcher
             messages
             responseStatus
@@ -110,17 +108,6 @@ struct CoachView: View {
                 .accessibilityIdentifier("coach-delete-chat-button")
             }
         }
-    }
-
-    private var coachSafetyNotice: some View {
-        MedicalBoundaryNotice(
-            title: "Coach replies are not medical care.",
-            detail: "The coach can help with quit-plan moments. For medication, withdrawal symptoms, severe mood changes, or treatment questions, talk with a doctor, pharmacist, or quitline counselor."
-        )
-    }
-
-    private var coachSafetyResources: some View {
-        SafetyResourcesView()
     }
 
     private var chatSwitcher: some View {

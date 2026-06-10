@@ -54,11 +54,215 @@ extension Font {
     }
 }
 
+// MARK: - Spacing scale (8pt system)
+//
+// Big gaps between sections (lg / xl), tight gaps within a group (xs / sm / smd).
+// Replaces ad-hoc magic numbers so every screen breathes on the same rhythm.
+
+enum Spacing {
+    /// 4 — hairline gap inside a tight pair.
+    static let xs: CGFloat = 4
+    /// 8 — within a group (title ↔ body).
+    static let sm: CGFloat = 8
+    /// 12 — comfortable within-group gap.
+    static let smd: CGFloat = 12
+    /// 16 — default block / card padding.
+    static let md: CGFloat = 16
+    /// 24 — between distinct sections.
+    static let lg: CGFloat = 24
+    /// 32 — major separation / hero breathing room.
+    static let xl: CGFloat = 32
+}
+
+// MARK: - Type scale (four roles)
+//
+// Hierarchy comes from type, weight, and colour — not borders or extra accents.
+// Four roles with deliberate jumps: Display (one per screen) ≫ Section ≫ Body ≫ Label.
+// Body defaults to `ink` (not `muted`) for contrast; `muted` is reserved for
+// genuinely secondary copy via `typeBodySecondary`.
+
 extension View {
-    func quietCard() -> some View {
+    /// One hero title per screen. Heavy, ink. ~34.
+    func typeDisplay() -> some View {
         self
-            .padding(16)
-            .background(QuitTheme.paper)
-            .cornerRadius(18)
+            .font(.system(.largeTitle, design: .rounded).weight(.heavy))
+            .foregroundColor(QuitTheme.ink)
+            .lineSpacing(2)
+    }
+
+    /// Section / card titles. Clearly larger than body. ~20 bold.
+    func typeSection() -> some View {
+        self
+            .font(.system(.title3, design: .rounded).weight(.bold))
+            .foregroundColor(QuitTheme.ink)
+    }
+
+    /// Primary body copy. Regular weight, ink. ~16.
+    func typeBody() -> some View {
+        self
+            .font(.system(.callout, design: .rounded))
+            .foregroundColor(QuitTheme.ink)
+            .lineSpacing(3)
+    }
+
+    /// Secondary / supporting copy. Muted, reserved for genuinely secondary text. ~16.
+    func typeBodySecondary() -> some View {
+        self
+            .font(.system(.callout, design: .rounded))
+            .foregroundColor(QuitTheme.muted)
+            .lineSpacing(3)
+    }
+
+    /// Eyebrows, captions, metadata. Faint, small, semibold. ~13.
+    func typeLabel() -> some View {
+        self
+            .font(.system(.footnote, design: .rounded).weight(.semibold))
+            .foregroundColor(QuitTheme.faint)
+    }
+}
+
+// MARK: - Surfaces (single canonical card)
+//
+// One committed surface: a `paper` fill, a `line` hairline, and a continuous
+// corner. No shadows or elevation — the hairline is what makes a card read as a
+// deliberate surface instead of a near-invisible "half-card".
+
+extension View {
+    func quietCard(cornerRadius: CGFloat = 18, padding: CGFloat = Spacing.md) -> some View {
+        self
+            .padding(padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(QuitSurface(cornerRadius: cornerRadius))
+    }
+}
+
+struct QuitSurface: View {
+    var cornerRadius: CGFloat = 18
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(QuitTheme.paper)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(QuitTheme.line, lineWidth: 1)
+            )
+    }
+}
+
+// MARK: - Themed text inputs
+//
+// One field/editor treatment so stock `.roundedBorder` controls never break the
+// aesthetic. A recessed `background` fill with the same hairline as cards.
+
+struct QuietFieldStyle: TextFieldStyle {
+    func _body(configuration: TextField<Self._Label>) -> some View {
+        configuration
+            .font(.rounded(.body))
+            .foregroundColor(QuitTheme.ink)
+            .tint(QuitTheme.cocoa)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(QuitFieldSurface())
+    }
+}
+
+struct QuitFieldSurface: View {
+    var cornerRadius: CGFloat = 12
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(QuitTheme.background)
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(QuitTheme.line, lineWidth: 1)
+            )
+    }
+}
+
+extension View {
+    /// Themed container for `TextEditor` so it matches `QuietFieldStyle`.
+    func quietEditor(minHeight: CGFloat = 96) -> some View {
+        self
+            .font(.rounded(.body))
+            .foregroundColor(QuitTheme.ink)
+            .tint(QuitTheme.cocoa)
+            .scrollContentBackgroundHiddenIfAvailable()
+            .frame(minHeight: minHeight)
+            .padding(10)
+            .background(QuitFieldSurface())
+    }
+
+    @ViewBuilder
+    func scrollContentBackgroundHiddenIfAvailable() -> some View {
+        if #available(iOS 16.0, *) {
+            self.scrollContentBackground(.hidden)
+        } else {
+            self
+        }
+    }
+}
+
+// MARK: - Haptics
+//
+// Quiet feedback, not loud celebration. Subtle, earned acknowledgements at the
+// moments that carry emotional weight: rescue start, outcome, save, selection.
+
+enum Haptics {
+    static func success() {
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
+    }
+
+    static func warning() {
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.warning)
+    }
+
+    static func selection() {
+        let generator = UISelectionFeedbackGenerator()
+        generator.selectionChanged()
+    }
+
+    static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle = .light) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.impactOccurred()
+    }
+}
+
+// MARK: - Mascot poses
+//
+// Teo is one expressive asset used with restraint. These poses (in
+// `images/additional`, mirrored into the asset catalog) let the mascot react to
+// progress, wins, and time of day instead of being static furniture.
+
+enum MascotPose: String, CaseIterable {
+    case waiting = "TeoWaiting"
+    case playful = "TeoPlayful"
+    case playing = "TeoPlaying"
+    case walking = "TeoWalking"
+    case laying = "TeoLaying"
+    case sleeping = "TeoSleeping"
+    case standing = "TeoStanding"
+
+    var assetName: String { rawValue }
+
+    /// A calm description for VoiceOver — the mascot is decoration, but when it
+    /// reacts to progress the mood is worth announcing.
+    var accessibilityMood: String {
+        switch self {
+        case .waiting: return "Teo is waiting calmly with you."
+        case .playful: return "Teo is celebrating with you."
+        case .playing: return "Teo is playing, proud of your streak."
+        case .walking: return "Teo is walking alongside you."
+        case .laying: return "Teo is resting."
+        case .sleeping: return "Teo is asleep. Good night."
+        case .standing: return "Teo is here with you."
+        }
+    }
+}
+
+extension Image {
+    init(pose: MascotPose) {
+        self.init(pose.assetName)
     }
 }

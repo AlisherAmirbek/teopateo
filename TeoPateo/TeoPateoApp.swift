@@ -1,8 +1,16 @@
 import SwiftUI
+import UIKit
 
 @main
 struct TeoPateoApp: App {
     @StateObject private var store = Self.makeStore()
+
+    init() {
+        // TextEditor draws on a UITextView whose opaque default background would
+        // hide the themed `quietEditor` surface on iOS 15. Make it transparent so
+        // the field treatment matches QuietFieldStyle everywhere.
+        UITextView.appearance().backgroundColor = .clear
+    }
 
     var body: some Scene {
         WindowGroup {

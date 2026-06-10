@@ -3,9 +3,15 @@ import SwiftUI
 struct OnboardingView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: TeoPateoStore
 
     @State private var step = 0
+    @State private var transitionForward = true
+    @State private var usingCustomReason = false
+    @State private var quitDatePicked = false
+    @State private var answered: Set<OnboardingStep> = []
+
     @State private var nickname = ""
     @State private var age = 32
     @State private var quitStatus: QuitStatus = .readyToQuit
@@ -19,24 +25,18 @@ struct OnboardingView: View {
     @State private var previousQuitAttemptCount: PreviousQuitAttemptCount = .one
     @State private var longestQuitAttempt: LongestQuitAttempt = .fewDays
     @State private var mainChallenge: SmokingChallenge = .cravings
-    @State private var selectedCommonSmokingTimes: Set<String> = ["After coffee", "After meals", "Work breaks"]
-    @State private var selectedEmotionalTriggers: Set<String> = ["Stress"]
+    @State private var selectedCommonSmokingTimes: Set<String> = []
+    @State private var selectedEmotionalTriggers: Set<String> = []
     @State private var selectedSituationalTriggers: Set<String> = []
     @State private var quitDatePreference: QuitDatePreference = .chooseDate
     @State private var quitDate = Calendar.current.date(byAdding: .day, value: 10, to: Date()) ?? Date()
     @State private var approachPreference: QuitApproachPreference = .notSure
-    @State private var selectedReplacementActions: Set<String> = ["Drink water", "Walk", "Breathing"]
+    @State private var selectedReplacementActions: Set<String> = []
     @State private var costPerPack = 10.0
     @State private var cigarettesPerPack = 20
     @State private var savingsGoalTitle = "Health"
     @State private var customSavingsGoal = ""
 
-    private let finalStep = 6
-    private var choiceColumns: [GridItem] {
-        [
-            GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 172 : 138), spacing: 8)
-        ]
-    }
     private let replacementActions = [
         "Drink water",
         "Walk",
@@ -57,6 +57,30 @@ struct OnboardingView: View {
         "Custom"
     ]
 
+    private let reasonCards: [(label: String, text: String)] = [
+        ("My health", "I want my health back."),
+        ("My family", "I want to be there for the people I love."),
+        ("Save money", "I am done burning money on cigarettes."),
+        ("Feel in control", "I want to feel in control again.")
+    ]
+    private let dailyAmountCards: [(label: String, value: Double)] = [
+        ("A few — about 5", 5),
+        ("Around 10", 10),
+        ("Around 15", 15),
+        ("About a pack — 20", 20),
+        ("More than a pack", 30)
+    ]
+    private let confidenceCards: [(label: String, value: Double)] = [
+        ("Not yet", 2),
+        ("A little", 4),
+        ("Somewhat", 6),
+        ("Pretty confident", 8),
+        ("Very confident", 10)
+    ]
+
+    private var steps: [OnboardingStep] { OnboardingStep.allCases }
+    private var current: OnboardingStep { OnboardingStep(rawValue: step) ?? .name }
+
     var body: some View {
         GeometryReader { proxy in
             let metrics = AdaptiveScreenMetrics(
@@ -73,32 +97,30 @@ struct OnboardingView: View {
                     progress(metrics: metrics)
 
                     ScrollView {
-                        VStack(alignment: .leading, spacing: metrics.cardSpacing) {
-                            stepContent
-                        }
-                        .padding(.horizontal, metrics.horizontalPadding)
-                        .padding(.top, metrics.usesWideLayout ? 28 : 22)
-                        .padding(.bottom, 22)
-                        .frame(maxWidth: metrics.readingMaxWidth, alignment: .leading)
-                        .frame(maxWidth: .infinity)
+                        screen(for: current)
+                            .id(step)
+                            .transition(screenTransition)
+                            .padding(.horizontal, metrics.horizontalPadding)
+                            .padding(.top, metrics.usesWideLayout ? 24 : 18)
+                            .padding(.bottom, 24)
+                            .frame(maxWidth: metrics.readingMaxWidth, alignment: .leading)
+                            .frame(maxWidth: .infinity)
                     }
 
-                    bottomBar(metrics: metrics)
+                    if showsContinueButton {
+                        bottomBar(metrics: metrics)
+                    }
                 }
             }
         }
     }
 
+    // MARK: - Chrome
+
     private func topBar(metrics: AdaptiveScreenMetrics) -> some View {
         HStack {
             Button {
-                if step == 0 {
-                    store.dismissOnboardingForNow()
-                } else {
-                    withAnimation(.easeInOut) {
-                        step -= 1
-                    }
-                }
+                back()
             } label: {
                 Image(systemName: step == 0 ? "xmark" : "chevron.left")
                     .font(.system(size: 17, weight: .bold))
@@ -124,8 +146,8 @@ struct OnboardingView: View {
     }
 
     private func progress(metrics: AdaptiveScreenMetrics) -> some View {
-        HStack(spacing: 7) {
-            ForEach(0...finalStep, id: \.self) { index in
+        HStack(spacing: 6) {
+            ForEach(steps.indices, id: \.self) { index in
                 Capsule()
                     .fill(index <= step ? QuitTheme.cocoa : QuitTheme.line)
                     .frame(height: 5)
@@ -137,65 +159,151 @@ struct OnboardingView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private func bottomBar(metrics: AdaptiveScreenMetrics) -> some View {
+        Button {
+            advance()
+        } label: {
+            HStack {
+                Text(L10n.key(current == .review ? "Create my plan" : "Continue"))
+                Image(systemName: current == .review ? "checkmark" : "arrow.right")
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(FilledButtonStyle())
+        .disabled(!canAdvance)
+        .opacity(canAdvance ? 1 : 0.45)
+        .accessibilityIdentifier("onboarding-next-button")
+        .padding(.horizontal, metrics.horizontalPadding)
+        .padding(.top, 12)
+        .padding(.bottom, 20)
+        .frame(maxWidth: metrics.readingMaxWidth)
+        .frame(maxWidth: .infinity)
+        .background(QuitTheme.background)
+    }
+
+    // MARK: - Screens
+
     @ViewBuilder
-    private var stepContent: some View {
-        switch step {
-        case 0:
-            profileStep
-        case 1:
-            intentStep
-        case 2:
-            backgroundStep
-        case 3:
-            triggerStep
-        case 4:
-            strategyStep
-        case 5:
-            savingsStep
-        default:
-            reviewStep
+    private func screen(for step: OnboardingStep) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
+            prompt(for: step)
+            input(for: step)
         }
     }
 
-    private var profileStep: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            AnimatedMascotView(size: 168)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+    private func prompt(for step: OnboardingStep) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            TeoMascotView(pose: step.pose, breathing: false, entrance: false)
+                .frame(height: 88)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 4)
+                .accessibilityHidden(true)
 
-            OnboardingHeader(
-                eyebrow: "Profile",
-                title: "What should TeoPateo call you?"
+            speechCloud(eyebrow: eyebrow(for: step), title: step.title)
+        }
+    }
+
+    /// Teo's prompt as a chat-style speech bubble whose text types in.
+    private func speechCloud(eyebrow: String, title: String) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            TypewriterText(
+                text: eyebrow,
+                font: .rounded(.footnote, weight: .semibold),
+                color: QuitTheme.muted
             )
+            .accessibilityHidden(true)
+
+            TypewriterText(
+                text: title,
+                font: .rounded(.title2, weight: .bold),
+                color: QuitTheme.ink,
+                startDelay: Double(eyebrow.count) * 0.028 + 0.15
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Spacing.md)
+        .padding(.top, 24)
+        .padding(.bottom, Spacing.md)
+        .background(SpeechBubbleShape().fill(QuitTheme.paper))
+        .overlay(SpeechBubbleShape().stroke(QuitTheme.line, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func input(for step: OnboardingStep) -> some View {
+        switch step {
+        case .name:
+            nameInput
+        case .reason:
+            reasonInput
+        case .status:
+            statusInput
+        case .dailyAmount:
+            dailyAmountInput
+        case .whenTriggers:
+            whenTriggersInput
+        case .feelingTriggers:
+            feelingTriggersInput
+        case .replacements:
+            replacementsInput
+        case .quitDate:
+            quitDateInput
+        case .approach:
+            approachInput
+        case .confidence:
+            confidenceInput
+        case .review:
+            reviewInput
+        }
+    }
+
+    private var nameInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            TextField("Name or nickname", text: $nickname)
+                .textFieldStyle(QuietFieldStyle())
+                .submitLabel(.next)
+                .onSubmit { advance() }
+                .accessibilityIdentifier("onboarding-nickname-field")
 
             MedicalBoundaryNotice()
-
-            VStack(alignment: .leading, spacing: 14) {
-                TextField("Name or nickname", text: $nickname)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("onboarding-nickname-field")
-
-                Stepper("Age \(age)", value: $age, in: 13...100)
-                    .font(.rounded(.headline, weight: .bold))
-
-                Text("Your profile stays focused on your quit plan.")
-                    .font(.rounded(.caption))
-                    .foregroundColor(QuitTheme.muted)
-            }
-            .quietCard()
         }
     }
 
-    private var intentStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            OnboardingHeader(
-                eyebrow: "Quit intent",
-                title: "Where are you in the quit journey?"
-            )
+    private var reasonInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            ForEach(reasonCards, id: \.label) { card in
+                choiceCard(card.label, isSelected: !usingCustomReason && primaryReason == card.text) {
+                    selectAndAdvance {
+                        usingCustomReason = false
+                        primaryReason = card.text
+                    }
+                }
+            }
 
-            LazyVGrid(columns: choiceColumns, alignment: .leading, spacing: 8) {
-                ForEach(QuitStatus.allCases) { status in
-                    choiceButton(title: status.title, isSelected: quitStatus == status) {
+            choiceCard("Something else", isSelected: usingCustomReason) {
+                Haptics.selection()
+                withAnimationIfPossible {
+                    usingCustomReason = true
+                    if reasonCards.contains(where: { $0.text == primaryReason }) {
+                        primaryReason = ""
+                    }
+                }
+            }
+
+            if usingCustomReason {
+                TextField("In your own words", text: $primaryReason)
+                    .textFieldStyle(QuietFieldStyle())
+                    .submitLabel(.next)
+                    .onSubmit { advance() }
+                    .accessibilityIdentifier("onboarding-reason-field")
+            }
+        }
+    }
+
+    private var statusInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            ForEach(QuitStatus.allCases) { status in
+                choiceCard(status.title, isSelected: answered.contains(.status) && quitStatus == status) {
+                    selectAndAdvance {
                         quitStatus = status
                         if status == .alreadyQuit {
                             quitDatePreference = .alreadyQuit
@@ -207,213 +315,110 @@ struct OnboardingView: View {
                     }
                 }
             }
-
-            VStack(alignment: .leading, spacing: 14) {
-                TextField("Main reason for quitting", text: $primaryReason)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityIdentifier("onboarding-reason-field")
-
-                slider("Confidence", value: $confidence)
-            }
-            .quietCard()
         }
     }
 
-    private var backgroundStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            OnboardingHeader(
-                eyebrow: "Smoking background",
-                title: "Set the baseline your plan should respect."
-            )
-
-            VStack(alignment: .leading, spacing: 14) {
-                Picker("Smoking start", selection: $smokingStartMode) {
-                    Text("Age started").tag(SmokingStartMode.ageStarted)
-                    Text("Years smoking").tag(SmokingStartMode.yearsSmoking)
+    private var dailyAmountInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            ForEach(dailyAmountCards, id: \.label) { card in
+                choiceCard(card.label, isSelected: answered.contains(.dailyAmount) && cigarettesPerDay == card.value) {
+                    selectAndAdvance { cigarettesPerDay = card.value }
                 }
-                .pickerStyle(.segmented)
+            }
+        }
+    }
 
-                if smokingStartMode == .ageStarted {
-                    Stepper("Started around age \(ageStartedSmoking)", value: $ageStartedSmoking, in: 5...100)
-                } else {
-                    Stepper("\(yearsSmoking) years smoking", value: $yearsSmoking, in: 0...80)
+    private var whenTriggersInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            Text("Pick the moments TeoPateo should protect first.")
+                .typeBodySecondary()
+            FlexibleTags(items: QuitTriggerCatalog.commonSmokingTimes, selected: $selectedCommonSmokingTimes)
+            FlexibleTags(items: QuitTriggerCatalog.situationalTriggers, selected: $selectedSituationalTriggers)
+        }
+    }
+
+    private var feelingTriggersInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            Text("Optional — skip if none fit.")
+                .typeBodySecondary()
+            FlexibleTags(items: QuitTriggerCatalog.emotionalTriggers, selected: $selectedEmotionalTriggers)
+        }
+    }
+
+    private var replacementsInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            Text("We'll line these up for the 10-minute craving timer.")
+                .typeBodySecondary()
+            FlexibleTags(items: replacementActions, selected: $selectedReplacementActions)
+        }
+    }
+
+    private var quitDateInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            ForEach(QuitDatePreference.allCases) { preference in
+                choiceCard(preference.title, isSelected: quitDatePicked && quitDatePreference == preference) {
+                    quitDatePicked = true
+                    if preference == .helpMeChoose {
+                        selectAndAdvance { quitDatePreference = preference }
+                    } else {
+                        Haptics.selection()
+                        withAnimationIfPossible {
+                            quitDatePreference = preference
+                            normalizeQuitDateForPreference()
+                        }
+                    }
                 }
+            }
 
-                Stepper(
-                    "\(Int(cigarettesPerDay)) cigarettes per day",
-                    value: $cigarettesPerDay,
-                    in: 0...80,
-                    step: 1
+            if quitDatePicked && quitDatePreference != .helpMeChoose {
+                DatePicker(
+                    quitDatePreference == .alreadyQuit ? "Quit date" : "Target date",
+                    selection: $quitDate,
+                    in: quitDateRange,
+                    displayedComponents: .date
                 )
-            }
-            .font(.rounded(.headline, weight: .bold))
-            .quietCard()
-
-            optionSection(title: "First cigarette", options: FirstCigaretteTiming.allCases.map(\.title), selected: firstCigaretteTiming.title) { title in
-                firstCigaretteTiming = FirstCigaretteTiming.allCases.first { $0.title == title } ?? firstCigaretteTiming
-            }
-
-            optionSection(title: "Previous quit attempts", options: PreviousQuitAttemptCount.allCases.map(\.title), selected: previousQuitAttemptCount.title) { title in
-                previousQuitAttemptCount = PreviousQuitAttemptCount.allCases.first { $0.title == title } ?? previousQuitAttemptCount
-            }
-
-            optionSection(title: "Longest quit attempt", options: LongestQuitAttempt.allCases.map(\.title), selected: longestQuitAttempt.title) { title in
-                longestQuitAttempt = LongestQuitAttempt.allCases.first { $0.title == title } ?? longestQuitAttempt
-            }
-
-            optionSection(title: "Main challenge", options: SmokingChallenge.allCases.map(\.title), selected: mainChallenge.title) { title in
-                mainChallenge = SmokingChallenge.allCases.first { $0.title == title } ?? mainChallenge
+                .font(.rounded(.body, weight: .semibold))
+                .tint(QuitTheme.cocoa)
+                .padding(.top, Spacing.xs)
             }
         }
     }
 
-    private var triggerStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            OnboardingHeader(
-                eyebrow: "Trigger map",
-                title: "Pick the moments TeoPateo should protect first."
-            )
-
-            tagSection(
-                title: "Common smoking times",
-                items: QuitTriggerCatalog.commonSmokingTimes,
-                selected: $selectedCommonSmokingTimes
-            )
-
-            tagSection(
-                title: "Emotional triggers",
-                items: QuitTriggerCatalog.emotionalTriggers,
-                selected: $selectedEmotionalTriggers
-            )
-
-            tagSection(
-                title: "Situational triggers",
-                items: QuitTriggerCatalog.situationalTriggers,
-                selected: $selectedSituationalTriggers
-            )
-
-            Text(triggerCountSummary)
-                .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(selectedTriggerCount == 0 ? QuitTheme.cocoa : QuitTheme.muted)
-        }
-    }
-
-    private var strategyStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            OnboardingHeader(
-                eyebrow: "Quit strategy",
-                title: "Turn intent into the first plan."
-            )
-
-            optionSection(title: "Quit date", options: QuitDatePreference.allCases.map(\.title), selected: quitDatePreference.title) { title in
-                quitDatePreference = QuitDatePreference.allCases.first { $0.title == title } ?? quitDatePreference
-                normalizeQuitDateForPreference()
-            }
-
-            if quitDatePreference != .helpMeChoose {
-                VStack(alignment: .leading, spacing: 10) {
-                    DatePicker(
-                        quitDatePreference == .alreadyQuit ? "Quit date" : "Target date",
-                        selection: $quitDate,
-                        in: quitDateRange,
-                        displayedComponents: .date
-                    )
-                    .font(.rounded(.headline, weight: .bold))
-                    Text(quitDatePreference == .alreadyQuit
-                        ? "TeoPateo will focus on relapse prevention and risky windows."
-                        : "You can adjust this later from the plan screen.")
-                    .font(.rounded(.caption))
-                    .foregroundColor(QuitTheme.muted)
+    private var approachInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            ForEach(QuitApproachPreference.allCases) { approach in
+                choiceCard(approach.title, isSelected: answered.contains(.approach) && approachPreference == approach) {
+                    selectAndAdvance { approachPreference = approach }
                 }
-                .quietCard()
-            } else {
-                Text("Suggested date: \(suggestedQuitDate.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.rounded(.headline, weight: .bold))
-                    .foregroundColor(QuitTheme.ink)
-                    .quietCard()
-            }
-
-            optionSection(title: "Approach", options: QuitApproachPreference.allCases.map(\.title), selected: approachPreference.title) { title in
-                approachPreference = QuitApproachPreference.allCases.first { $0.title == title } ?? approachPreference
-            }
-
-            tagSection(
-                title: "Replacement actions",
-                items: replacementActions,
-                selected: $selectedReplacementActions
-            )
-
-            Text(strategyPreview)
-                .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(QuitTheme.muted)
-        }
-    }
-
-    private var savingsStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            OnboardingHeader(
-                eyebrow: "Cost savings",
-                title: "Make progress accurate and concrete."
-            )
-
-            VStack(alignment: .leading, spacing: 14) {
-                Stepper(
-                    "\(currency(costPerPack)) per pack",
-                    value: $costPerPack,
-                    in: 0...100,
-                    step: 0.5
-                )
-
-                Stepper(
-                    "\(cigarettesPerPack) cigarettes per pack",
-                    value: $cigarettesPerPack,
-                    in: 1...50
-                )
-
-                Text("This drives money saved and cigarettes avoided on the dashboard.")
-                    .font(.rounded(.caption))
-                    .foregroundColor(QuitTheme.muted)
-            }
-            .font(.rounded(.headline, weight: .bold))
-            .quietCard()
-
-            optionSection(title: "Savings goal", options: savingsGoalOptions, selected: savingsGoalTitle) { title in
-                savingsGoalTitle = title
-            }
-
-            if savingsGoalTitle == "Custom" {
-                TextField("Savings goal", text: $customSavingsGoal)
-                    .textFieldStyle(.roundedBorder)
-                    .quietCard()
-                    .accessibilityIdentifier("onboarding-custom-savings-field")
             }
         }
     }
 
-    private var reviewStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            OnboardingHeader(
-                eyebrow: "First plan",
-                title: "TeoPateo will start with this rescue setup."
-            )
+    private var confidenceInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            ForEach(confidenceCards, id: \.label) { card in
+                choiceCard(card.label, isSelected: confidence == card.value) {
+                    selectAndAdvance { confidence = card.value }
+                }
+            }
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 12) {
+    private var reviewInput: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            VStack(alignment: .leading, spacing: Spacing.smd) {
                 Text(generatedPlanPreview.planSummary.summary)
-                    .font(.rounded(.subheadline))
-                    .foregroundColor(QuitTheme.muted)
+                    .typeBody()
                     .fixedSize(horizontal: false, vertical: true)
                 OnboardingReviewRow(label: "First-week goal", value: generatedPlanPreview.firstWeekGoal)
                 OnboardingReviewRow(label: "Next best action", value: generatedPlanPreview.nextBestAction)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .quietCard()
 
-            VStack(alignment: .leading, spacing: 14) {
-                OnboardingReviewRow(label: "Profile", value: "\(nickname.trimmingCharacters(in: .whitespacesAndNewlines)), age \(age)")
-                OnboardingReviewRow(label: "Status", value: quitStatus.title)
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                OnboardingReviewRow(label: "You", value: nickname.trimmingCharacters(in: .whitespacesAndNewlines))
                 OnboardingReviewRow(label: "Approach", value: resolvedApproachTitle)
                 OnboardingReviewRow(label: "Quit date", value: resolvedQuitDate.formatted(date: .abbreviated, time: .omitted))
-                OnboardingReviewRow(label: "Baseline", value: "\(Int(cigarettesPerDay)) cigarettes/day")
                 OnboardingReviewRow(label: "Top triggers", value: selectedTriggerList.prefix(4).joined(separator: ", "))
                 OnboardingReviewRow(label: "Daily focus", value: generatedDailyFocusPreview)
                 OnboardingReviewRow(label: "Reason", value: primaryReason.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -421,88 +426,40 @@ struct OnboardingView: View {
                     OnboardingReviewRow(label: "Savings", value: savingsSummary)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             .quietCard()
-
-            Text("Craving mode will use these answers to order activities and trigger rules before the first logged craving.")
-                .font(.rounded(.caption))
-                .foregroundColor(QuitTheme.muted)
         }
     }
 
-    private func bottomBar(metrics: AdaptiveScreenMetrics) -> some View {
-        VStack(spacing: 10) {
-            Button {
-                advance()
-            } label: {
-                HStack {
-                    Text(L10n.key(step == finalStep ? "Create my plan" : "Continue"))
-                    Image(systemName: step == finalStep ? "checkmark" : "arrow.right")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(FilledButtonStyle())
-            .disabled(!canAdvance)
-            .opacity(canAdvance ? 1 : 0.45)
-            .accessibilityIdentifier("onboarding-next-button")
-        }
-        .padding(.horizontal, metrics.horizontalPadding)
-        .padding(.top, 12)
-        .padding(.bottom, 20)
-        .frame(maxWidth: metrics.readingMaxWidth)
-        .frame(maxWidth: .infinity)
-        .background(QuitTheme.background)
-    }
+    // MARK: - Choice card
 
-    private func tagSection(
-        title: String,
-        items: [String],
-        selected: Binding<Set<String>>
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.rounded(.headline, weight: .bold))
-            FlexibleTags(items: items, selected: selected)
-        }
-        .quietCard()
-    }
-
-    private func optionSection(
-        title: String,
-        options: [String],
-        selected: String,
-        select: @escaping (String) -> Void
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.rounded(.headline, weight: .bold))
-            LazyVGrid(columns: choiceColumns, alignment: .leading, spacing: 8) {
-                ForEach(options, id: \.self) { option in
-                    choiceButton(title: option, isSelected: selected == option) {
-                        select(option)
-                    }
-                }
-            }
-        }
-        .quietCard()
-    }
-
-    private func choiceButton(
-        title: String,
+    private func choiceCard(
+        _ title: String,
         isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Text(L10n.key(title))
-                .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(isSelected ? QuitTheme.onCocoa : QuitTheme.cocoa)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 10)
-                .fixedSize(horizontal: false, vertical: true)
-                .background(isSelected ? QuitTheme.cocoa : QuitTheme.peach.opacity(0.62))
-                .cornerRadius(14)
+            HStack(spacing: Spacing.smd) {
+                Text(L10n.key(title))
+                    .font(.rounded(.body, weight: .semibold))
+                    .foregroundColor(isSelected ? QuitTheme.onCocoa : QuitTheme.ink)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: Spacing.sm)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(isSelected ? QuitTheme.onCocoa : QuitTheme.faint)
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, 17)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isSelected ? QuitTheme.cocoa : QuitTheme.paper)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(isSelected ? Color.clear : QuitTheme.line, lineWidth: 1)
+                    )
+            )
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityLabel(L10n.string(title))
@@ -511,44 +468,126 @@ struct OnboardingView: View {
         .accessibilityIdentifier("onboarding-choice-\(title)")
     }
 
-    private func slider(_ title: String, value: Binding<Double>) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title)
-                    .font(.rounded(.subheadline, weight: .bold))
-                Spacer()
-                Text("\(Int(value.wrappedValue))")
-                    .font(.rounded(.subheadline, weight: .bold))
-                    .foregroundColor(QuitTheme.cocoa)
-            }
-            Slider(value: value, in: 1...10, step: 1)
-                .accentColor(QuitTheme.cocoa)
-                .accessibilityLabel(title)
-                .accessibilityValue(L10n.scoreValue(Int(value.wrappedValue)))
+    // MARK: - Conversational copy
+
+    private var displayName: String {
+        let trimmed = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "" : trimmed
+    }
+
+    private func eyebrow(for step: OnboardingStep) -> String {
+        switch step {
+        case .name: return "Hi, I'm Teo."
+        case .reason: return displayName.isEmpty ? "Nice to meet you." : "Nice to meet you, \(displayName)."
+        case .status: return "No judgment here."
+        case .dailyAmount: return "Just so I get the full picture."
+        case .whenTriggers: return "Let's map your danger zones."
+        case .feelingTriggers: return "Cravings often ride on a feeling."
+        case .replacements: return "We'll have a backup ready."
+        case .quitDate: return "Your timeline, your call."
+        case .approach: return "However you want to do this."
+        case .confidence: return "However you feel is okay."
+        case .review: return displayName.isEmpty ? "All set." : "All set, \(displayName)."
+        }
+    }
+
+    // MARK: - Navigation
+
+    private var screenTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .move(edge: transitionForward ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: transitionForward ? .leading : .trailing).combined(with: .opacity)
+        )
+    }
+
+    private var showsContinueButton: Bool {
+        switch current {
+        case .name, .whenTriggers, .feelingTriggers, .replacements, .review:
+            return true
+        case .reason:
+            return usingCustomReason
+        case .quitDate:
+            return quitDatePicked && quitDatePreference != .helpMeChoose
+        default:
+            return false
         }
     }
 
     private var canAdvance: Bool {
-        switch step {
-        case 0:
+        switch current {
+        case .name:
             return !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case 1:
+        case .reason:
             return !primaryReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case 2:
-            return cigarettesPerDay > 0
-        case 3:
+        case .whenTriggers:
             return selectedTriggerCount > 0
-        case 4:
+        case .replacements:
             return !selectedReplacementActions.isEmpty
-        case 5:
-            return costPerPack > 0 &&
-                cigarettesPerPack > 0 &&
-                (savingsGoalTitle != "Custom" || !customSavingsGoal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        default:
-            return !primaryReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        case .review:
+            return !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                !primaryReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                 selectedTriggerCount > 0
+        default:
+            return true
         }
     }
+
+    private func advance() {
+        guard canAdvance else { return }
+
+        if current == .review {
+            Haptics.success()
+            store.completeOnboarding(currentPlanInput)
+            return
+        }
+
+        Haptics.impact(.light)
+        goTo(step + 1, forward: true)
+    }
+
+    private func back() {
+        if step == 0 {
+            store.dismissOnboardingForNow()
+        } else {
+            goTo(step - 1, forward: false)
+        }
+    }
+
+    private func goTo(_ newStep: Int, forward: Bool) {
+        transitionForward = forward
+        let clamped = min(max(newStep, 0), steps.count - 1)
+        if reduceMotion {
+            step = clamped
+        } else {
+            withAnimation(.easeInOut(duration: 0.28)) {
+                step = clamped
+            }
+        }
+    }
+
+    /// Used by single-choice cards: register the choice with a selection haptic,
+    /// then glide to the next screen so the flow feels tap-forward.
+    private func selectAndAdvance(_ apply: @escaping () -> Void) {
+        Haptics.selection()
+        withAnimationIfPossible {
+            apply()
+            answered.insert(current)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            goTo(step + 1, forward: true)
+        }
+    }
+
+    private func withAnimationIfPossible(_ body: () -> Void) {
+        if reduceMotion {
+            body()
+        } else {
+            withAnimation(.easeInOut(duration: 0.2), body)
+        }
+    }
+
+    // MARK: - Preserved plan logic
 
     private var selectedTriggerCount: Int {
         selectedCommonSmokingTimes.count + selectedEmotionalTriggers.count + selectedSituationalTriggers.count
@@ -562,30 +601,6 @@ struct OnboardingView: View {
 
     private var selectedReplacementActionList: [String] {
         orderedSelection(replacementActions, selected: selectedReplacementActions)
-    }
-
-    private var triggerCountSummary: String {
-        if selectedTriggerCount == 0 {
-            return "Choose at least one trigger."
-        }
-        if selectedTriggerCount == 1 {
-            return "1 trigger selected."
-        }
-        return "\(selectedTriggerCount) triggers selected."
-    }
-
-    private var strategyPreview: String {
-        let mode = resolvedApproachTitle
-        if mode == "Taper" {
-            return "First target: \(Int(max(cigarettesPerDay - taperReductionStepPreview, 0))) cigarettes/day."
-        }
-        return quitStatus == .alreadyQuit
-            ? "Craving mode will focus on relapse prevention."
-            : "Craving mode will focus on substitutes before the quit date."
-    }
-
-    private var taperReductionStepPreview: Double {
-        confidence <= 4 || firstCigaretteTiming == .withinFiveMinutes ? 1 : min(max((cigarettesPerDay * 0.2).rounded(), 1), 3)
     }
 
     private var resolvedApproachTitle: String {
@@ -702,19 +717,6 @@ struct OnboardingView: View {
         )
     }
 
-    private func advance() {
-        guard canAdvance else { return }
-
-        if step == finalStep {
-            store.completeOnboarding(currentPlanInput)
-            return
-        }
-
-        withAnimation(.easeInOut) {
-            step += 1
-        }
-    }
-
     private func normalizeQuitDateForPreference() {
         if quitDatePreference == .alreadyQuit {
             quitDate = min(quitDate, Date())
@@ -738,27 +740,55 @@ struct OnboardingView: View {
     }
 }
 
+private enum OnboardingStep: Int, CaseIterable {
+    case name
+    case reason
+    case status
+    case dailyAmount
+    case whenTriggers
+    case feelingTriggers
+    case replacements
+    case quitDate
+    case approach
+    case confidence
+    case review
+
+    var title: String {
+        switch self {
+        case .name: return "What should I call you?"
+        case .reason: return "What's pulling you to quit?"
+        case .status: return "Where are you with quitting?"
+        case .dailyAmount: return "How much do you smoke?"
+        case .whenTriggers: return "When do cravings hit hardest?"
+        case .feelingTriggers: return "What feelings set them off?"
+        case .replacements: return "What could you do instead?"
+        case .quitDate: return "When's your quit day?"
+        case .approach: return "How do you want to quit?"
+        case .confidence: return "How confident do you feel?"
+        case .review: return "Here's your starter plan."
+        }
+    }
+
+    var pose: MascotPose {
+        switch self {
+        case .name: return .standing
+        case .reason: return .waiting
+        case .status: return .standing
+        case .dailyAmount: return .waiting
+        case .whenTriggers: return .walking
+        case .feelingTriggers: return .waiting
+        case .replacements: return .playful
+        case .quitDate: return .walking
+        case .approach: return .standing
+        case .confidence: return .playing
+        case .review: return .playing
+        }
+    }
+}
+
 private enum SmokingStartMode {
     case ageStarted
     case yearsSmoking
-}
-
-private struct OnboardingHeader: View {
-    let eyebrow: String
-    let title: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(L10n.key(eyebrow))
-                .accessibilityHidden(true)
-                .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(QuitTheme.muted)
-            Text(L10n.key(title))
-                .font(.rounded(.largeTitle, weight: .heavy))
-                .foregroundColor(QuitTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
 }
 
 private struct OnboardingReviewRow: View {
@@ -766,14 +796,105 @@ private struct OnboardingReviewRow: View {
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
             Text(L10n.key(label))
-                .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(QuitTheme.muted)
+                .typeLabel()
             Text(value.isEmpty ? "Not set" : value)
-                .font(.rounded(.subheadline, weight: .bold))
+                .font(.rounded(.callout, weight: .semibold))
                 .foregroundColor(QuitTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+/// Reveals text one character at a time, like Teo typing a message. The full
+/// string is reserved (invisible) so the bubble never reflows, and is exposed as
+/// the accessibility label so VoiceOver and UI tests see the whole message.
+/// Honors Reduce Motion by showing the text immediately.
+private struct TypewriterText: View {
+    let text: String
+    let font: Font
+    let color: Color
+    var interval: Double = 0.028
+    var startDelay: Double = 0
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var count = 0
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Text(text)
+                .font(font)
+                .foregroundColor(.clear)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(true)
+            Text(String(text.prefix(count)))
+                .font(font)
+                .foregroundColor(color)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(text)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: text) {
+            await typeOut()
+        }
+    }
+
+    private func typeOut() async {
+        if reduceMotion {
+            count = text.count
+            return
+        }
+        count = 0
+        if startDelay > 0 {
+            try? await Task.sleep(nanoseconds: UInt64(startDelay * 1_000_000_000))
+        }
+        guard !text.isEmpty else { return }
+        for index in 1...text.count {
+            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            if Task.isCancelled { return }
+            count = index
+        }
+    }
+}
+
+/// A rounded message bubble with a small tail at the top, pointing up toward Teo.
+private struct SpeechBubbleShape: Shape {
+    var cornerRadius: CGFloat = 18
+    var tailHeight: CGFloat = 11
+    var tailWidth: CGFloat = 18
+    var tailInset: CGFloat = 42
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let r = min(cornerRadius, (rect.height - tailHeight) / 2)
+        let bodyTop = rect.minY + tailHeight
+
+        path.move(to: CGPoint(x: rect.minX + r, y: bodyTop))
+        path.addLine(to: CGPoint(x: tailInset - tailWidth / 2, y: bodyTop))
+        path.addLine(to: CGPoint(x: tailInset, y: rect.minY))
+        path.addLine(to: CGPoint(x: tailInset + tailWidth / 2, y: bodyTop))
+        path.addLine(to: CGPoint(x: rect.maxX - r, y: bodyTop))
+        path.addArc(
+            center: CGPoint(x: rect.maxX - r, y: bodyTop + r),
+            radius: r, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        path.addArc(
+            center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
+            radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false
+        )
+        path.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+        path.addArc(
+            center: CGPoint(x: rect.minX + r, y: rect.maxY - r),
+            radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false
+        )
+        path.addLine(to: CGPoint(x: rect.minX, y: bodyTop + r))
+        path.addArc(
+            center: CGPoint(x: rect.minX + r, y: bodyTop + r),
+            radius: r, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false
+        )
+        path.closeSubpath()
+        return path
     }
 }

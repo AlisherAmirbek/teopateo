@@ -566,10 +566,7 @@ private struct HistoryEntryDetailView: View {
                 .font(.rounded(.caption, weight: .bold))
                 .foregroundColor(QuitTheme.muted)
             TextEditor(text: text)
-                .frame(height: 96)
-                .padding(8)
-                .background(QuitTheme.background)
-                .cornerRadius(12)
+                .quietEditor(minHeight: 96)
                 .accessibilityIdentifier(label == "Recovery action" ? "history-recovery-editor" : "history-note-editor")
         }
     }

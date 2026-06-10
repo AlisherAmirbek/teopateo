@@ -85,11 +85,9 @@ struct CravingModeView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 7) {
                 Text("Craving mode")
-                    .font(.rounded(.caption, weight: .bold))
-                    .foregroundColor(QuitTheme.muted)
+                    .typeLabel()
                 Text(L10n.key(headerTitle))
-                    .font(.rounded(.largeTitle, weight: .heavy))
-                    .foregroundColor(QuitTheme.ink)
+                    .typeDisplay()
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
@@ -118,21 +116,18 @@ struct CravingModeView: View {
         }
     }
 
+    // In-the-moment view: only the timer, one action, and one reason. Intensity,
+    // triggers, and notes move to the after-the-fact log step.
     @ViewBuilder
     private func rescueContent(metrics: AdaptiveScreenMetrics) -> some View {
         if metrics.usesWideLayout {
             HStack(alignment: .top, spacing: metrics.columnSpacing) {
-                VStack(alignment: .leading, spacing: metrics.cardSpacing) {
-                    timerPanel(metrics: metrics)
-                    motivationPanel
-                    intensityNowPanel
-                }
-                .frame(maxWidth: 420, alignment: .top)
+                timerPanel(metrics: metrics)
+                    .frame(maxWidth: 420, alignment: .top)
 
                 VStack(alignment: .leading, spacing: metrics.cardSpacing) {
                     rescueScriptPanel
-                    activityPanel(title: "Pick one action now", subtitle: "Do one small replacement while the timer runs.")
-                    triggerPanel(title: "Optional trigger")
+                    motivationPanel
                 }
                 .frame(maxWidth: .infinity, alignment: .top)
             }
@@ -141,23 +136,19 @@ struct CravingModeView: View {
                 timerPanel(metrics: metrics)
                 rescueScriptPanel
                 motivationPanel
-                intensityNowPanel
-                activityPanel(title: "Pick one action now", subtitle: "Do one small replacement while the timer runs.")
-                triggerPanel(title: "Optional trigger")
             }
         }
     }
 
+    // Log step: the quiet win acknowledgement first, then the logging that used
+    // to crowd the in-the-moment screen.
     @ViewBuilder
     private func recoveredContent(metrics: AdaptiveScreenMetrics) -> some View {
         if metrics.usesWideLayout {
             HStack(alignment: .top, spacing: metrics.columnSpacing) {
                 VStack(alignment: .leading, spacing: metrics.cardSpacing) {
-                    outcomeIntro(
-                        title: "Craving handled",
-                        message: "Save the parts that made this easier so the next rescue can be sharper."
-                    )
-                    sliderPanel(title: "Craving after rescue", value: $finalIntensity)
+                    winAcknowledgement
+                    sliderPanel(title: "Craving now", value: $finalIntensity)
                     notePanel(title: "Short note", placeholder: "What helped this pass?", text: $reflectionNote)
                     outcomeSaveButtons(
                         primaryTitle: "Save rescue",
@@ -167,6 +158,7 @@ struct CravingModeView: View {
                 .frame(maxWidth: 420, alignment: .top)
 
                 VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+                    sliderPanel(title: "How strong did it get?", value: $initialIntensity)
                     activityPanel(title: "What helped?", subtitle: "Pick the action that worked best, if any.")
                     triggerPanel(title: "What set it off?")
                 }
@@ -174,20 +166,39 @@ struct CravingModeView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: metrics.cardSpacing) {
-                outcomeIntro(
-                    title: "Craving handled",
-                    message: "Save the parts that made this easier so the next rescue can be sharper."
-                )
-                sliderPanel(title: "Craving after rescue", value: $finalIntensity)
+                winAcknowledgement
+                sliderPanel(title: "Craving now", value: $finalIntensity)
+                notePanel(title: "Short note", placeholder: "What helped this pass?", text: $reflectionNote)
+                sliderPanel(title: "How strong did it get?", value: $initialIntensity)
                 activityPanel(title: "What helped?", subtitle: "Pick the action that worked best, if any.")
                 triggerPanel(title: "What set it off?")
-                notePanel(title: "Short note", placeholder: "What helped this pass?", text: $reflectionNote)
                 outcomeSaveButtons(
                     primaryTitle: "Save rescue",
                     primaryAction: saveRecoveredCraving
                 )
             }
         }
+    }
+
+    // A calm, earned acknowledgement when a craving is beaten — a mascot pose and
+    // a soft entrance, not confetti. The success haptic fires in `moveToRecovered`.
+    private var winAcknowledgement: some View {
+        VStack(spacing: Spacing.smd) {
+            TeoMascotView(pose: .playful, breathing: true, entrance: true)
+                .frame(height: 140)
+                .accessibilityHidden(true)
+            Text("You made it through")
+                .typeSection()
+                .multilineTextAlignment(.center)
+            Text("That urge passed without a cigarette. Teo is proud of you.")
+                .typeBodySecondary()
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, Spacing.sm)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("You made it through. That urge passed without a cigarette.")
     }
 
     @ViewBuilder
@@ -279,23 +290,18 @@ struct CravingModeView: View {
 
     private var rescueScriptPanel: some View {
         let rescue = store.currentQuitPlan.cravingRescuePlan
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: Spacing.smd) {
             Text("Rescue script")
-                .font(.rounded(.headline, weight: .bold))
+                .typeSection()
             Text(rescue.primaryScript)
-                .font(.rounded(.subheadline))
-                .foregroundColor(QuitTheme.muted)
+                .typeBody()
                 .fixedSize(horizontal: false, vertical: true)
             Text(rescue.backupAction)
-                .font(.rounded(.caption, weight: .bold))
+                .font(.rounded(.footnote, weight: .bold))
                 .foregroundColor(QuitTheme.cocoa)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .quietCard()
-    }
-
-    private var intensityNowPanel: some View {
-        sliderPanel(title: "Craving now", value: $initialIntensity)
     }
 
     private var motivationPanel: some View {
@@ -304,12 +310,11 @@ struct CravingModeView: View {
             ? store.reasonForCravingMode()
             : reasons[safeReasonIndex(count: reasons.count)].text
 
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: Spacing.smd) {
             Text("Reason to wait")
-                .font(.rounded(.headline, weight: .bold))
+                .typeSection()
             Text(text)
-                .font(.rounded(.subheadline))
-                .foregroundColor(QuitTheme.ink)
+                .typeBody()
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 10) {
@@ -332,24 +337,22 @@ struct CravingModeView: View {
     }
 
     private func outcomeIntro(title: String, message: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
             Text(title)
-                .font(.rounded(.headline, weight: .bold))
+                .typeSection()
             Text(message)
-                .font(.rounded(.subheadline))
-                .foregroundColor(QuitTheme.muted)
+                .typeBodySecondary()
         }
         .quietCard()
     }
 
     private func activityPanel(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
                 Text(title)
-                    .font(.rounded(.headline, weight: .bold))
+                    .typeSection()
                 Text(subtitle)
-                    .font(.rounded(.caption))
-                    .foregroundColor(QuitTheme.muted)
+                    .typeBodySecondary()
             }
 
             ForEach(store.activitiesForCurrentCraving(triggers: selectedTriggers)) { activity in
@@ -383,9 +386,9 @@ struct CravingModeView: View {
     }
 
     private func triggerPanel(title: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
             Text(title)
-                .font(.rounded(.headline, weight: .bold))
+                .typeSection()
 
             FlexibleTags(items: store.cravingTriggerOptions, selected: $selectedTriggers)
         }
@@ -393,11 +396,11 @@ struct CravingModeView: View {
     }
 
     private func notePanel(title: String, placeholder: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
             Text(title)
-                .font(.rounded(.headline, weight: .bold))
+                .typeSection()
             TextField(placeholder, text: text)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(QuietFieldStyle())
                 .accessibilityIdentifier("craving-note-field")
         }
         .quietCard()
@@ -577,6 +580,8 @@ struct CravingModeView: View {
     }
 
     private func startTimer(at date: Date = Date()) {
+        Haptics.impact(.medium)
+
         if secondsRemaining <= 0 {
             resetTimerState(at: date)
         }
@@ -676,12 +681,14 @@ struct CravingModeView: View {
     }
 
     private func moveToRecovered() {
+        Haptics.success()
         stopTimerForOutcome()
         finalIntensity = min(initialIntensity, max(1.0, initialIntensity - 3.0))
         step = .recovered
     }
 
     private func moveToSlipped() {
+        Haptics.impact(.soft)
         stopTimerForOutcome()
         finalIntensity = initialIntensity
         step = .slipped
@@ -700,6 +707,7 @@ struct CravingModeView: View {
             reflectionNote: reflectionNote,
             selectedTriggers: selectedTriggers
         )
+        Haptics.success()
         resetTimer()
         dismiss()
     }
@@ -719,6 +727,7 @@ struct CravingModeView: View {
             recoveryAction: store.currentQuitPlan.slipRecoveryPlan.defaultRecoveryAction,
             selectedTriggers: selectedTriggers
         )
+        Haptics.selection()
         resetTimer()
         dismiss()
     }

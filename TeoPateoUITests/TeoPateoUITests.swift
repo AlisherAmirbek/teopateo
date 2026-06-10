@@ -11,26 +11,32 @@ final class TeoPateoUITests: XCTestCase {
     func testOnboardingCreatesPlanAndDismissesToToday() {
         launchApp(seedCompleted: false)
 
-        XCTAssertTrue(app.staticTexts["What should TeoPateo call you?"].waitForExistence(timeout: 5))
+        // Name (conversational first screen + medical boundary).
+        XCTAssertTrue(app.staticTexts["What should I call you?"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["TeoPateo is quit support, not medical care."].waitForExistence(timeout: 3))
         let nicknameField = app.textFields["onboarding-nickname-field"]
         XCTAssertTrue(nicknameField.waitForExistence(timeout: 3))
         nicknameField.tap()
         nicknameField.typeText("Alex")
-        app.staticTexts["What should TeoPateo call you?"].tap()
+        app.staticTexts["What should I call you?"].tap()
         app.buttons["onboarding-next-button"].tap()
 
-        let reasonField = app.textFields["onboarding-reason-field"]
-        XCTAssertTrue(reasonField.waitForExistence(timeout: 3))
-        reasonField.tap()
-        reasonField.typeText("I want clear mornings")
+        // One decision per screen — single-choice cards advance on tap.
+        tapOnboardingChoiceAndWaitFor("My health", next: "Where are you with quitting?")
+        tapOnboardingChoiceAndWaitFor("Ready to quit", next: "How much do you smoke?")
+        tapOnboardingChoiceAndWaitFor("Around 10", next: "When do cravings hit hardest?")
 
-        app.staticTexts["Where are you in the quit journey?"].tap()
-        tapOnboardingNextAndWaitFor("Set the baseline your plan should respect.")
-        tapOnboardingNextAndWaitFor("Pick the moments TeoPateo should protect first.")
-        tapOnboardingNextAndWaitFor("Turn intent into the first plan.")
-        tapOnboardingNextAndWaitFor("Make progress accurate and concrete.")
-        tapOnboardingNextAndWaitFor("TeoPateo will start with this rescue setup.")
+        // Multi-select screens start empty — pick at least one, then Continue.
+        selectOnboardingTag("After coffee")
+        tapOnboardingNextAndWaitFor("What feelings set them off?")
+        tapOnboardingNextAndWaitFor("What could you do instead?")
+        selectOnboardingTag("Drink water")
+        tapOnboardingNextAndWaitFor("When's your quit day?")
+
+        tapOnboardingChoiceAndWaitFor("Help me choose", next: "How do you want to quit?")
+        tapOnboardingChoiceAndWaitFor("Cold turkey", next: "How confident do you feel?")
+        tapOnboardingChoiceAndWaitFor("Pretty confident", next: "Here's your starter plan.")
+
         app.buttons["onboarding-next-button"].tap()
 
         XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 5))
@@ -177,8 +183,6 @@ final class TeoPateoUITests: XCTestCase {
 
         app.tabBars.buttons["Coach"].tap()
         XCTAssertTrue(app.staticTexts["Get help before you smoke."].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Coach replies are not medical care."].waitForExistence(timeout: 3))
-        XCTAssertTrue(element("safety-resources-card").waitForExistence(timeout: 3))
 
         tapWhenVisible(app.buttons["coach-prompt-I want to smoke now"])
         XCTAssertTrue(app.staticTexts["Allow AI coach replies?"].waitForExistence(timeout: 3))
@@ -276,6 +280,19 @@ final class TeoPateoUITests: XCTestCase {
     private func tapOnboardingNextAndWaitFor(_ label: String) {
         app.buttons["onboarding-next-button"].tap()
         XCTAssertTrue(app.staticTexts[label].waitForExistence(timeout: 5))
+    }
+
+    private func tapOnboardingChoiceAndWaitFor(_ choice: String, next: String) {
+        let button = app.buttons["onboarding-choice-\(choice)"]
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "Expected onboarding choice \(choice)")
+        button.tap()
+        XCTAssertTrue(app.staticTexts[next].waitForExistence(timeout: 5), "Expected next onboarding screen \(next)")
+    }
+
+    private func selectOnboardingTag(_ item: String) {
+        let tag = app.buttons["tag-\(item)"]
+        XCTAssertTrue(tag.waitForExistence(timeout: 5), "Expected onboarding tag \(item)")
+        tapWhenVisible(tag)
     }
 
     private func waitUntil(timeout: TimeInterval, predicate: () -> Bool) -> Bool {

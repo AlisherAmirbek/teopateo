@@ -26,6 +26,9 @@ struct TodayView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
+            .safeAreaInset(edge: .bottom) {
+                rescueBar(metrics: metrics)
+            }
         }
         .sheet(isPresented: $isNotificationsPresented) {
             NotificationSettingsView()
@@ -43,26 +46,23 @@ struct TodayView: View {
     }
 
     private var compactContent: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
             header
             StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
-                .padding(.top, 8)
             if !store.isOnboardingCompleted {
                 onboardingPrompt
             }
+            mascotHero(height: 278)
             nextActionCard
             pendingSuggestionCard
-            mascot(height: 278)
             planWeekCard
-            rescueButton
-            safetyResources
-            riskCard
             facts
+            safetyResources
         }
     }
 
     private func wideContent(metrics: AdaptiveScreenMetrics) -> some View {
-        VStack(alignment: .leading, spacing: metrics.cardSpacing) {
+        VStack(alignment: .leading, spacing: Spacing.lg) {
             header
             StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)
 
@@ -71,116 +71,34 @@ struct TodayView: View {
             }
 
             HStack(alignment: .top, spacing: metrics.columnSpacing) {
-                VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: Spacing.lg) {
+                    mascotHero(height: 332)
                     nextActionCard
                     pendingSuggestionCard
-                    mascot(height: 332)
-                    rescueButton
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+
+                VStack(alignment: .leading, spacing: Spacing.lg) {
+                    planWeekCard
+                    facts
                     safetyResources
                 }
                 .frame(maxWidth: .infinity, alignment: .top)
-
-                VStack(spacing: 0) {
-                    planWeekCard
-                    riskCard
-                    facts
-                }
-                .frame(maxWidth: .infinity, alignment: .top)
             }
         }
     }
 
-    private var onboardingPrompt: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "list.clipboard")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(QuitTheme.cocoa)
-                    .frame(width: 34, height: 34)
-                    .background(QuitTheme.peach.opacity(0.74))
-                    .clipShape(Circle())
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Finish your quit plan")
-                        .font(.rounded(.headline, weight: .bold))
-                        .foregroundColor(QuitTheme.ink)
-                    Text("Set your triggers, reason, and first rescue actions.")
-                        .font(.rounded(.caption))
-                        .foregroundColor(QuitTheme.muted)
-                }
-            }
-
-            Button("Continue setup") {
-                store.presentOnboarding()
-            }
-            .buttonStyle(QuietButtonStyle())
-            .accessibilityIdentifier("continue-setup-button")
-        }
-        .quietCard()
-        .padding(.top, 14)
-    }
-
-    @ViewBuilder
-    private var nextActionCard: some View {
-        let action = store.currentQuitPlan.nextBestAction.trimmingCharacters(in: .whitespacesAndNewlines)
-        if store.isOnboardingCompleted && !action.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Next best action")
-                    .font(.rounded(.headline, weight: .bold))
-                Text(action)
-                    .font(.rounded(.subheadline))
-                    .foregroundColor(QuitTheme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let focus = store.todaysFocusPlan {
-                    Divider()
-                    Text(focus.title)
-                        .font(.rounded(.caption, weight: .bold))
-                        .foregroundColor(QuitTheme.cocoa)
-                    Text(focus.action)
-                        .font(.rounded(.caption))
-                        .foregroundColor(QuitTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .quietCard()
-            .padding(.top, 14)
-        }
-    }
-
-    @ViewBuilder
-    private var pendingSuggestionCard: some View {
-        if let suggestion = store.highestPriorityPendingPlanSuggestion {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Plan suggestion")
-                    .font(.rounded(.headline, weight: .bold))
-                Text(suggestion.title)
-                    .font(.rounded(.subheadline, weight: .bold))
-                    .foregroundColor(QuitTheme.ink)
-                Text(suggestion.evidenceSummary)
-                    .font(.rounded(.caption))
-                    .foregroundColor(QuitTheme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 10) {
-                    Button("Accept") {
-                        store.acceptPlanSuggestion(suggestion.id)
-                    }
-                    .buttonStyle(QuietButtonStyle())
-                    Button("Review") {
-                        store.selectedTab = .plan
-                    }
-                    .buttonStyle(QuietButtonStyle())
-                }
-            }
-            .quietCard()
-            .padding(.top, 14)
-        }
-    }
+    // MARK: - Header
 
     private var header: some View {
-        HStack {
-            Text("TeoPateo")
-                .font(.rounded(.caption, weight: .bold))
-                .foregroundColor(QuitTheme.muted)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("TeoPateo")
+                    .typeLabel()
+                Text(greetingTitle)
+                    .typeDisplay()
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Spacer()
 
@@ -197,87 +115,139 @@ struct TodayView: View {
         }
     }
 
-    private func mascot(height: CGFloat) -> some View {
-        MascotRoomView()
-            .frame(height: height)
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<12: return "Good morning"
+        case 12..<17: return "Good afternoon"
+        case 17..<22: return "Good evening"
+        default: return "Good night"
+        }
+    }
+
+    private var greetingTitle: String {
+        let name = store.displayName
+        return name == "you" ? greeting : "\(greeting), \(name)"
+    }
+
+    // MARK: - Mascot hero (kept on the home screen, now reactive)
+
+    private func mascotHero(height: CGFloat) -> some View {
+        VStack(spacing: Spacing.smd) {
+            MascotRoomView()
+                .frame(height: height)
+            Text(streakCaption)
+                .typeBodySecondary()
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("today-mascot-caption")
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var streakCaption: String {
+        if !store.isOnboardingCompleted {
+            return "Finish setup and Teo will build your plan."
+        }
+        let progress = store.progressSummary
+        if progress.smokeFreeDays >= 1 {
+            let unit = progress.smokeFreeDays == 1 ? "day" : "days"
+            return "\(progress.smokeFreeDays) \(unit) smoke-free. Teo is proud of you."
+        }
+        if progress.cravingsHandled >= 1 {
+            let unit = progress.cravingsHandled == 1 ? "craving" : "cravings"
+            return "\(progress.cravingsHandled) \(unit) handled. Teo has your back."
+        }
+        return "Teo is right here with you."
+    }
+
+    // MARK: - Cards
+
+    private var onboardingPrompt: some View {
+        VStack(alignment: .leading, spacing: Spacing.smd) {
+            HStack(alignment: .top, spacing: Spacing.smd) {
+                Image(systemName: "list.clipboard")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .frame(width: 34, height: 34)
+                    .background(QuitTheme.peach.opacity(0.74))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Text("Finish your quit plan")
+                        .typeSection()
+                    Text("Set your triggers, reason, and first rescue actions.")
+                        .typeBodySecondary()
+                }
+            }
+
+            Button("Continue setup") {
+                store.presentOnboarding()
+            }
+            .buttonStyle(QuietButtonStyle())
+            .accessibilityIdentifier("continue-setup-button")
+        }
+        .quietCard()
+    }
+
+    @ViewBuilder
+    private var nextActionCard: some View {
+        let action = store.currentQuitPlan.nextBestAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        if store.isOnboardingCompleted && !action.isEmpty {
+            VStack(alignment: .leading, spacing: Spacing.smd) {
+                Text("Next best action")
+                    .typeSection()
+                Text(action)
+                    .typeBody()
+                    .fixedSize(horizontal: false, vertical: true)
+                if let focus = store.todaysFocusPlan {
+                    Divider().overlay(QuitTheme.line)
+                    Text(focus.title)
+                        .font(.rounded(.footnote, weight: .bold))
+                        .foregroundColor(QuitTheme.cocoa)
+                    Text(focus.action)
+                        .typeBodySecondary()
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .quietCard()
+        }
+    }
+
+    @ViewBuilder
+    private var pendingSuggestionCard: some View {
+        if let suggestion = store.highestPriorityPendingPlanSuggestion {
+            VStack(alignment: .leading, spacing: Spacing.smd) {
+                Text("Plan suggestion")
+                    .typeSection()
+                Text(suggestion.title)
+                    .font(.rounded(.callout, weight: .bold))
+                    .foregroundColor(QuitTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(suggestion.evidenceSummary)
+                    .typeBodySecondary()
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: Spacing.smd) {
+                    Button("Accept") {
+                        store.acceptPlanSuggestion(suggestion.id)
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                    Button("Review") {
+                        store.selectedTab = .plan
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                }
+            }
+            .quietCard()
+        }
     }
 
     private var planWeekCard: some View {
         PlanWeekCard(days: store.currentWeekPlanAdherence)
-            .padding(.top, 2)
-    }
-
-    private var rescueButton: some View {
-        Button {
-            store.isCravingModePresented = true
-        } label: {
-            Text("I want to smoke")
-                .font(.rounded(.title3, weight: .bold))
-                .foregroundColor(QuitTheme.onCocoa)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 30)
-                .padding(.vertical, 17)
-                .background(QuitTheme.cocoa)
-                .clipShape(Capsule())
-        }
-        .padding(.top, 28)
-        .frame(maxWidth: .infinity)
-        .accessibilityLabel("Start craving rescue")
-        .accessibilityHint("Opens the 10-minute craving mode.")
-        .accessibilityIdentifier("start-rescue-button")
     }
 
     private var safetyResources: some View {
         SafetyResourcesView()
-            .padding(.top, 18)
-    }
-
-    private var riskCard: some View {
-        let risk = store.calculatedInsights.todayRisk
-
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Today risk")
-                    .font(.rounded(.headline, weight: .bold))
-                Spacer()
-                Text(risk.level.title)
-                    .font(.rounded(.caption, weight: .bold))
-                    .foregroundColor(risk.level == .high ? QuitTheme.onCocoa : QuitTheme.onSage)
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 10)
-                    .background(risk.level == .high ? QuitTheme.cocoa : QuitTheme.sage)
-                    .cornerRadius(12)
-            }
-
-            Text(risk.summary)
-                .font(.rounded(.subheadline))
-                .foregroundColor(QuitTheme.muted)
-
-            Button(risk.actionTitle) {
-                if risk.actionTitle == "Start rescue" {
-                    store.isCravingModePresented = true
-                } else {
-                    store.selectedTab = .plan
-                }
-            }
-            .buttonStyle(QuietButtonStyle())
-
-            if risk.actionTitle == "Review plan" {
-                Divider()
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Reason to protect")
-                        .font(.rounded(.caption, weight: .bold))
-                        .foregroundColor(QuitTheme.ink)
-                    Text(store.reasonForCravingMode())
-                        .font(.rounded(.caption))
-                        .foregroundColor(QuitTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .quietCard()
-        .padding(.top, 18)
     }
 
     private var facts: some View {
@@ -289,26 +259,59 @@ struct TodayView: View {
             factRow("Saved", insights.moneySavedSummary)
             factRow("Next risk", insights.nextRiskSummary)
         }
-        .padding(.top, 22)
     }
 
     private func factRow(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label)
-                .font(.rounded(.subheadline))
-                .foregroundColor(QuitTheme.muted)
+                .typeBodySecondary()
             Spacer()
             Text(value)
                 .font(.rounded(.headline, weight: .bold))
                 .foregroundColor(QuitTheme.ink)
         }
         .frame(minHeight: 56)
-        .padding(.vertical, 4)
+        .padding(.vertical, Spacing.xs)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(QuitTheme.line)
                 .frame(height: 1)
         }
+    }
+
+    // MARK: - Pinned rescue (the only rescue entry on this screen)
+
+    private func rescueBar(metrics: AdaptiveScreenMetrics) -> some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(QuitTheme.line)
+                .frame(height: 1)
+
+            Button {
+                Haptics.impact(.medium)
+                store.isCravingModePresented = true
+            } label: {
+                Text("I want to smoke")
+                    .font(.rounded(.title3, weight: .bold))
+                    .foregroundColor(QuitTheme.onCocoa)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 30)
+                    .padding(.horizontal, 30)
+                    .padding(.vertical, 16)
+                    .background(QuitTheme.cocoa)
+                    .clipShape(Capsule())
+            }
+            .accessibilityLabel("Start craving rescue")
+            .accessibilityHint("Opens the 10-minute craving mode.")
+            .accessibilityIdentifier("start-rescue-button")
+            .padding(.horizontal, metrics.horizontalPadding)
+            .padding(.top, Spacing.smd)
+            .padding(.bottom, Spacing.sm)
+            .frame(maxWidth: metrics.contentMaxWidth)
+            .frame(maxWidth: .infinity)
+        }
+        .background(QuitTheme.background)
     }
 }
 
@@ -359,8 +362,7 @@ private struct PlanWeekCard: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 18)
-        .background(QuitTheme.paper)
-        .cornerRadius(24)
+        .background(QuitSurface(cornerRadius: 24))
     }
 
     private func weekdayLetter(for date: Date) -> String {

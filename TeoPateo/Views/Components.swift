@@ -70,18 +70,32 @@ struct AnimatedMascotView: View {
 
     let size: CGFloat
 
+    /// Bumped on each tap to ask the video view to play from the beginning.
+    @State private var playToken = 0
+
     var body: some View {
-        Group {
-            if reduceMotion {
-                staticMascot
-            } else if let url = Bundle.main.url(forResource: "basic_animation", withExtension: "mov") {
-                TimedMascotVideoView(url: url, replayInterval: 60)
-            } else {
-                staticMascot
-            }
+        content
+            .frame(width: size, height: size)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if !reduceMotion, let url = Bundle.main.url(forResource: "basic_animation", withExtension: "mov") {
+            TapToPlayMascotVideoView(url: url, playToken: playToken)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    Haptics.selection()
+                    playToken += 1
+                }
+                .accessibilityElement()
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(L10n.string("Teo"))
+                .accessibilityHint(L10n.string("Double-tap to play Teo's animation."))
+                .accessibilityIdentifier("teo-mascot")
+        } else {
+            staticMascot
+                .accessibilityHidden(true)
         }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
     }
 
     private var staticMascot: some View {
@@ -163,34 +177,34 @@ struct TeoMascotView: View {
     }
 }
 
-private struct TimedMascotVideoView: UIViewRepresentable {
+/// Shows Teo's first frame at rest and plays the clip once each time `playToken`
+/// changes (i.e. on tap), freezing on the final frame when it finishes.
+private struct TapToPlayMascotVideoView: UIViewRepresentable {
     let url: URL
-    let replayInterval: TimeInterval
+    let playToken: Int
 
-    func makeUIView(context: Context) -> TimedVideoPlayerUIView {
-        let view = TimedVideoPlayerUIView()
-        view.configure(url: url, replayInterval: replayInterval)
+    func makeUIView(context: Context) -> TapToPlayVideoUIView {
+        let view = TapToPlayVideoUIView()
+        view.configure(url: url)
+        view.syncPlayToken(playToken)
         return view
     }
 
-    func updateUIView(_ uiView: TimedVideoPlayerUIView, context: Context) {
-        uiView.configure(url: url, replayInterval: replayInterval)
+    func updateUIView(_ uiView: TapToPlayVideoUIView, context: Context) {
+        uiView.configure(url: url)
+        uiView.syncPlayToken(playToken)
     }
 
-    static func dismantleUIView(_ uiView: TimedVideoPlayerUIView, coordinator: ()) {
+    static func dismantleUIView(_ uiView: TapToPlayVideoUIView, coordinator: ()) {
         uiView.stop()
     }
 }
 
-private final class TimedVideoPlayerUIView: UIView {
+private final class TapToPlayVideoUIView: UIView {
     private var currentURL: URL?
     private var player: AVPlayer?
-    private var replayInterval: TimeInterval = 60
     private var endObserver: NSObjectProtocol?
-    private var replayWorkItem: DispatchWorkItem?
-    private var playbackStartedAt: Date?
-    private var hasStartedPlayback = false
-    private var didFinishPlayback = false
+    private var lastToken: Int?
 
     override class var layerClass: AnyClass {
         AVPlayerLayer.self
@@ -216,9 +230,7 @@ private final class TimedVideoPlayerUIView: UIView {
         stop()
     }
 
-    func configure(url: URL, replayInterval: TimeInterval) {
-        self.replayInterval = replayInterval
-
+    func configure(url: URL) {
         guard currentURL != url else {
             return
         }
@@ -235,21 +247,25 @@ private final class TimedVideoPlayerUIView: UIView {
             object: item,
             queue: .main
         ) { [weak self] _ in
-            self?.freezeAndScheduleReplay()
+            self?.freezeOnLastFrame()
         }
 
         playerLayer.player = player
         self.player = player
 
-        if window != nil {
-            playFromBeginning()
-        }
+        // Render the first frame at rest; playback only happens on tap.
+        player.seek(to: .zero)
+    }
+
+    /// Plays from the start whenever the token advances. The very first sync
+    /// only records the baseline so Teo stays still until the user taps.
+    func syncPlayToken(_ token: Int) {
+        defer { lastToken = token }
+        guard let lastToken, token != lastToken else { return }
+        playFromBeginning()
     }
 
     func stop() {
-        replayWorkItem?.cancel()
-        replayWorkItem = nil
-
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
@@ -259,49 +275,25 @@ private final class TimedVideoPlayerUIView: UIView {
         playerLayer.player = nil
         player = nil
         currentURL = nil
-        playbackStartedAt = nil
-        hasStartedPlayback = false
-        didFinishPlayback = false
+        lastToken = nil
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-
         if window == nil {
             player?.pause()
-            replayWorkItem?.cancel()
-            replayWorkItem = nil
-        } else if hasStartedPlayback && !didFinishPlayback {
-            player?.play()
-        } else {
-            playFromBeginning()
         }
     }
 
     private func playFromBeginning() {
-        guard let player, window != nil else { return }
-
-        replayWorkItem?.cancel()
-        replayWorkItem = nil
-        playbackStartedAt = Date()
-        hasStartedPlayback = true
-        didFinishPlayback = false
-
+        guard let player else { return }
         player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak player] _ in
             player?.play()
         }
     }
 
-    private func freezeAndScheduleReplay() {
-        didFinishPlayback = true
-        player?.pause()
-        freezeOnLastFrame()
-
-        let elapsed = playbackStartedAt.map { Date().timeIntervalSince($0) } ?? 0
-        scheduleReplay(after: max(0, replayInterval - elapsed))
-    }
-
     private func freezeOnLastFrame() {
+        player?.pause()
         guard let player, let duration = player.currentItem?.duration, duration.isNumeric else {
             return
         }
@@ -309,16 +301,6 @@ private final class TimedVideoPlayerUIView: UIView {
         let finalFrameOffset = CMTime(value: 1, timescale: 30)
         let targetTime = CMTimeCompare(duration, finalFrameOffset) > 0 ? duration - finalFrameOffset : .zero
         player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: finalFrameOffset)
-    }
-
-    private func scheduleReplay(after delay: TimeInterval) {
-        replayWorkItem?.cancel()
-
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.playFromBeginning()
-        }
-        replayWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
     }
 }
 

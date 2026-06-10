@@ -37,6 +37,9 @@ struct OnboardingView: View {
     @State private var savingsGoalTitle = "Health"
     @State private var customSavingsGoal = ""
 
+    @State private var interlude: OnboardingInterlude?
+    @State private var shownInterstitials: Set<Int> = []
+
     private let replacementActions = [
         "Drink water",
         "Walk",
@@ -94,21 +97,26 @@ struct OnboardingView: View {
 
                 VStack(spacing: 0) {
                     topBar(metrics: metrics)
-                    progress(metrics: metrics)
 
-                    ScrollView {
-                        screen(for: current)
-                            .id(step)
-                            .transition(screenTransition)
-                            .padding(.horizontal, metrics.horizontalPadding)
-                            .padding(.top, metrics.usesWideLayout ? 24 : 18)
-                            .padding(.bottom, 24)
-                            .frame(maxWidth: metrics.readingMaxWidth, alignment: .leading)
-                            .frame(maxWidth: .infinity)
-                    }
+                    if let interlude {
+                        interludeContainer(interlude, metrics: metrics)
+                    } else {
+                        progress(metrics: metrics)
 
-                    if showsContinueButton {
-                        bottomBar(metrics: metrics)
+                        ScrollView {
+                            screen(for: current)
+                                .id(step)
+                                .transition(screenTransition)
+                                .padding(.horizontal, metrics.horizontalPadding)
+                                .padding(.top, metrics.usesWideLayout ? 24 : 18)
+                                .padding(.bottom, 24)
+                                .frame(maxWidth: metrics.readingMaxWidth, alignment: .leading)
+                                .frame(maxWidth: .infinity)
+                        }
+
+                        if showsContinueButton {
+                            bottomBar(metrics: metrics)
+                        }
                     }
                 }
             }
@@ -160,25 +168,110 @@ struct OnboardingView: View {
     }
 
     private func bottomBar(metrics: AdaptiveScreenMetrics) -> some View {
-        Button {
-            advance()
-        } label: {
+        actionBar(
+            title: current == .review ? "Create my plan" : "Continue",
+            systemImage: current == .review ? "checkmark" : "arrow.right",
+            identifier: "onboarding-next-button",
+            enabled: canAdvance,
+            metrics: metrics,
+            action: advance
+        )
+    }
+
+    private func actionBar(
+        title: String,
+        systemImage: String,
+        identifier: String,
+        enabled: Bool,
+        metrics: AdaptiveScreenMetrics,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             HStack {
-                Text(L10n.key(current == .review ? "Create my plan" : "Continue"))
-                Image(systemName: current == .review ? "checkmark" : "arrow.right")
+                Text(L10n.key(title))
+                Image(systemName: systemImage)
             }
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(FilledButtonStyle())
-        .disabled(!canAdvance)
-        .opacity(canAdvance ? 1 : 0.45)
-        .accessibilityIdentifier("onboarding-next-button")
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.45)
+        .accessibilityIdentifier(identifier)
         .padding(.horizontal, metrics.horizontalPadding)
         .padding(.top, 12)
         .padding(.bottom, 20)
         .frame(maxWidth: metrics.readingMaxWidth)
         .frame(maxWidth: .infinity)
         .background(QuitTheme.background)
+    }
+
+    // MARK: - Interludes (warm fillers between and after questions)
+
+    @ViewBuilder
+    private func interludeContainer(_ interlude: OnboardingInterlude, metrics: AdaptiveScreenMetrics) -> some View {
+        VStack(spacing: 0) {
+            interludeContent(interlude)
+                .padding(.horizontal, metrics.horizontalPadding)
+                .frame(maxWidth: metrics.readingMaxWidth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            switch interlude {
+            case .message:
+                actionBar(
+                    title: "Continue",
+                    systemImage: "arrow.right",
+                    identifier: "onboarding-interlude-continue",
+                    enabled: true,
+                    metrics: metrics,
+                    action: continueFromMessage
+                )
+            case .building, .pledge:
+                EmptyView()
+            }
+        }
+        .transition(.opacity)
+    }
+
+    @ViewBuilder
+    private func interludeContent(_ interlude: OnboardingInterlude) -> some View {
+        switch interlude {
+        case let .message(_, text, pose):
+            OnboardingMessageScreen(text: text, pose: pose)
+        case .building:
+            OnboardingBuildingScreen(steps: buildingSteps, reduceMotion: reduceMotion, onFinished: finishBuilding)
+        case .pledge:
+            OnboardingPledgeScreen(name: displayName, reduceMotion: reduceMotion, onCommitted: completeFromPledge)
+        }
+    }
+
+    private var buildingSteps: [String] {
+        let name = displayName
+        return [
+            "Reading your reason and triggers",
+            "Choosing your first-week goal",
+            "Lining up your rescue actions",
+            name.isEmpty ? "Personalizing your plan" : "Personalizing everything for \(name)"
+        ]
+    }
+
+    /// The warm transition shown right before a given question, or `nil`. Each
+    /// fires at most once (tracked by `shownInterstitials`).
+    private func interstitial(before step: OnboardingStep) -> OnboardingInterlude? {
+        let name = displayName
+        switch step {
+        case .status:
+            let text = name.isEmpty
+                ? "Thanks for sharing that. Let's get a clear picture of your smoking."
+                : "Thanks for sharing that, \(name). Let's get a clear picture of your smoking."
+            return .message(id: step.rawValue, text: text, pose: .standing)
+        case .quitDate:
+            let text = name.isEmpty
+                ? "That's the hard part done. Now let's shape your plan."
+                : "That's the hard part done, \(name). Now let's shape your plan."
+            return .message(id: step.rawValue, text: text, pose: .playful)
+        default:
+            return nil
+        }
     }
 
     // MARK: - Screens
@@ -192,18 +285,22 @@ struct OnboardingView: View {
     }
 
     private func prompt(for step: OnboardingStep) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        HStack(alignment: .center, spacing: Spacing.xs) {
             TeoMascotView(pose: step.pose, breathing: false, entrance: false)
-                .frame(height: 88)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 4)
+                .frame(width: mascotPromptSize, height: mascotPromptSize)
                 .accessibilityHidden(true)
 
             speechCloud(eyebrow: eyebrow(for: step), title: step.title)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Teo's prompt as a chat-style speech bubble whose text types in.
+    private var mascotPromptSize: CGFloat {
+        horizontalSizeClass == .regular ? 184 : 132
+    }
+
+    /// Teo's prompt as a chat-style speech bubble, sitting to his right with the
+    /// tail pointing back at him. The text types in character by character.
     private func speechCloud(eyebrow: String, title: String) -> some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             TypewriterText(
@@ -221,9 +318,9 @@ struct OnboardingView: View {
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Spacing.md)
-        .padding(.top, 24)
-        .padding(.bottom, Spacing.md)
+        .padding(.leading, 26)
+        .padding(.trailing, Spacing.md)
+        .padding(.vertical, Spacing.md)
         .background(SpeechBubbleShape().fill(QuitTheme.paper))
         .overlay(SpeechBubbleShape().stroke(QuitTheme.line, lineWidth: 1))
     }
@@ -272,7 +369,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: Spacing.smd) {
             ForEach(reasonCards, id: \.label) { card in
                 choiceCard(card.label, isSelected: !usingCustomReason && primaryReason == card.text) {
-                    selectAndAdvance {
+                    select {
                         usingCustomReason = false
                         primaryReason = card.text
                     }
@@ -303,7 +400,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: Spacing.smd) {
             ForEach(QuitStatus.allCases) { status in
                 choiceCard(status.title, isSelected: answered.contains(.status) && quitStatus == status) {
-                    selectAndAdvance {
+                    select {
                         quitStatus = status
                         if status == .alreadyQuit {
                             quitDatePreference = .alreadyQuit
@@ -322,7 +419,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: Spacing.smd) {
             ForEach(dailyAmountCards, id: \.label) { card in
                 choiceCard(card.label, isSelected: answered.contains(.dailyAmount) && cigarettesPerDay == card.value) {
-                    selectAndAdvance { cigarettesPerDay = card.value }
+                    select { cigarettesPerDay = card.value }
                 }
             }
         }
@@ -357,15 +454,11 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: Spacing.smd) {
             ForEach(QuitDatePreference.allCases) { preference in
                 choiceCard(preference.title, isSelected: quitDatePicked && quitDatePreference == preference) {
+                    Haptics.selection()
                     quitDatePicked = true
-                    if preference == .helpMeChoose {
-                        selectAndAdvance { quitDatePreference = preference }
-                    } else {
-                        Haptics.selection()
-                        withAnimationIfPossible {
-                            quitDatePreference = preference
-                            normalizeQuitDateForPreference()
-                        }
+                    withAnimationIfPossible {
+                        quitDatePreference = preference
+                        normalizeQuitDateForPreference()
                     }
                 }
             }
@@ -388,7 +481,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: Spacing.smd) {
             ForEach(QuitApproachPreference.allCases) { approach in
                 choiceCard(approach.title, isSelected: answered.contains(.approach) && approachPreference == approach) {
-                    selectAndAdvance { approachPreference = approach }
+                    select { approachPreference = approach }
                 }
             }
         }
@@ -398,7 +491,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: Spacing.smd) {
             ForEach(confidenceCards, id: \.label) { card in
                 choiceCard(card.label, isSelected: confidence == card.value) {
-                    selectAndAdvance { confidence = card.value }
+                    select { confidence = card.value }
                 }
             }
         }
@@ -506,11 +599,11 @@ struct OnboardingView: View {
         case .name, .whenTriggers, .feelingTriggers, .replacements, .review:
             return true
         case .reason:
-            return usingCustomReason
+            return usingCustomReason || !primaryReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .status, .dailyAmount, .approach, .confidence:
+            return answered.contains(current)
         case .quitDate:
-            return quitDatePicked && quitDatePreference != .helpMeChoose
-        default:
-            return false
+            return quitDatePicked
         }
     }
 
@@ -536,9 +629,24 @@ struct OnboardingView: View {
     private func advance() {
         guard canAdvance else { return }
 
+        // Final question → commitment pledge, which finalizes onboarding.
         if current == .review {
-            Haptics.success()
-            store.completeOnboarding(currentPlanInput)
+            presentInterlude(.pledge)
+            return
+        }
+
+        // Last setup question → "building your plan" beat, then the review.
+        if current == .confidence {
+            presentInterlude(.building)
+            return
+        }
+
+        // A warm transition before entering certain sections (once each).
+        if let target = OnboardingStep(rawValue: step + 1),
+           !shownInterstitials.contains(target.rawValue),
+           let transition = interstitial(before: target) {
+            shownInterstitials.insert(target.rawValue)
+            presentInterlude(transition)
             return
         }
 
@@ -547,11 +655,67 @@ struct OnboardingView: View {
     }
 
     private func back() {
+        if interlude != nil {
+            dismissInterlude()
+            return
+        }
         if step == 0 {
             store.dismissOnboardingForNow()
         } else {
             goTo(step - 1, forward: false)
         }
+    }
+
+    private func presentInterlude(_ value: OnboardingInterlude) {
+        if reduceMotion {
+            interlude = value
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) { interlude = value }
+        }
+    }
+
+    private func dismissInterlude() {
+        if reduceMotion {
+            interlude = nil
+        } else {
+            withAnimation(.easeInOut(duration: 0.25)) { interlude = nil }
+        }
+    }
+
+    /// Continue out of a transition message into the question it precedes.
+    /// Advances and clears the interlude together so the next question slides in
+    /// directly, without a flash of the question we just left.
+    private func continueFromMessage() {
+        transitionForward = true
+        let target = min(step + 1, steps.count - 1)
+        Haptics.impact(.light)
+        if reduceMotion {
+            step = target
+            interlude = nil
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                step = target
+                interlude = nil
+            }
+        }
+    }
+
+    /// The "building your plan" beat finished — reveal the review.
+    private func finishBuilding() {
+        transitionForward = true
+        if reduceMotion {
+            interlude = nil
+            step = OnboardingStep.review.rawValue
+        } else {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                interlude = nil
+                step = OnboardingStep.review.rawValue
+            }
+        }
+    }
+
+    private func completeFromPledge() {
+        store.completeOnboarding(currentPlanInput)
     }
 
     private func goTo(_ newStep: Int, forward: Bool) {
@@ -566,16 +730,13 @@ struct OnboardingView: View {
         }
     }
 
-    /// Used by single-choice cards: register the choice with a selection haptic,
-    /// then glide to the next screen so the flow feels tap-forward.
-    private func selectAndAdvance(_ apply: @escaping () -> Void) {
+    /// Used by single-choice cards: register the choice with a selection haptic
+    /// and reveal the Continue button. Moving on is always an explicit Continue tap.
+    private func select(_ apply: @escaping () -> Void) {
         Haptics.selection()
         withAnimationIfPossible {
             apply()
             answered.insert(current)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-            goTo(step + 1, forward: true)
         }
     }
 
@@ -740,6 +901,15 @@ struct OnboardingView: View {
     }
 }
 
+/// A non-question beat layered over the onboarding flow: a warm transition
+/// message, the "building your plan" screen, or the commitment pledge. These do
+/// not appear in the progress bar and never replace a question.
+private enum OnboardingInterlude: Equatable {
+    case message(id: Int, text: String, pose: MascotPose)
+    case building
+    case pledge
+}
+
 private enum OnboardingStep: Int, CaseIterable {
     case name
     case reason
@@ -858,25 +1028,28 @@ private struct TypewriterText: View {
     }
 }
 
-/// A rounded message bubble with a small tail at the top, pointing up toward Teo.
+/// A rounded message bubble with a small tail on its left edge, pointing back
+/// toward Teo who sits to the bubble's left.
 private struct SpeechBubbleShape: Shape {
     var cornerRadius: CGFloat = 18
-    var tailHeight: CGFloat = 11
-    var tailWidth: CGFloat = 18
-    var tailInset: CGFloat = 42
+    var tailWidth: CGFloat = 12
+    var tailSpread: CGFloat = 18
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let r = min(cornerRadius, (rect.height - tailHeight) / 2)
-        let bodyTop = rect.minY + tailHeight
+        let r = min(cornerRadius, min(rect.height, rect.width - tailWidth) / 2)
+        let bodyLeft = rect.minX + tailWidth
 
-        path.move(to: CGPoint(x: rect.minX + r, y: bodyTop))
-        path.addLine(to: CGPoint(x: tailInset - tailWidth / 2, y: bodyTop))
-        path.addLine(to: CGPoint(x: tailInset, y: rect.minY))
-        path.addLine(to: CGPoint(x: tailInset + tailWidth / 2, y: bodyTop))
-        path.addLine(to: CGPoint(x: rect.maxX - r, y: bodyTop))
+        // Keep the tail on the straight part of the left edge, centered vertically.
+        let tipY = max(
+            rect.minY + r + tailSpread / 2,
+            min(rect.midY, rect.maxY - r - tailSpread / 2)
+        )
+
+        path.move(to: CGPoint(x: bodyLeft + r, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
         path.addArc(
-            center: CGPoint(x: rect.maxX - r, y: bodyTop + r),
+            center: CGPoint(x: rect.maxX - r, y: rect.minY + r),
             radius: r, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false
         )
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
@@ -884,17 +1057,242 @@ private struct SpeechBubbleShape: Shape {
             center: CGPoint(x: rect.maxX - r, y: rect.maxY - r),
             radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false
         )
-        path.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+        path.addLine(to: CGPoint(x: bodyLeft + r, y: rect.maxY))
         path.addArc(
-            center: CGPoint(x: rect.minX + r, y: rect.maxY - r),
+            center: CGPoint(x: bodyLeft + r, y: rect.maxY - r),
             radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false
         )
-        path.addLine(to: CGPoint(x: rect.minX, y: bodyTop + r))
+        path.addLine(to: CGPoint(x: bodyLeft, y: tipY + tailSpread / 2))
+        path.addLine(to: CGPoint(x: rect.minX, y: tipY))
+        path.addLine(to: CGPoint(x: bodyLeft, y: tipY - tailSpread / 2))
+        path.addLine(to: CGPoint(x: bodyLeft, y: rect.minY + r))
         path.addArc(
-            center: CGPoint(x: rect.minX + r, y: bodyTop + r),
+            center: CGPoint(x: bodyLeft + r, y: rect.minY + r),
             radius: r, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false
         )
         path.closeSubpath()
         return path
+    }
+}
+
+// MARK: - Interlude screens
+//
+// Warm "filler" beats shown between and after the onboarding questions. They
+// never change the questions themselves — they add pacing and encouragement,
+// in TeoPateo's minimalist palette with Teo the dog.
+
+/// Teo with a short, encouraging line — the transition between question groups.
+private struct OnboardingMessageScreen: View {
+    let text: String
+    let pose: MascotPose
+
+    var body: some View {
+        VStack(spacing: Spacing.lg) {
+            Spacer(minLength: Spacing.lg)
+
+            TeoMascotView(pose: pose, breathing: true, entrance: false)
+                .frame(width: 200, height: 200)
+                .accessibilityHidden(true)
+
+            Text(text)
+                .font(.rounded(.title2, weight: .bold))
+                .foregroundColor(QuitTheme.ink)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Spacing.sm)
+                .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: Spacing.lg)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// "Building your plan…" — a short processing beat so the generated plan feels
+/// earned. Ticks through a few status lines, then calls `onFinished`.
+private struct OnboardingBuildingScreen: View {
+    let steps: [String]
+    let reduceMotion: Bool
+    let onFinished: () -> Void
+
+    @State private var visibleCount = 0
+
+    var body: some View {
+        VStack(spacing: Spacing.lg) {
+            Spacer(minLength: Spacing.lg)
+
+            TeoMascotView(pose: .playing, breathing: true, entrance: false)
+                .frame(width: 184, height: 184)
+                .accessibilityHidden(true)
+
+            Text("Building your plan…")
+                .font(.rounded(.title2, weight: .bold))
+                .foregroundColor(QuitTheme.ink)
+                .accessibilityAddTraits(.isHeader)
+
+            VStack(alignment: .leading, spacing: Spacing.smd) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, line in
+                    let done = index < visibleCount
+                    HStack(spacing: Spacing.sm) {
+                        Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(done ? QuitTheme.sage : QuitTheme.faint)
+                        Text(line)
+                            .font(.rounded(.body, weight: .semibold))
+                            .foregroundColor(done ? QuitTheme.ink : QuitTheme.faint)
+                        Spacer(minLength: 0)
+                    }
+                    .opacity(done ? 1 : 0.55)
+                }
+            }
+            .frame(maxWidth: 360)
+
+            Spacer(minLength: Spacing.lg)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("onboarding-building")
+        .task { await run() }
+    }
+
+    private func run() async {
+        guard !steps.isEmpty else {
+            onFinished()
+            return
+        }
+
+        if reduceMotion {
+            visibleCount = steps.count
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            if Task.isCancelled { return }
+            onFinished()
+            return
+        }
+
+        for index in 1...steps.count {
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            if Task.isCancelled { return }
+            withAnimation(.easeOut(duration: 0.3)) { visibleCount = index }
+            Haptics.selection()
+        }
+
+        try? await Task.sleep(nanoseconds: 750_000_000)
+        if Task.isCancelled { return }
+        onFinished()
+    }
+}
+
+/// A press-and-hold commitment beat. Holding fills the ring; completing it
+/// finalizes onboarding. Honors Reduce Motion with a plain button, and is
+/// operable by VoiceOver via an accessibility action.
+private struct OnboardingPledgeScreen: View {
+    let name: String
+    let reduceMotion: Bool
+    let onCommitted: () -> Void
+
+    private let holdDuration: TimeInterval = 1.4
+
+    @State private var progress: CGFloat = 0
+    @State private var holding = false
+    @State private var committed = false
+    @State private var commitWork: DispatchWorkItem?
+
+    var body: some View {
+        VStack(spacing: Spacing.xl) {
+            Spacer(minLength: Spacing.lg)
+
+            Text(heading)
+                .font(.rounded(.title2, weight: .bold))
+                .foregroundColor(QuitTheme.ink)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, Spacing.sm)
+                .accessibilityAddTraits(.isHeader)
+
+            control
+
+            Text(reduceMotion ? "Tap when you're ready." : "Press and hold to start your plan.")
+                .font(.rounded(.subheadline, weight: .medium))
+                .foregroundColor(QuitTheme.muted)
+                .multilineTextAlignment(.center)
+
+            Spacer(minLength: Spacing.lg)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var heading: String {
+        name.isEmpty ? "Let's make it official." : "Let's make it official, \(name)."
+    }
+
+    @ViewBuilder
+    private var control: some View {
+        if reduceMotion {
+            Button {
+                commit()
+            } label: {
+                Text(L10n.key("Start my plan"))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(FilledButtonStyle())
+            .padding(.horizontal, Spacing.xl)
+            .accessibilityIdentifier("onboarding-pledge-commit")
+        } else {
+            ZStack {
+                Circle()
+                    .stroke(QuitTheme.line, lineWidth: 12)
+
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(QuitTheme.cocoa, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+
+                Text(holding ? "Holding…" : "Hold")
+                    .font(.rounded(.headline, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+            }
+            .frame(width: 196, height: 196)
+            .contentShape(Circle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in if !holding { beginHold() } }
+                    .onEnded { _ in cancelHold() }
+            )
+            .accessibilityElement()
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(L10n.string("Commit to your plan"))
+            .accessibilityHint(L10n.string("Press and hold, or double tap, to start your plan."))
+            .accessibilityAction { commit() }
+            .accessibilityIdentifier("onboarding-pledge-commit")
+        }
+    }
+
+    private func beginHold() {
+        guard !committed else { return }
+        holding = true
+        Haptics.impact(.light)
+        withAnimation(.linear(duration: holdDuration)) { progress = 1 }
+
+        let work = DispatchWorkItem { commit() }
+        commitWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: work)
+    }
+
+    private func cancelHold() {
+        guard !committed else { return }
+        holding = false
+        commitWork?.cancel()
+        commitWork = nil
+        withAnimation(.easeOut(duration: 0.3)) { progress = 0 }
+    }
+
+    private func commit() {
+        guard !committed else { return }
+        committed = true
+        holding = false
+        commitWork?.cancel()
+        commitWork = nil
+        withAnimation(.easeOut(duration: 0.2)) { progress = 1 }
+        Haptics.success()
+        onCommitted()
     }
 }

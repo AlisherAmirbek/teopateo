@@ -53,9 +53,9 @@ struct TodayView: View {
                 onboardingPrompt
             }
             mascotHero(height: 278)
+            planWeekCard
             nextActionCard
             pendingSuggestionCard
-            planWeekCard
             facts
             safetyResources
         }
@@ -73,13 +73,13 @@ struct TodayView: View {
             HStack(alignment: .top, spacing: metrics.columnSpacing) {
                 VStack(alignment: .leading, spacing: Spacing.lg) {
                     mascotHero(height: 332)
+                    planWeekCard
                     nextActionCard
                     pendingSuggestionCard
                 }
                 .frame(maxWidth: .infinity, alignment: .top)
 
                 VStack(alignment: .leading, spacing: Spacing.lg) {
-                    planWeekCard
                     facts
                     safetyResources
                 }

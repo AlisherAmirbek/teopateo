@@ -21,8 +21,11 @@ final class TeoPateoUITests: XCTestCase {
         app.staticTexts["What should I call you?"].tap()
         app.buttons["onboarding-next-button"].tap()
 
-        // One decision per screen — single-choice cards advance on tap.
-        tapOnboardingChoiceAndWaitFor("My health", next: "Where are you with quitting?")
+        // Reason → an encouraging interlude → the smoking questions.
+        tapOnboardingChoiceAndWaitFor("My health", next: "Thanks for sharing that, Alex. Let's get a clear picture of your smoking.")
+        tapOnboardingInterludeAndWaitFor("Where are you with quitting?")
+
+        // One decision per screen — select a card, then tap Continue.
         tapOnboardingChoiceAndWaitFor("Ready to quit", next: "How much do you smoke?")
         tapOnboardingChoiceAndWaitFor("Around 10", next: "When do cravings hit hardest?")
 
@@ -31,15 +34,29 @@ final class TeoPateoUITests: XCTestCase {
         tapOnboardingNextAndWaitFor("What feelings set them off?")
         tapOnboardingNextAndWaitFor("What could you do instead?")
         selectOnboardingTag("Drink water")
-        tapOnboardingNextAndWaitFor("When's your quit day?")
+
+        // Replacements → an interlude → the quit-date setup.
+        tapOnboardingNextAndWaitFor("That's the hard part done, Alex. Now let's shape your plan.")
+        tapOnboardingInterludeAndWaitFor("When's your quit day?")
 
         tapOnboardingChoiceAndWaitFor("Help me choose", next: "How do you want to quit?")
         tapOnboardingChoiceAndWaitFor("Cold turkey", next: "How confident do you feel?")
-        tapOnboardingChoiceAndWaitFor("Pretty confident", next: "Here's your starter plan.")
 
+        // Last setup question → the "building your plan" beat → the review.
+        let confidence = app.buttons["onboarding-choice-Pretty confident"]
+        XCTAssertTrue(confidence.waitForExistence(timeout: 5), "Expected the confidence choice")
+        confidence.tap()
         app.buttons["onboarding-next-button"].tap()
+        XCTAssertTrue(app.staticTexts["Building your plan…"].waitForExistence(timeout: 5), "Expected the building screen")
+        XCTAssertTrue(app.staticTexts["Here's your starter plan."].waitForExistence(timeout: 8), "Expected the review after building")
 
-        XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 5))
+        // Review → commitment pledge (press and hold) → Today.
+        app.buttons["onboarding-next-button"].tap()
+        let commit = app.buttons["onboarding-pledge-commit"]
+        XCTAssertTrue(commit.waitForExistence(timeout: 5), "Expected the commitment pledge")
+        commit.press(forDuration: 1.9)
+
+        XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 6))
         XCTAssertFalse(app.buttons["continue-setup-button"].exists)
     }
 
@@ -282,10 +299,22 @@ final class TeoPateoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts[label].waitForExistence(timeout: 5))
     }
 
+    private func tapOnboardingInterludeAndWaitFor(_ label: String) {
+        let cont = app.buttons["onboarding-interlude-continue"]
+        XCTAssertTrue(cont.waitForExistence(timeout: 5), "Expected the interlude Continue button")
+        cont.tap()
+        XCTAssertTrue(app.staticTexts[label].waitForExistence(timeout: 5), "Expected \(label) after the interlude")
+    }
+
     private func tapOnboardingChoiceAndWaitFor(_ choice: String, next: String) {
         let button = app.buttons["onboarding-choice-\(choice)"]
         XCTAssertTrue(button.waitForExistence(timeout: 5), "Expected onboarding choice \(choice)")
         button.tap()
+
+        let continueButton = app.buttons["onboarding-next-button"]
+        XCTAssertTrue(continueButton.waitForExistence(timeout: 5), "Expected Continue after choosing \(choice)")
+        continueButton.tap()
+
         XCTAssertTrue(app.staticTexts[next].waitForExistence(timeout: 5), "Expected next onboarding screen \(next)")
     }
 

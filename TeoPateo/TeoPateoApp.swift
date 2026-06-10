@@ -1,4 +1,5 @@
 import SwiftUI
+
 import UIKit
 
 @main
@@ -6,6 +7,8 @@ struct TeoPateoApp: App {
     @StateObject private var store = Self.makeStore()
 
     init() {
+        Observability.start()
+
         // TextEditor draws on a UITextView whose opaque default background would
         // hide the themed `quietEditor` surface on iOS 15. Make it transparent so
         // the field treatment matches QuietFieldStyle everywhere.
@@ -76,6 +79,7 @@ struct TeoPateoApp: App {
         let plan = QuitPlan(
             quitDate: quitDate,
             quitMode: "Taper",
+            nextBestAction: "Drink cold water before your morning coffee.",
             triggerRules: [
                 TriggerRule(trigger: "After coffee", action: "Drink cold water first."),
                 TriggerRule(trigger: "After dinner", action: "Brush teeth before leaving the table.")

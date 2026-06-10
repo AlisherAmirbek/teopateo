@@ -92,7 +92,7 @@ final class TeoPateoStore: ObservableObject {
             // empty in-memory data over a good iCloud backup, and never try to restore into a
             // throwaway store.
             self.init(repository: InMemoryTeoPateoRepository())
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Local storage is unavailable. Changes may not persist.")
         }
     }
@@ -119,6 +119,14 @@ final class TeoPateoStore: ObservableObject {
         self.hasSeenTutorial = Self.loadHasSeenTutorial()
         hydrateFromPersistence()
         maybeStartTutorial()
+    }
+
+    /// Surface a persistence failure to the UI and report it to Sentry as a
+    /// non-fatal, so field write failures are visible. Routed through one place
+    /// so every catch site reports consistently.
+    private func recordPersistenceError(_ error: Error) {
+        persistenceError = error.localizedDescription
+        Observability.record(error, category: "persistence")
     }
 
     var currentQuitPlan: QuitPlan {
@@ -330,7 +338,7 @@ final class TeoPateoStore: ObservableObject {
             return true
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Check-in could not be saved.")
             return false
         }
@@ -450,7 +458,7 @@ final class TeoPateoStore: ObservableObject {
             return true
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Craving and slip could not be saved.")
             return false
         }
@@ -517,7 +525,7 @@ final class TeoPateoStore: ObservableObject {
             return true
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Slip could not be saved.")
             return false
         }
@@ -639,10 +647,13 @@ final class TeoPateoStore: ObservableObject {
 
             if Task.isCancelled || Self.isCancellation(error) {
                 coachResponseState = .ready
-            } else if !trimmedReply.isEmpty {
-                coachResponseState = .failed(Self.partialCoachReplySavedMessage)
             } else {
-                coachResponseState = .failed(Self.coachErrorMessage(for: error))
+                Self.recordUnexpectedCoachError(error)
+                if !trimmedReply.isEmpty {
+                    coachResponseState = .failed(Self.partialCoachReplySavedMessage)
+                } else {
+                    coachResponseState = .failed(Self.coachErrorMessage(for: error))
+                }
             }
         }
     }
@@ -722,7 +733,7 @@ final class TeoPateoStore: ObservableObject {
             return true
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Local data could not be deleted.")
             return false
         }
@@ -940,7 +951,7 @@ final class TeoPateoStore: ObservableObject {
             return true
         } catch {
             isHydrating = false
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Onboarding could not be saved.")
             return false
         }
@@ -1567,7 +1578,7 @@ final class TeoPateoStore: ObservableObject {
             lastSaveStatus = .saved("Craving record deleted.")
             syncScheduledNotifications(showSuccess: false)
         } catch {
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Craving record could not be deleted.")
         }
     }
@@ -1578,7 +1589,7 @@ final class TeoPateoStore: ObservableObject {
             dailyCheckIns = try repository.recentCheckIns(limit: 10_000)
             lastSaveStatus = .saved("Check-in deleted.")
         } catch {
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Check-in could not be deleted.")
         }
     }
@@ -1589,7 +1600,7 @@ final class TeoPateoStore: ObservableObject {
             slipEvents = try repository.recentSlipEvents(limit: 10_000)
             lastSaveStatus = .saved("Slip record deleted.")
         } catch {
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Slip record could not be deleted.")
         }
     }
@@ -1625,7 +1636,7 @@ final class TeoPateoStore: ObservableObject {
             persistenceError = nil
             lastSaveStatus = .saved("Check-in note updated.")
         } catch {
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Check-in note could not be updated.")
         }
     }
@@ -1659,7 +1670,7 @@ final class TeoPateoStore: ObservableObject {
             persistenceError = nil
             lastSaveStatus = .saved("Slip note updated.")
         } catch {
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Slip note could not be updated.")
         }
     }
@@ -1754,7 +1765,7 @@ final class TeoPateoStore: ObservableObject {
             try persistDefaultsIfNeeded(snapshot: snapshot)
             persistenceError = nil
         } catch {
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Local data could not be loaded.")
             applyDefaultState()
         }
@@ -1878,7 +1889,7 @@ final class TeoPateoStore: ObservableObject {
             syncScheduledNotifications(showSuccess: false)
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Quit plan could not be saved.")
         }
     }
@@ -1890,7 +1901,7 @@ final class TeoPateoStore: ObservableObject {
             lastSaveStatus = .saved(successMessage)
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Reasons could not be saved.")
         }
     }
@@ -1902,7 +1913,7 @@ final class TeoPateoStore: ObservableObject {
             lastSaveStatus = .saved(successMessage)
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Replacement activities could not be saved.")
         }
     }
@@ -1914,7 +1925,7 @@ final class TeoPateoStore: ObservableObject {
             lastSaveStatus = .saved(successMessage)
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Risky situations could not be saved.")
         }
     }
@@ -1925,7 +1936,7 @@ final class TeoPateoStore: ObservableObject {
             persistenceError = nil
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Coach chats could not be saved.")
         }
     }
@@ -1953,7 +1964,7 @@ final class TeoPateoStore: ObservableObject {
             return true
         } catch {
             privacySettings = previous
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Privacy settings could not be saved.")
             return false
         }
@@ -2244,6 +2255,45 @@ final class TeoPateoStore: ObservableObject {
         return false
     }
 
+    /// Report coach failures that indicate a bug or a server/contract problem,
+    /// while ignoring expected operational cases (offline, rate limiting, or a
+    /// coach proxy that simply isn't configured yet). No message content is sent.
+    private static func recordUnexpectedCoachError(_ error: Error) {
+        guard shouldReportCoachError(error) else { return }
+        Observability.record(error, category: "coach")
+    }
+
+    private static func shouldReportCoachError(_ error: Error) -> Bool {
+        if isCancellation(error) {
+            return false
+        }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost,
+                 .cannotConnectToHost, .timedOut, .dataNotAllowed, .internationalRoamingOff:
+                return false
+            default:
+                return true
+            }
+        }
+
+        if let coachError = error as? CoachClientError {
+            switch coachError {
+            case .missingProxyConfiguration, .requestFailed(statusCode: 429):
+                return false
+            #if DEBUG
+            case .missingAPIKey:
+                return false
+            #endif
+            default:
+                return true
+            }
+        }
+
+        return true
+    }
+
     private static func coachDateLabel(_ date: Date) -> String {
         date.formatted(date: .abbreviated, time: .shortened)
     }
@@ -2303,7 +2353,7 @@ final class TeoPateoStore: ObservableObject {
             return true
         } catch {
             notificationSettings = previous
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Notification settings could not be saved.")
             return false
         }
@@ -2391,7 +2441,7 @@ final class TeoPateoStore: ObservableObject {
             return true
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Craving could not be saved.")
             return false
         }
@@ -2449,7 +2499,7 @@ final class TeoPateoStore: ObservableObject {
             persistenceError = nil
         } catch {
             restorePersistedStateAfterSaveFailure()
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             lastSaveStatus = .failed("Plan suggestions could not be saved.")
         }
     }
@@ -3717,7 +3767,7 @@ extension TeoPateoStore {
             lastSaveStatus = .saved("Restored your data from iCloud.")
             return true
         } catch {
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
             cloudBackupStatus = .failed("Could not restore from iCloud.")
             return false
         }
@@ -3736,7 +3786,7 @@ extension TeoPateoStore {
             applyPersistedSnapshot(try repository.loadSnapshot())
             persistenceError = nil
         } catch {
-            persistenceError = error.localizedDescription
+            recordPersistenceError(error)
         }
         selectedTab = .today
         syncScheduledNotifications(showSuccess: false)

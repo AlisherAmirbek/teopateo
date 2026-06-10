@@ -22,6 +22,7 @@
 		A1B2C3D4E5F60718293A0302 /* NotificationScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */; };
 		A1B2C3D4E5F60718293A0304 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */; };
 		A1B2C3D4E5F60718293A0402 /* CoachService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0401 /* CoachService.swift */; };
+		A1B2C3D4E5F60718293A0702 /* Observability.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0701 /* Observability.swift */; };
 		A1B2C3D4E5F60718293A0602 /* CloudBackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0601 /* CloudBackupService.swift */; };
 		A1B2C3D4E5F60718293A0502 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0501 /* PrivacyInfo.xcprivacy */; };
 		A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89C40CE62B9B4943A6112508 /* Assets.xcassets */; };
@@ -39,6 +40,7 @@
 		F0EF8AC76B4B4CC1A19F564F /* TeoPateoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7459CD623144D7485026A3B /* TeoPateoApp.swift */; };
 		F44C99D9C5F34126A9A66DE4 /* CheckInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9A0901E1C624D8CB77A502E /* CheckInView.swift */; };
 		F9891355D10F4C558F89A561 /* InsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D88DBF5EA21B43379A7BA673 /* InsightsView.swift */; };
+		0DFBC6CE3ED145888D7F7BBC /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = FDD56D11E16445CF8FED6A94 /* Sentry */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -77,6 +79,7 @@
 		A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationScheduler.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0401 /* CoachService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A0701 /* Observability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Observability.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0601 /* CloudBackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudBackupService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0501 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A6D36C3D9F4B4DA79022A621 /* basic_animation.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = basic_animation.mov; sourceTree = "<group>"; };
@@ -103,6 +106,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0DFBC6CE3ED145888D7F7BBC /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -110,6 +114,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0DFBC6CE3ED145888D7F7BBC /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -118,6 +123,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1B2C3D4E5F60718293A0203 /* GRDB in Frameworks */,
+				0DFBC6CE3ED145888D7F7BBC /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -178,6 +184,7 @@
 				A1B2C3D4E5F60718293A0103 /* SQLiteTeoPateoRepository.swift */,
 				A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */,
 				A1B2C3D4E5F60718293A0401 /* CoachService.swift */,
+				A1B2C3D4E5F60718293A0701 /* Observability.swift */,
 				A1B2C3D4E5F60718293A0601 /* CloudBackupService.swift */,
 			);
 			path = Services;
@@ -277,6 +284,7 @@
 				2888193B506F425BA922D1F2 /* Sources */,
 				CF49FCD08BDD4286A01FAFFC /* Frameworks */,
 				13587ED401A44B0294E27A31 /* Resources */,
+				767809ADAF7A410E8B3C22C8 /* Upload Debug Symbols to Sentry */,
 			);
 			buildRules = (
 			);
@@ -285,6 +293,7 @@
 			name = TeoPateo;
 			packageProductDependencies = (
 				A1B2C3D4E5F60718293A0202 /* GRDB */,
+				FDD56D11E16445CF8FED6A94 /* Sentry */,
 			);
 			productName = TeoPateo;
 			productReference = 6B5D70F821554C54B52E1DA9 /* TeoPateo.app */;
@@ -324,6 +333,7 @@
 			mainGroup = 88D6D8C7D5DD4C09A95E0613;
 			packageReferences = (
 				A1B2C3D4E5F60718293A0201 /* XCLocalSwiftPackageReference "Vendor/GRDB" */,
+				B2B84DC9ED3143A39011C037 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 			productRefGroup = 0B12EE6541FC45919712D55F /* Products */;
 			projectDirPath = "";
@@ -386,6 +396,7 @@
 				A1B2C3D4E5F60718293A0104 /* SQLiteTeoPateoRepository.swift in Sources */,
 				A1B2C3D4E5F60718293A0302 /* NotificationScheduler.swift in Sources */,
 				A1B2C3D4E5F60718293A0402 /* CoachService.swift in Sources */,
+				A1B2C3D4E5F60718293A0702 /* Observability.swift in Sources */,
 				A1B2C3D4E5F60718293A0602 /* CloudBackupService.swift in Sources */,
 				8E77AD628A294124A8F14B9A /* TeoPateoStore.swift in Sources */,
 				A1B2C3D4E5F60718293A0304 /* NotificationSettingsView.swift in Sources */,
@@ -457,6 +468,8 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_USER_SCRIPT_SANDBOXING = "NO";
 			};
 			name = Release;
 		};
@@ -587,6 +600,8 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_USER_SCRIPT_SANDBOXING = "NO";
 			};
 			name = Debug;
 		};
@@ -748,7 +763,52 @@
 			package = A1B2C3D4E5F60718293A0201 /* XCLocalSwiftPackageReference "Vendor/GRDB" */;
 			productName = GRDB;
 		};
+		FDD56D11E16445CF8FED6A94 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B2B84DC9ED3143A39011C037 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
 /* End XCSwiftPackageProductDependency section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		767809ADAF7A410E8B3C22C8 /* Upload Debug Symbols to Sentry */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# This script is responsible for uploading debug symbols and source context for Sentry.
+if which sentry-cli >/dev/null; then
+  export SENTRY_ORG=ip-amirbek
+  export SENTRY_PROJECT=teopateo
+  ERROR=$(sentry-cli debug-files upload --include-sources \"$DWARF_DSYM_FOLDER_PATH\" 2>&1 >/dev/null)
+  if [ ! $? -eq 0 ]; then
+    echo \"warning: sentry-cli - $ERROR\"
+  fi
+else
+  echo \"warning: sentry-cli not installed, download from https://github.com/getsentry/sentry-cli/releases\"
+fi
+";
+			name = "Upload Debug Symbols to Sentry";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B2B84DC9ED3143A39011C037 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa/";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 8.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 669341A4D85148CB8E39E2C5 /* Project object */;
 }

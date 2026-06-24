@@ -443,6 +443,7 @@
 		5A2EF128139647BEAAB48BE5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = TeoPateo/TeoPateo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -575,6 +576,7 @@
 		AFAD9CF0BD9C49878AD3CADC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = TeoPateo/TeoPateo.entitlements;
 				CODE_SIGN_STYLE = Automatic;

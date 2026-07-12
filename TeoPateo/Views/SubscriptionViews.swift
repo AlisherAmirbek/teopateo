@@ -294,21 +294,28 @@ struct OnboardingSubscriptionOfferView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            VStack(alignment: .leading, spacing: 6) {
-                Button("Continue with free version") {
+            VStack(spacing: 2) {
+                Button {
                     finishOnboarding()
+                } label: {
+                    Text("Continue with free version")
+                        .font(.rounded(.footnote, weight: .semibold))
+                        .foregroundColor(QuitTheme.muted)
+                        .underline()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
                 }
-                .buttonStyle(QuietButtonStyle())
+                .buttonStyle(PlainButtonStyle())
                 .accessibilityIdentifier("onboarding-continue-free-button")
 
-                Text("Free includes your quit plan, daily check-ins, progress, quitline support, and a simple craving fallback.")
-                    .font(.rounded(.caption))
-                    .foregroundColor(QuitTheme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text("Free keeps your quit plan and essential craving support.")
+                    .font(.rounded(.caption2))
+                    .foregroundColor(QuitTheme.faint)
+                    .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 24)
-            .padding(.top, 12)
-            .padding(.bottom, 12)
+            .padding(.top, 6)
+            .padding(.bottom, 8)
             .background(QuitTheme.background)
         }
         .onAppear {

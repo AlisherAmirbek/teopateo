@@ -51,7 +51,11 @@ You can revoke AI coach sharing from Privacy & Data in the app. Revoking consent
 
 You can delete local TeoPateo data from Privacy & Data in the app. This removes your quit plan, onboarding profile, check-ins, cravings, slips, coach chats, reasons, activities, risky situations, notification settings, and coach sharing consent from this device.
 
-You can request an export of data TeoPateo controls through the contact path on the hosted privacy-policy page.
+You can request an export of data TeoPateo controls by emailing support@teopateo.app.
+
+## Contact
+
+For privacy or support requests, email support@teopateo.app.
 
 ## Under 18
 

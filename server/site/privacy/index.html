@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Privacy Policy | TeoPateo</title>
+    <meta name="description" content="TeoPateo privacy policy for local quit-plan data, AI coach sharing, crash diagnostics, and user choices.">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">
+        <span class="brand-mark"><img src="/assets/teo.png" alt=""></span>
+        TeoPateo
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="/privacy/">Privacy</a>
+        <a href="/support/">Support</a>
+      </nav>
+    </header>
+
+    <main class="content">
+      <h1 class="page-title">Privacy Policy</h1>
+      <p class="lede">Effective date: July 12, 2026. TeoPateo is a quit-smoking companion. The app handles sensitive health-related information, so the default posture is local-first storage and explicit consent before AI coach data leaves the device.</p>
+
+      <section class="section">
+        <h2>Data Stored On Your Device</h2>
+        <p>TeoPateo stores quit plans, quit dates, taper or cold-turkey settings, onboarding profile details, check-ins, cravings, slips, triggers, reasons for quitting, replacement activities, risky situations, coach chat history, and notification settings locally on your device.</p>
+        <p>TeoPateo does not sync or back up this quit-history data to iCloud. Local data is not collected by TeoPateo unless you choose to use an off-device feature such as the AI coach. Release builds also send limited crash and error diagnostics as described below.</p>
+      </section>
+
+      <section class="section">
+        <h2>AI Coach Data Sharing</h2>
+        <p>The AI coach sends data off-device only after you explicitly allow coach data sharing. When you send a coach message, TeoPateo sends your message plus limited quit-plan context to the TeoPateo coach proxy. That context can include smoking history, check-ins, cravings, slips, triggers, reasons, replacement activities, risky situations, and recent coach messages.</p>
+        <p>The coach proxy forwards the request to an AI provider, currently OpenRouter, to generate a reply. The proxy trims context before forwarding and is designed without a long-term TeoPateo user account. Production provider configuration should prefer no retention and no training on coach data.</p>
+      </section>
+
+      <section class="section">
+        <h2>Crash and Error Diagnostics</h2>
+        <p>Release builds use Sentry for crash reporting and handled-error diagnostics. Reports can include device and operating-system details, stack traces, and a coarse error category. TeoPateo disables Sentry's default personal information collection and does not attach quit-plan content, coach messages, or other user-entered health content to diagnostic events.</p>
+      </section>
+
+      <section class="section">
+        <h2>How Data Is Used</h2>
+        <ul>
+          <li>To build and update your quit plan.</li>
+          <li>To show progress, insights, reminders, and craving support.</li>
+          <li>To generate AI coach replies when coach sharing is enabled.</li>
+          <li>To diagnose crashes and handled errors in Release builds.</li>
+        </ul>
+        <p>TeoPateo does not sell your data and does not use health-related coach data for advertising or cross-app tracking.</p>
+      </section>
+
+      <section class="section">
+        <h2>Retention and Choices</h2>
+        <p>Local app data remains on your device until you delete it or uninstall the app. Coach requests are used to return a coach reply. Diagnostic events are retained according to the configured Sentry project retention settings.</p>
+        <p>You can decline AI coach sharing and continue using the rest of TeoPateo. You can revoke AI coach sharing from Privacy & Data in the app. You can delete local TeoPateo data from Privacy & Data in the app.</p>
+      </section>
+
+      <section class="section">
+        <h2>Contact</h2>
+        <p>For privacy or support requests, email <a href="mailto:support@teopateo.app">support@teopateo.app</a>.</p>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>© 2026 TeoPateo</span>
+      <span><a href="/support/">Support</a></span>
+    </footer>
+  </body>
+</html>

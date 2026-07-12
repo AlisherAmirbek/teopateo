@@ -3230,37 +3230,6 @@ struct PersistedTeoPateoSnapshot: Codable, Equatable {
     }
 }
 
-/// Versioned wrapper around a full data snapshot, persisted to iCloud. The version
-/// fields let a restore reject payloads it cannot safely import (e.g. a backup made
-/// by a newer app version with a higher database schema).
-struct BackupEnvelope: Codable, Equatable {
-    /// Envelope shape version. Bump only if `BackupEnvelope` itself changes, not the snapshot.
-    static let currentFormatVersion = 1
-
-    var formatVersion: Int
-    /// GRDB migrator version (`TeoPateoRepository.schemaVersion()`) captured at export time.
-    /// A backup whose `schemaVersion` exceeds the running app's schema must not be imported.
-    var schemaVersion: Int
-    var exportedAt: Date
-    /// Human-readable origin device (e.g. "iPhone") for "Last backed up from …" copy.
-    var deviceName: String
-    var snapshot: PersistedTeoPateoSnapshot
-
-    init(
-        formatVersion: Int = BackupEnvelope.currentFormatVersion,
-        schemaVersion: Int,
-        exportedAt: Date,
-        deviceName: String,
-        snapshot: PersistedTeoPateoSnapshot
-    ) {
-        self.formatVersion = formatVersion
-        self.schemaVersion = schemaVersion
-        self.exportedAt = exportedAt
-        self.deviceName = deviceName
-        self.snapshot = snapshot
-    }
-}
-
 private extension Array where Element: Hashable {
     func uniqued() -> [Element] {
         var seen: Set<Element> = []

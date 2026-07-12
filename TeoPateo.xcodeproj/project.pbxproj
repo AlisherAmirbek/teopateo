@@ -23,7 +23,6 @@
 		A1B2C3D4E5F60718293A0304 /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */; };
 		A1B2C3D4E5F60718293A0402 /* CoachService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0401 /* CoachService.swift */; };
 		A1B2C3D4E5F60718293A0702 /* Observability.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0701 /* Observability.swift */; };
-		A1B2C3D4E5F60718293A0602 /* CloudBackupService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0601 /* CloudBackupService.swift */; };
 		A1B2C3D4E5F60718293A0502 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0501 /* PrivacyInfo.xcprivacy */; };
 		A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89C40CE62B9B4943A6112508 /* Assets.xcassets */; };
 		A6D36C3E9F4B4DA79022A621 /* basic_animation.mov in Resources */ = {isa = PBXBuildFile; fileRef = A6D36C3D9F4B4DA79022A621 /* basic_animation.mov */; };
@@ -31,7 +30,7 @@
 		B2C3D4E5F60718293A100004 /* ModelAndPlannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */; };
 		B2C3D4E5F60718293A100006 /* RepositoryMutationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */; };
 		B2C3D4E5F60718293A100008 /* StoreBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100007 /* StoreBehaviorTests.swift */; };
-		B2C3D4E5F60718293A10000A /* CloudBackupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100009 /* CloudBackupTests.swift */; };
+		B2C3D4E5F60718293A10000A /* SnapshotImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F60718293A100009 /* SnapshotImportTests.swift */; };
 		B81FD725E89B4B53B10C3A94 /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1341071134E44F28C5467B4 /* PlanView.swift */; };
 		C3D4E5F60718293A200002 /* TeoPateoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D4E5F60718293A200001 /* TeoPateoUITests.swift */; };
 		D4A7B8850C9D4A5B97F24A11 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A7B8840C9D4A5B97F24A11 /* OnboardingView.swift */; };
@@ -80,7 +79,6 @@
 		A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0401 /* CoachService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0701 /* Observability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Observability.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718293A0601 /* CloudBackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudBackupService.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0501 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A6D36C3D9F4B4DA79022A621 /* basic_animation.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = basic_animation.mov; sourceTree = "<group>"; };
 		A9A0901E1C624D8CB77A502E /* CheckInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CheckInView.swift; sourceTree = "<group>"; };
@@ -90,7 +88,7 @@
 		B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelAndPlannerTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepositoryMutationTests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F60718293A100007 /* StoreBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreBehaviorTests.swift; sourceTree = "<group>"; };
-		B2C3D4E5F60718293A100009 /* CloudBackupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudBackupTests.swift; sourceTree = "<group>"; };
+		B2C3D4E5F60718293A100009 /* SnapshotImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotImportTests.swift; sourceTree = "<group>"; };
 		C3D4E5F60718293A200001 /* TeoPateoUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeoPateoUITests.swift; sourceTree = "<group>"; };
 		C3D4E5F60718293A200003 /* TeoPateoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TeoPateoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C4B3FAC78D454260B212B499 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -185,7 +183,6 @@
 				A1B2C3D4E5F60718293A0301 /* NotificationScheduler.swift */,
 				A1B2C3D4E5F60718293A0401 /* CoachService.swift */,
 				A1B2C3D4E5F60718293A0701 /* Observability.swift */,
-				A1B2C3D4E5F60718293A0601 /* CloudBackupService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -197,7 +194,7 @@
 				B2C3D4E5F60718293A100003 /* ModelAndPlannerTests.swift */,
 				B2C3D4E5F60718293A100005 /* RepositoryMutationTests.swift */,
 				B2C3D4E5F60718293A100007 /* StoreBehaviorTests.swift */,
-				B2C3D4E5F60718293A100009 /* CloudBackupTests.swift */,
+				B2C3D4E5F60718293A100009 /* SnapshotImportTests.swift */,
 				B2C3D4E5F60718293A100001 /* TestSupport.swift */,
 			);
 			path = TeoPateoTests;
@@ -397,7 +394,6 @@
 				A1B2C3D4E5F60718293A0302 /* NotificationScheduler.swift in Sources */,
 				A1B2C3D4E5F60718293A0402 /* CoachService.swift in Sources */,
 				A1B2C3D4E5F60718293A0702 /* Observability.swift in Sources */,
-				A1B2C3D4E5F60718293A0602 /* CloudBackupService.swift in Sources */,
 				8E77AD628A294124A8F14B9A /* TeoPateoStore.swift in Sources */,
 				A1B2C3D4E5F60718293A0304 /* NotificationSettingsView.swift in Sources */,
 			);
@@ -411,7 +407,7 @@
 				B2C3D4E5F60718293A100004 /* ModelAndPlannerTests.swift in Sources */,
 				B2C3D4E5F60718293A100006 /* RepositoryMutationTests.swift in Sources */,
 				B2C3D4E5F60718293A100008 /* StoreBehaviorTests.swift in Sources */,
-				B2C3D4E5F60718293A10000A /* CloudBackupTests.swift in Sources */,
+				B2C3D4E5F60718293A10000A /* SnapshotImportTests.swift in Sources */,
 				A1B2C3D4E5F60718293A0002 /* LocalPersistenceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -443,6 +439,7 @@
 		5A2EF128139647BEAAB48BE5 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = TeoPateo/TeoPateo.entitlements;
 				CODE_SIGN_STYLE = Automatic;
@@ -575,6 +572,7 @@
 		AFAD9CF0BD9C49878AD3CADC /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = TeoPateo/TeoPateo.entitlements;
 				CODE_SIGN_STYLE = Automatic;

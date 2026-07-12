@@ -1,35 +1,32 @@
-# Data Durability and Sync
+# Local Data Durability
 
 ## Goal
 
-Protect the user's quit history — the emotional core of the product — from device loss, and decide whether progress follows the user across devices.
+Keep the user's quit history durable on the current device while respecting App Store rules for health information.
 
 ## The Risk
 
-All data lives in on-device SQLite with no backup or sync. If the user replaces or loses their phone, their entire smoke-free streak, craving history, slips, and check-ins are gone. For a quit-smoking app, losing the streak is uniquely demoralizing and can end the quit attempt.
+Quit plans, cravings, slips, check-ins, and coach history are sensitive health-related data. Apple App Review Guideline 5.1.3(ii) says health-management apps may not store personal health information in iCloud, so the previous CloudKit backup implementation was removed before launch.
 
-## Options
+## Launch Decision
 
-- **iCloud / CloudKit sync**: progress follows the user and survives device loss, with no separate account. Most aligned with a privacy-first, no-server-account design.
-- **Export / import**: lighter-weight; lets users back up and restore manually. A reasonable minimum even if full sync is deferred.
-- **Server-side storage**: only if accounts/identity are introduced for other reasons (e.g. coach personalization).
-
-## Identity
-
-- CloudKit sync needs no login. If server-side features are wanted later, Sign in with Apple is the low-friction path.
+- User data is persisted in the app's on-device SQLite database.
+- TeoPateo does not request iCloud or CloudKit entitlements and does not upload quit history to iCloud.
+- The Privacy & Data screen plainly describes local storage and provides local deletion.
+- A future user-controlled encrypted file export/import can be evaluated separately.
 
 ## Considerations
 
-- Migration: the existing GRDB migration chain (v1–v8) must coexist with whatever sync model is chosen.
-- Conflict handling for multi-device edits; last-writer-wins is likely acceptable for this data.
-- If v1 stays local-only, tell users plainly that their data lives on this device.
+- The GRDB migration chain preserves existing on-device records across app updates.
+- Removing CloudKit does not delete an existing local SQLite database.
+- Cross-device continuity remains a post-launch product and compliance decision.
 
 ## Acceptance Criteria
 
-- A decision is recorded: CloudKit sync, export/import, or explicit local-only with user messaging.
-- The chosen path is implemented and tested across a device restore.
-- Data deletion and export are honored (ties to `privacy-policy-and-data-disclosure`).
+- The app has no iCloud/CloudKit entitlement or runtime backup path.
+- User-facing copy states that quit history remains on the device.
+- Local persistence, migration, snapshot import, and deletion remain covered by tests.
 
-## Open Questions
+## Follow-up
 
-- Is cross-device continuity a launch requirement or a fast-follow?
+Design a compliant manual export/import flow if cross-device continuity becomes a priority.

@@ -4,13 +4,5 @@
 <dict>
 	<key>com.apple.developer.devicecheck.appattest-environment</key>
 	<string>production</string>
-	<key>com.apple.developer.icloud-container-identifiers</key>
-	<array>
-		<string>iCloud.com.teopateo.TeoPateo</string>
-	</array>
-	<key>com.apple.developer.icloud-services</key>
-	<array>
-		<string>CloudKit</string>
-	</array>
 </dict>
 </plist>

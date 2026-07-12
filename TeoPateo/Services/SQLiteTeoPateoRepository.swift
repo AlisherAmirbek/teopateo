@@ -61,7 +61,7 @@ protocol TeoPateoRepository {
 
     func deleteAllUserData() throws
 
-    /// Atomically replaces all persisted data with `snapshot` (used by iCloud restore).
+    /// Atomically replaces all persisted data with `snapshot` for local import and migration tools.
     func importSnapshot(_ snapshot: PersistedTeoPateoSnapshot) throws
 }
 
@@ -1328,7 +1328,7 @@ final class SQLiteTeoPateoRepository: TeoPateoRepository {
     /// The INSERTs below mirror the per-entity `saveX`/`replaceX` methods; tables are empty
     /// after the clear, so plain inserts replace the upsert/ON CONFLICT forms. The child
     /// `craving_event_triggers`/`slip_event_triggers` rows reuse `writeCravingEvent`/
-    /// `writeSlipEvent`. `CloudBackupTests` round-trips real data through this method and
+    /// `writeSlipEvent`. Snapshot import tests round-trip real data through this method and
     /// asserts equality, which is the guard against drift from the `saveX` SQL.
     func importSnapshot(_ snapshot: PersistedTeoPateoSnapshot) throws {
         try dbQueue.write { db in

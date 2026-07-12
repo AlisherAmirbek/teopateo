@@ -242,12 +242,59 @@ final class TeoPateoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["start-rescue-button"].isHittable)
     }
 
+    /// Captures deterministic, unframed screenshots at the simulator's native
+    /// resolution. `scripts/capture_app_store_screenshots.sh` runs this test on
+    /// the App Store device classes and exports the attachments by name.
+    func testCaptureAppStoreScreenshots() {
+        launchApp(seedHistory: true, seedPlanWeek: true)
+
+        XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 6))
+        captureAppStoreScreenshot(named: "01-today")
+        app.terminate()
+        Thread.sleep(forTimeInterval: 1)
+
+        launchApp(seedPlanWeek: true, selectedTab: "Plan")
+        XCTAssertTrue(app.staticTexts["Today's playbook."].waitForExistence(timeout: 5))
+        captureAppStoreScreenshot(named: "03-plan")
+        app.terminate()
+        Thread.sleep(forTimeInterval: 1)
+
+        launchApp(seedHistory: true, seedPlanWeek: true, selectedTab: "Insights")
+        XCTAssertTrue(app.staticTexts["Your risk is predictable."].waitForExistence(timeout: 5))
+        captureAppStoreScreenshot(named: "04-insights")
+        app.terminate()
+        Thread.sleep(forTimeInterval: 1)
+
+        launchApp(selectedTab: "Coach")
+        XCTAssertTrue(app.staticTexts["Get help before you smoke."].waitForExistence(timeout: 5))
+        tapWhenVisible(app.buttons["coach-prompt-I want to smoke now"])
+        XCTAssertTrue(app.staticTexts["Allow AI coach replies?"].waitForExistence(timeout: 3))
+        app.buttons["coach-consent-allow-button"].tap()
+        XCTAssertTrue(element("coach-ai-generated-label").waitForExistence(timeout: 5))
+        captureAppStoreScreenshot(named: "05-ai-coach")
+        app.terminate()
+        Thread.sleep(forTimeInterval: 1)
+
+        launchApp(seedHistory: true, seedPlanWeek: true, selectedTab: "Today")
+        XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 5))
+        app.buttons["start-rescue-button"].tap()
+        XCTAssertTrue(app.staticTexts["craving-timer-label"].waitForExistence(timeout: 5))
+        captureAppStoreScreenshot(named: "02-craving-rescue")
+    }
+
+    func testCaptureAppStoreInsightsScreenshot() {
+        launchApp(seedHistory: true, seedPlanWeek: true, selectedTab: "Insights")
+        XCTAssertTrue(app.staticTexts["Your risk is predictable."].waitForExistence(timeout: 5))
+        captureAppStoreScreenshot(named: "04-insights")
+    }
+
     private func launchApp(
         seedCompleted: Bool = true,
         seedHistory: Bool = false,
         seedPlanWeek: Bool = false,
         showTutorial: Bool = false,
-        notificationStatus: String = "authorized"
+        notificationStatus: String = "authorized",
+        selectedTab: String? = nil
     ) {
         app = XCUIApplication()
         app.launchArguments = ["-teopateo-ui-testing"]
@@ -266,7 +313,18 @@ final class TeoPateoUITests: XCTestCase {
         app.launchEnvironment["TEOPATEO_UI_TEST_DATABASE_NAME"] = UUID().uuidString
         app.launchEnvironment["TEOPATEO_UI_TEST_NOW"] = "2026-05-27T12:00:00Z"
         app.launchEnvironment["TEOPATEO_UI_TEST_NOTIFICATION_STATUS"] = notificationStatus
+        if let selectedTab {
+            app.launchEnvironment["TEOPATEO_UI_TEST_SELECTED_TAB"] = selectedTab
+        }
         app.launch()
+    }
+
+    private func captureAppStoreScreenshot(named name: String) {
+        Thread.sleep(forTimeInterval: 1)
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     private func element(_ identifier: String) -> XCUIElement {

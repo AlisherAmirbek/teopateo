@@ -5,6 +5,7 @@ import UIKit
 @main
 struct TeoPateoApp: App {
     @StateObject private var store = Self.makeStore()
+    @StateObject private var subscriptionStore = SubscriptionStore()
 
     init() {
         Observability.start()
@@ -19,6 +20,7 @@ struct TeoPateoApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(store)
+                .environmentObject(subscriptionStore)
         }
     }
 

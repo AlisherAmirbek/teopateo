@@ -1,0 +1,91 @@
+{
+  "identifier" : "2C5E6CF1-01D4-4D91-A3E6-1FC76EE541ED",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storeKitErrors" : [
+
+    ],
+    "_storefront" : "USA",
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "B616BD74-534B-4F1B-AF23-745663CB77AA",
+      "localizations" : [
+        {
+          "description" : "Guided support through cravings, slips, and restarts.",
+          "displayName" : "TeoPateo Premium",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "TeoPateo Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "8154A5C0-456F-4B7A-A052-231EA6D2261B",
+          "introductoryOffer" : {
+            "duration" : "P7D",
+            "paymentMode" : "freeTrial"
+          },
+          "localizations" : [
+            {
+              "description" : "Full rescue, adaptive support, and personalized quit coaching.",
+              "displayName" : "TeoPateo Premium Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.teopateo.TeoPateo.premium.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "TeoPateo Premium Monthly",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "59.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "56A087C2-9872-48FF-B2A7-AC83FE83CED0",
+          "introductoryOffer" : {
+            "duration" : "P7D",
+            "paymentMode" : "freeTrial"
+          },
+          "localizations" : [
+            {
+              "description" : "Full rescue, adaptive support, and personalized quit coaching.",
+              "displayName" : "TeoPateo Premium Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.teopateo.TeoPateo.premium.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "TeoPateo Premium Yearly",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

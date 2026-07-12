@@ -160,11 +160,22 @@ struct CoachProxyConfiguration: Equatable {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         bundle: Bundle = .main
     ) -> CoachProxyConfiguration? {
-        guard let urlString = configuredValue(
+        let configuredURLString = configuredValue(
             named: "TEOPATEO_COACH_PROXY_URL",
             environment: environment,
             bundle: bundle
-        ), let endpointURL = URL(string: urlString) else {
+        )
+        let urlString: String
+        if let configuredURLString {
+            urlString = configuredURLString
+        } else {
+            #if DEBUG
+            return nil
+            #else
+            urlString = "https://82.38.4.88.sslip.io/v1/coach/reply"
+            #endif
+        }
+        guard let endpointURL = URL(string: urlString) else {
             return nil
         }
 
@@ -195,7 +206,7 @@ struct CoachProxyConfiguration: Equatable {
 }
 
 struct LiveCoachClient: CoachResponding {
-    private let proxyConfiguration: CoachProxyConfiguration?
+    private let proxyClient: CoachProxyClient?
 
     #if DEBUG
     private let openRouterConfiguration: OpenRouterConfiguration?
@@ -204,18 +215,18 @@ struct LiveCoachClient: CoachResponding {
         proxyConfiguration: CoachProxyConfiguration? = CoachProxyConfiguration.live(),
         openRouterConfiguration: OpenRouterConfiguration? = OpenRouterConfiguration.live()
     ) {
-        self.proxyConfiguration = proxyConfiguration
+        self.proxyClient = proxyConfiguration.map { CoachProxyClient(configuration: $0) }
         self.openRouterConfiguration = openRouterConfiguration
     }
     #else
     init(proxyConfiguration: CoachProxyConfiguration? = CoachProxyConfiguration.live()) {
-        self.proxyConfiguration = proxyConfiguration
+        self.proxyClient = proxyConfiguration.map { CoachProxyClient(configuration: $0) }
     }
     #endif
 
     func reply(to request: CoachRequest) -> AsyncThrowingStream<String, Error> {
-        if let proxyConfiguration {
-            return CoachProxyClient(configuration: proxyConfiguration).reply(to: request)
+        if let proxyClient {
+            return proxyClient.reply(to: request)
         }
 
         #if DEBUG
@@ -231,6 +242,7 @@ struct LiveCoachClient: CoachResponding {
 struct CoachProxyClient: CoachResponding {
     private let configuration: CoachProxyConfiguration
     private let bytesTask: (URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse)
+    private let appAttestAuthorizer: AppAttestAuthorizing
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -238,17 +250,24 @@ struct CoachProxyClient: CoachResponding {
         configuration: CoachProxyConfiguration,
         bytesTask: @escaping (URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) = { request in
             try await URLSession.shared.bytes(for: request)
-        }
+        },
+        appAttestAuthorizer: AppAttestAuthorizing? = nil
     ) {
         self.configuration = configuration
         self.bytesTask = bytesTask
+        self.appAttestAuthorizer = appAttestAuthorizer
+            ?? LiveAppAttestAuthorizer(endpointURL: configuration.endpointURL)
     }
 
     func reply(to request: CoachRequest) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    try await streamReply(to: request, continuation: continuation)
+                    try await streamReply(
+                        to: request,
+                        continuation: continuation,
+                        allowsAttestationRetry: true
+                    )
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -261,14 +280,26 @@ struct CoachProxyClient: CoachResponding {
 
     private func streamReply(
         to request: CoachRequest,
-        continuation: AsyncThrowingStream<String, Error>.Continuation
+        continuation: AsyncThrowingStream<String, Error>.Continuation,
+        allowsAttestationRetry: Bool
     ) async throws {
-        let urlRequest = try makeURLRequest(for: request)
+        let unsignedRequest = try makeURLRequest(for: request)
+        let urlRequest = try await appAttestAuthorizer.authorize(unsignedRequest)
         let (bytes, response) = try await bytesTask(urlRequest)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw CoachClientError.invalidHTTPResponse
         }
         let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+        if httpResponse.statusCode == 401, allowsAttestationRetry {
+            _ = try await Self.collectData(from: bytes)
+            await appAttestAuthorizer.invalidateKey()
+            try await streamReply(
+                to: request,
+                continuation: continuation,
+                allowsAttestationRetry: false
+            )
+            return
+        }
         guard 200..<300 ~= httpResponse.statusCode else {
             _ = try await Self.collectData(from: bytes)
             throw CoachClientError.requestFailed(statusCode: httpResponse.statusCode)

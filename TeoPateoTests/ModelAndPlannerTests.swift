@@ -1,3 +1,4 @@
+import CryptoKit
 import XCTest
 import UserNotifications
 @testable import TeoPateo
@@ -410,6 +411,75 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
         XCTAssertFalse(body.contains("Authorization"))
     }
 
+    func testAppAttestClientDataBindsChallengeBodyAndRequestTarget() throws {
+        let challenge = Data([1, 2, 3])
+        let body = Data("coach request".utf8)
+        let encoded = try AppAttestClientData.encoded(
+            challenge: challenge,
+            requestBody: body,
+            method: "POST",
+            path: "/v1/coach/reply"
+        )
+        let repeated = try AppAttestClientData.encoded(
+            challenge: challenge,
+            requestBody: body,
+            method: "POST",
+            path: "/v1/coach/reply"
+        )
+        let decoded = try JSONDecoder().decode(AppAttestClientData.self, from: encoded)
+
+        XCTAssertEqual(encoded, repeated)
+        XCTAssertEqual(decoded.challenge, "AQID")
+        XCTAssertEqual(decoded.method, "POST")
+        XCTAssertEqual(decoded.path, "/v1/coach/reply")
+        XCTAssertEqual(
+            decoded.bodySha256,
+            Data(SHA256.hash(data: body)).base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+        )
+        XCTAssertNotEqual(
+            encoded,
+            try AppAttestClientData.encoded(
+                challenge: challenge,
+                requestBody: Data("changed".utf8),
+                method: "POST",
+                path: "/v1/coach/reply"
+            )
+        )
+    }
+
+    func testProductionAppAttestHandshakeWhenExplicitlyEnabled() async throws {
+        guard ProcessInfo.processInfo.environment["RUN_APP_ATTEST_INTEGRATION"] == "1" else {
+            return
+        }
+
+        let endpoint = try XCTUnwrap(
+            URL(string: "https://82.38.4.88.sslip.io/v1/coach/reply")
+        )
+        let body = Data(
+            """
+            {"contextSummary":"","messages":[],"stream":false}
+            """.utf8
+        )
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.httpBody = body
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let authorizer = LiveAppAttestAuthorizer(endpointURL: endpoint)
+        let authorizedRequest = try await authorizer.authorize(request)
+        let (_, response) = try await URLSession.shared.data(for: authorizedRequest)
+        let httpResponse = try XCTUnwrap(response as? HTTPURLResponse)
+
+        XCTAssertEqual(
+            httpResponse.statusCode,
+            400,
+            "A 400 response proves App Attest authorization succeeded and request validation ran."
+        )
+    }
+
     #if DEBUG
     func testOpenRouterCoachPromptRetainsSafetyBoundaries() {
         let prompt = OpenRouterCoachClient.safetySystemPromptForTesting
@@ -424,6 +494,15 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
     #endif
 
     #if !DEBUG
+    func testReleaseBuildHasProductionProxyEndpoint() throws {
+        let configuration = try XCTUnwrap(CoachProxyConfiguration.live(environment: [:]))
+
+        XCTAssertEqual(
+            configuration.endpointURL.absoluteString,
+            "https://82.38.4.88.sslip.io/v1/coach/reply"
+        )
+    }
+
     func testReleaseBuildWithoutProxyCannotUseDirectOpenRouter() async {
         let client = LiveCoachClient(proxyConfiguration: nil)
 

@@ -9,6 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import coach_proxy
 
 
+class FakeHandler:
+    def __init__(self, headers):
+        self.headers = headers
+        self.path = "/v1/coach/reply"
+
+
 class CoachProxyTests(unittest.TestCase):
     def test_normalized_messages_strips_invalid_roles_and_limits_size(self):
         long_text = "x" * (coach_proxy.MAX_MESSAGE_CHARS + 50)
@@ -64,6 +70,33 @@ class CoachProxyTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     coach_proxy.validate_configuration()
         finally:
+            coach_proxy.PROXY_TOKEN = original_token
+
+    def test_required_app_attest_mode_does_not_accept_shared_bearer(self):
+        original_mode = coach_proxy.APP_ATTEST_MODE
+        original_token = coach_proxy.PROXY_TOKEN
+        original_verifier = coach_proxy.APP_ATTEST_VERIFIER
+        coach_proxy.APP_ATTEST_MODE = "required"
+        coach_proxy.PROXY_TOKEN = "shared-token"
+        coach_proxy.APP_ATTEST_VERIFIER = None
+        handler = FakeHandler({"Authorization": "Bearer shared-token"})
+        try:
+            self.assertFalse(coach_proxy.coach_request_authorized(handler, b"{}"))
+        finally:
+            coach_proxy.APP_ATTEST_MODE = original_mode
+            coach_proxy.PROXY_TOKEN = original_token
+            coach_proxy.APP_ATTEST_VERIFIER = original_verifier
+
+    def test_monitor_mode_keeps_bearer_only_for_migration(self):
+        original_mode = coach_proxy.APP_ATTEST_MODE
+        original_token = coach_proxy.PROXY_TOKEN
+        coach_proxy.APP_ATTEST_MODE = "monitor"
+        coach_proxy.PROXY_TOKEN = "shared-token"
+        handler = FakeHandler({"Authorization": "Bearer shared-token"})
+        try:
+            self.assertTrue(coach_proxy.coach_request_authorized(handler, b"{}"))
+        finally:
+            coach_proxy.APP_ATTEST_MODE = original_mode
             coach_proxy.PROXY_TOKEN = original_token
 
     def test_rate_limiter_prunes_expired_ip_buckets(self):

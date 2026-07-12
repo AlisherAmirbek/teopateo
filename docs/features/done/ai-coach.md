@@ -22,7 +22,7 @@ Release builds use the VPS proxy:
 Debug builds can fall back to direct OpenRouter development settings if no proxy URL is configured:
 
 - `OPENROUTER_API_KEY`
-- `OPENROUTER_MODEL` (optional, defaults to `openai/gpt-5-mini`)
+- `OPENROUTER_MODEL` (the confirmed production proxy model is `deepseek/deepseek-v4-flash`; the direct Debug fallback defaults to `openai/gpt-5-mini`)
 - `OPENROUTER_APP_TITLE` (optional, defaults to `TeoPateo`)
 - `OPENROUTER_REFERER` (optional)
 - `OPENROUTER_BASE_URL` (optional, defaults to `https://openrouter.ai/api/v1`)

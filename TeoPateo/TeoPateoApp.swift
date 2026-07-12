@@ -37,12 +37,17 @@ struct TeoPateoApp: App {
         do {
             let repository = try makeUITestRepository()
             try seedUITestDataIfNeeded(repository)
-            return TeoPateoStore(
+            let store = TeoPateoStore(
                 repository: repository,
                 notificationScheduler: UITestNotificationScheduler(),
                 coachClient: UITestCoachClient(),
                 now: { makeUITestNow() }
             )
+            if let selectedTabName = ProcessInfo.processInfo.environment["TEOPATEO_UI_TEST_SELECTED_TAB"],
+               let selectedTab = AppTab(rawValue: selectedTabName) {
+                store.selectedTab = selectedTab
+            }
+            return store
         } catch {
             return TeoPateoStore()
         }

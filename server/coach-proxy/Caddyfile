@@ -1,3 +1,9 @@
+teopateo.app {
+	root * /var/www/teopateo
+	try_files {path} {path}/index.html
+	file_server
+}
+
 api.teopateo.app, 82.38.4.88.sslip.io {
 	reverse_proxy 127.0.0.1:8091 {
 		header_up X-TeoPateo-Remote-IP {http.request.remote.host}

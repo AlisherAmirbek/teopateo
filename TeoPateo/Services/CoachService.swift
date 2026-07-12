@@ -172,7 +172,7 @@ struct CoachProxyConfiguration: Equatable {
             #if DEBUG
             return nil
             #else
-            urlString = "https://82.38.4.88.sslip.io/v1/coach/reply"
+            urlString = "https://api.teopateo.app/v1/coach/reply"
             #endif
         }
         guard let endpointURL = URL(string: urlString) else {

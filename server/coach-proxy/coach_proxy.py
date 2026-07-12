@@ -2,6 +2,7 @@
 import base64
 import binascii
 import hmac
+import ipaddress
 import json
 import os
 import socket
@@ -34,6 +35,7 @@ REFERER = os.getenv("OPENROUTER_REFERER", "")
 PROXY_TOKEN = os.getenv("TEOPATEO_COACH_PROXY_TOKEN", "")
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "20"))
+TRUSTED_CLIENT_IP_PROXY_CIDRS = os.getenv("TRUSTED_CLIENT_IP_PROXY_CIDRS", "")
 UPSTREAM_TIMEOUT_SECONDS = int(os.getenv("UPSTREAM_TIMEOUT_SECONDS", "45"))
 APP_ATTEST_MODE = os.getenv("APP_ATTEST_MODE", "disabled").strip().lower()
 APP_ATTEST_APP_ID = os.getenv(
@@ -103,6 +105,8 @@ def validate_configuration():
         errors.append("RATE_LIMIT_WINDOW_SECONDS must be positive")
     if RATE_LIMIT_REQUESTS < 1:
         errors.append("RATE_LIMIT_REQUESTS must be positive")
+    if _trusted_client_ip_proxy_networks() is None:
+        errors.append("TRUSTED_CLIENT_IP_PROXY_CIDRS must contain valid IP networks")
     if UPSTREAM_TIMEOUT_SECONDS < 1:
         errors.append("UPSTREAM_TIMEOUT_SECONDS must be positive")
     if APP_ATTEST_MODE != "disabled":
@@ -134,11 +138,60 @@ def json_response(handler, status, body):
     handler.wfile.write(payload)
 
 
+def _valid_ip_address(value):
+    stripped = value.strip()
+    if not stripped or any(char.isspace() for char in stripped):
+        return None
+    try:
+        return ipaddress.ip_address(stripped)
+    except ValueError:
+        return None
+
+
+def _valid_ip_network(value):
+    stripped = value.strip()
+    if not stripped or any(char.isspace() for char in stripped):
+        return None
+    try:
+        return ipaddress.ip_network(stripped, strict=False)
+    except ValueError:
+        return None
+
+
+def _trusted_client_ip_proxy_networks():
+    networks = []
+    for item in TRUSTED_CLIENT_IP_PROXY_CIDRS.split(","):
+        stripped = item.strip()
+        if not stripped:
+            continue
+        network = _valid_ip_network(stripped)
+        if network is None:
+            return None
+        networks.append(network)
+    return tuple(networks)
+
+
+def _ip_is_trusted_proxy(address):
+    networks = _trusted_client_ip_proxy_networks()
+    if networks is None:
+        return False
+    return any(address in network for network in networks)
+
+
 def client_ip(handler):
-    forwarded = handler.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    direct_ip = _valid_ip_address(handler.client_address[0])
+    remote_ip = _valid_ip_address(handler.headers.get("X-TeoPateo-Remote-IP", "")) or direct_ip
+    if remote_ip is not None and _ip_is_trusted_proxy(remote_ip):
+        cloudflare_client_ip = _valid_ip_address(
+            handler.headers.get("X-TeoPateo-CF-Connecting-IP", "")
+        )
+        if cloudflare_client_ip is not None:
+            return str(cloudflare_client_ip)
+    if remote_ip is not None:
+        return str(remote_ip)
     return handler.client_address[0]
+
+
 
 
 def is_rate_limited(ip):

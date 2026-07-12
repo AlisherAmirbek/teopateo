@@ -10,8 +10,9 @@ import coach_proxy
 
 
 class FakeHandler:
-    def __init__(self, headers):
+    def __init__(self, headers, client_address=("127.0.0.1", 12345)):
         self.headers = headers
+        self.client_address = client_address
         self.path = "/v1/coach/reply"
 
 
@@ -98,6 +99,38 @@ class CoachProxyTests(unittest.TestCase):
         finally:
             coach_proxy.APP_ATTEST_MODE = original_mode
             coach_proxy.PROXY_TOKEN = original_token
+
+    def test_client_ip_ignores_spoofed_forwarded_headers_without_trusted_proxy(self):
+        original_cidrs = coach_proxy.TRUSTED_CLIENT_IP_PROXY_CIDRS
+        coach_proxy.TRUSTED_CLIENT_IP_PROXY_CIDRS = "173.245.48.0/20"
+        handler = FakeHandler(
+            {
+                "X-Forwarded-For": "198.51.100.10",
+                "CF-Connecting-IP": "198.51.100.10",
+                "X-TeoPateo-CF-Connecting-IP": "198.51.100.10",
+                "X-TeoPateo-Remote-IP": "203.0.113.9",
+            },
+            client_address=("127.0.0.1", 12345),
+        )
+        try:
+            self.assertEqual(coach_proxy.client_ip(handler), "203.0.113.9")
+        finally:
+            coach_proxy.TRUSTED_CLIENT_IP_PROXY_CIDRS = original_cidrs
+
+    def test_client_ip_trusts_cloudflare_header_from_trusted_proxy(self):
+        original_cidrs = coach_proxy.TRUSTED_CLIENT_IP_PROXY_CIDRS
+        coach_proxy.TRUSTED_CLIENT_IP_PROXY_CIDRS = "173.245.48.0/20"
+        handler = FakeHandler(
+            {
+                "X-TeoPateo-CF-Connecting-IP": "198.51.100.11",
+                "X-TeoPateo-Remote-IP": "173.245.48.5",
+            },
+            client_address=("127.0.0.1", 12345),
+        )
+        try:
+            self.assertEqual(coach_proxy.client_ip(handler), "198.51.100.11")
+        finally:
+            coach_proxy.TRUSTED_CLIENT_IP_PROXY_CIDRS = original_cidrs
 
     def test_rate_limiter_prunes_expired_ip_buckets(self):
         original_window = coach_proxy.RATE_LIMIT_WINDOW_SECONDS

@@ -10,7 +10,7 @@ GET /health
 The app should call:
 
 ```text
-https://82.38.4.88.sslip.io/v1/coach/reply
+https://api.teopateo.app/v1/coach/reply
 ```
 
 ## Environment
@@ -23,10 +23,11 @@ PORT=8091
 OPENROUTER_API_KEY=replace-with-real-key
 OPENROUTER_MODEL=deepseek/deepseek-v4-flash
 OPENROUTER_APP_TITLE=TeoPateo
-OPENROUTER_REFERER=https://82.38.4.88.sslip.io
+OPENROUTER_REFERER=https://api.teopateo.app
 TEOPATEO_COACH_PROXY_TOKEN=replace-with-generated-token
 RATE_LIMIT_WINDOW_SECONDS=60
 RATE_LIMIT_REQUESTS=20
+TRUSTED_CLIENT_IP_PROXY_CIDRS=replace-with-comma-separated-cloudflare-ip-ranges
 UPSTREAM_TIMEOUT_SECONDS=45
 APP_ATTEST_MODE=required
 APP_ATTEST_APP_ID=A2RM3XYB3K.com.teopateo.TeoPateo
@@ -39,6 +40,8 @@ APP_ATTEST_ROOT_CA_PATH=/opt/teopateo-coach/Apple_App_Attestation_Root_CA.pem
 
 `APP_ATTEST_MODE=required` rejects coach requests unless the iOS app supplies a valid assertion from an Apple-attested installation. The bearer token remains useful only with `disabled` or `monitor` mode during development and migration; it is not accepted as production authorization in required mode. Keep the OpenRouter API key only on the VPS. The env file should remain root-readable only:
 
+`TRUSTED_CLIENT_IP_PROXY_CIDRS` should be populated from Cloudflare's current IPv4 and IPv6 ranges so the proxy only trusts `CF-Connecting-IP` when the request actually arrived from Cloudflare.
+
 ```sh
 chmod 600 /etc/teopateo-coach.env
 ```
@@ -48,7 +51,7 @@ chmod 600 /etc/teopateo-coach.env
 Set these in the Xcode scheme, simulator user defaults, or generated Info.plist values:
 
 ```sh
-TEOPATEO_COACH_PROXY_URL=https://82.38.4.88.sslip.io/v1/coach/reply
+TEOPATEO_COACH_PROXY_URL=https://api.teopateo.app/v1/coach/reply
 ```
 
 Release builds contain the production proxy endpoint and use App Attest instead of an embedded bearer token. Direct OpenRouter access is compiled only for Debug development.
@@ -77,7 +80,7 @@ python3 -m pip install -r requirements.txt
 ```sh
 systemctl status teopateo-coach
 systemctl status caddy
-curl -fsS https://82.38.4.88.sslip.io/health
+curl -fsS https://api.teopateo.app/health
 ```
 
 The public health response is intentionally minimal:

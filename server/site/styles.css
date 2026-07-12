@@ -405,7 +405,7 @@ a {
   padding: 28px;
   background:
     linear-gradient(180deg, rgba(255, 250, 240, 0.1), rgba(255, 250, 240, 0.88)),
-    url("/assets/teo-walking.png") center 20% / min(270px, 68%) no-repeat,
+    url("/assets/teo-walking.png?v=20260712-soft1") center 20% / min(270px, 68%) no-repeat,
     linear-gradient(145deg, var(--sky), var(--mint));
 }
 

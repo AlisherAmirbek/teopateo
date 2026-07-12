@@ -4,10 +4,21 @@ import UIKit
 
 @main
 struct TeoPateoApp: App {
-    @StateObject private var store = Self.makeStore()
-    @StateObject private var subscriptionStore = Self.makeSubscriptionStore()
+    private let entitlementProofStore: CoachEntitlementProofStore
+    @StateObject private var store: TeoPateoStore
+    @StateObject private var subscriptionStore: SubscriptionStore
 
     init() {
+        let entitlementProofStore = CoachEntitlementProofStore()
+        self.entitlementProofStore = entitlementProofStore
+        _store = StateObject(
+            wrappedValue: Self.makeStore(entitlementProofStore: entitlementProofStore)
+        )
+        _subscriptionStore = StateObject(
+            wrappedValue: Self.makeSubscriptionStore(
+                entitlementProofStore: entitlementProofStore
+            )
+        )
         Observability.start()
 
         // TextEditor draws on a UITextView whose opaque default background would
@@ -24,23 +35,28 @@ struct TeoPateoApp: App {
         }
     }
 
-    private static func makeStore() -> TeoPateoStore {
+    private static func makeStore(
+        entitlementProofStore: CoachEntitlementProofStore
+    ) -> TeoPateoStore {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-teopateo-ui-testing") {
             return makeUITestStore()
         }
         #endif
 
-        return TeoPateoStore()
+        return TeoPateoStore(entitlementProofStore: entitlementProofStore)
     }
 
-    private static func makeSubscriptionStore() -> SubscriptionStore {
+    private static func makeSubscriptionStore(
+        entitlementProofStore: CoachEntitlementProofStore
+    ) -> SubscriptionStore {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-teopateo-ui-testing") {
             if ProcessInfo.processInfo.arguments.contains("-teopateo-ui-free-subscription") {
                 return SubscriptionStore(
                     refreshOnLaunch: false,
-                    initialEntitlement: .free
+                    initialEntitlement: .free,
+                    entitlementProofStore: entitlementProofStore
                 )
             }
 
@@ -57,12 +73,17 @@ struct TeoPateoApp: App {
                     isUsingIntroductoryOffer: false,
                     renewalState: .active,
                     willAutoRenew: true
-                ))
+                )),
+                entitlementProofStore: entitlementProofStore
             )
         }
         #endif
 
-        return SubscriptionStore()
+        return SubscriptionStore(
+            refreshOnLaunch: true,
+            initialEntitlement: .loading,
+            entitlementProofStore: entitlementProofStore
+        )
     }
 
     #if DEBUG

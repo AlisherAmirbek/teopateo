@@ -57,10 +57,24 @@ final class TeoPateoStore: ObservableObject {
     )
 
     convenience init() {
+        self.init(entitlementProofStore: CoachEntitlementProofStore())
+    }
+
+    convenience init(entitlementProofStore: CoachEntitlementProofProviding) {
         do {
-            try self.init(repository: SQLiteTeoPateoRepository.live())
+            try self.init(
+                repository: SQLiteTeoPateoRepository.live(),
+                coachClient: LiveCoachClient(
+                    entitlementProofProvider: entitlementProofStore
+                )
+            )
         } catch {
-            self.init(repository: InMemoryTeoPateoRepository())
+            self.init(
+                repository: InMemoryTeoPateoRepository(),
+                coachClient: LiveCoachClient(
+                    entitlementProofProvider: entitlementProofStore
+                )
+            )
             recordPersistenceError(error)
             lastSaveStatus = .failed("Local storage is unavailable. Changes may not persist.")
         }
@@ -817,6 +831,14 @@ final class TeoPateoStore: ObservableObject {
 
     @discardableResult
     func completeOnboarding(_ input: OnboardingPlanInput) -> Bool {
+        completeOnboarding(input, keepsOnboardingPresented: false)
+    }
+
+    @discardableResult
+    func completeOnboarding(
+        _ input: OnboardingPlanInput,
+        keepsOnboardingPresented: Bool
+    ) -> Bool {
         let now = now()
         let nickname = input.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !nickname.isEmpty else {
@@ -897,13 +919,15 @@ final class TeoPateoStore: ObservableObject {
             self.selectedTriggers = Set(generatedPlan.triggerRules.map(\.trigger))
             confidence = input.confidence
             isOnboardingCompleted = true
-            isOnboardingPresented = false
+            isOnboardingPresented = keepsOnboardingPresented
             selectedTab = .today
             isHydrating = false
 
             persistenceError = nil
             lastSaveStatus = .saved("Your quit plan is ready.")
-            scheduleTutorialStart()
+            if !keepsOnboardingPresented {
+                scheduleTutorialStart()
+            }
             return true
         } catch {
             isHydrating = false
@@ -920,6 +944,7 @@ final class TeoPateoStore: ObservableObject {
     func dismissOnboardingForNow() {
         isOnboardingPresented = false
         selectedTab = .today
+        scheduleTutorialStart()
     }
 
     // MARK: - Tutorial (one-time coach marks on Today)

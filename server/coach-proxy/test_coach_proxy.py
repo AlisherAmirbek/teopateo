@@ -65,13 +65,16 @@ class CoachProxyTests(unittest.TestCase):
 
     def test_validate_configuration_requires_proxy_token(self):
         original_token = coach_proxy.PROXY_TOKEN
+        original_subscriptions_mode = coach_proxy.COACH_SUBSCRIPTIONS_MODE
         coach_proxy.PROXY_TOKEN = ""
+        coach_proxy.COACH_SUBSCRIPTIONS_MODE = "disabled"
         try:
             with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-v1-test"}, clear=False):
                 with self.assertRaises(SystemExit):
                     coach_proxy.validate_configuration()
         finally:
             coach_proxy.PROXY_TOKEN = original_token
+            coach_proxy.COACH_SUBSCRIPTIONS_MODE = original_subscriptions_mode
 
     def test_required_app_attest_mode_does_not_accept_shared_bearer(self):
         original_mode = coach_proxy.APP_ATTEST_MODE

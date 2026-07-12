@@ -54,6 +54,58 @@ struct PremiumEntitlement: Equatable {
     let isUsingIntroductoryOffer: Bool
     let renewalState: SubscriptionRenewalState
     let willAutoRenew: Bool?
+    /// StoreKit's Apple-signed transaction JWS. This stays in memory and is
+    /// exchanged with the Coach proxy for a short-lived access token.
+    let signedTransaction: String?
+
+    init(
+        plan: SubscriptionPlan,
+        productID: String,
+        originalTransactionID: UInt64,
+        transactionID: UInt64,
+        purchaseDate: Date,
+        expirationDate: Date?,
+        isUsingIntroductoryOffer: Bool,
+        renewalState: SubscriptionRenewalState,
+        willAutoRenew: Bool?
+    ) {
+        self.init(
+            plan: plan,
+            productID: productID,
+            originalTransactionID: originalTransactionID,
+            transactionID: transactionID,
+            purchaseDate: purchaseDate,
+            expirationDate: expirationDate,
+            isUsingIntroductoryOffer: isUsingIntroductoryOffer,
+            renewalState: renewalState,
+            willAutoRenew: willAutoRenew,
+            signedTransaction: nil
+        )
+    }
+
+    init(
+        plan: SubscriptionPlan,
+        productID: String,
+        originalTransactionID: UInt64,
+        transactionID: UInt64,
+        purchaseDate: Date,
+        expirationDate: Date?,
+        isUsingIntroductoryOffer: Bool,
+        renewalState: SubscriptionRenewalState,
+        willAutoRenew: Bool?,
+        signedTransaction: String? = nil
+    ) {
+        self.plan = plan
+        self.productID = productID
+        self.originalTransactionID = originalTransactionID
+        self.transactionID = transactionID
+        self.purchaseDate = purchaseDate
+        self.expirationDate = expirationDate
+        self.isUsingIntroductoryOffer = isUsingIntroductoryOffer
+        self.renewalState = renewalState
+        self.willAutoRenew = willAutoRenew
+        self.signedTransaction = signedTransaction
+    }
 
     var isTrial: Bool {
         isUsingIntroductoryOffer
@@ -152,12 +204,27 @@ final class SubscriptionStore: ObservableObject {
     @Published private(set) var paywallFeature: PremiumFeature?
 
     private var transactionUpdatesTask: Task<Void, Never>?
+    private let entitlementProofStore: CoachEntitlementProofStore
 
-    init(
+    convenience init(
         refreshOnLaunch: Bool = true,
         initialEntitlement: EntitlementState = .loading
     ) {
+        self.init(
+            refreshOnLaunch: refreshOnLaunch,
+            initialEntitlement: initialEntitlement,
+            entitlementProofStore: CoachEntitlementProofStore()
+        )
+    }
+
+    init(
+        refreshOnLaunch: Bool,
+        initialEntitlement: EntitlementState,
+        entitlementProofStore: CoachEntitlementProofStore
+    ) {
+        self.entitlementProofStore = entitlementProofStore
         entitlement = initialEntitlement
+        updateCoachEntitlementProof(for: initialEntitlement)
         transactionUpdatesTask = Task.detached { [weak self] in
             for await result in Transaction.updates {
                 guard let self else { return }
@@ -335,7 +402,7 @@ final class SubscriptionStore: ObservableObject {
     }
 
     func refreshEntitlements() async {
-        var activeTransactions: [Transaction] = []
+        var activeTransactions: [(transaction: Transaction, signedTransaction: String)] = []
 
         for await verificationResult in Transaction.currentEntitlements {
             guard case let .verified(transaction) = verificationResult else {
@@ -350,21 +417,28 @@ final class SubscriptionStore: ObservableObject {
             if let expirationDate = transaction.expirationDate, expirationDate <= Date() {
                 continue
             }
-            activeTransactions.append(transaction)
+            activeTransactions.append((
+                transaction: transaction,
+                signedTransaction: verificationResult.jwsRepresentation
+            ))
         }
 
-        guard let transaction = activeTransactions.max(by: Self.isOlderEntitlement) else {
-            entitlement = .free
+        guard let activeTransaction = activeTransactions.max(by: {
+            Self.isOlderEntitlement($0.transaction, $1.transaction)
+        }) else {
+            updateEntitlement(.free)
             return
         }
+
+        let transaction = activeTransaction.transaction
 
         let renewalDetails = await renewalDetails(for: transaction)
         guard let plan = SubscriptionPlan(productID: transaction.productID) else {
-            entitlement = .free
+            updateEntitlement(.free)
             return
         }
 
-        entitlement = .premium(PremiumEntitlement(
+        updateEntitlement(.premium(PremiumEntitlement(
             plan: plan,
             productID: transaction.productID,
             originalTransactionID: transaction.originalID,
@@ -373,8 +447,9 @@ final class SubscriptionStore: ObservableObject {
             expirationDate: transaction.expirationDate,
             isUsingIntroductoryOffer: transaction.offerType == .introductory,
             renewalState: renewalDetails?.state ?? .active,
-            willAutoRenew: renewalDetails?.willAutoRenew
-        ))
+            willAutoRenew: renewalDetails?.willAutoRenew,
+            signedTransaction: activeTransaction.signedTransaction
+        )))
     }
 
     private func handle(transactionResult: VerificationResult<Transaction>) async {
@@ -446,6 +521,19 @@ final class SubscriptionStore: ObservableObject {
             .revoked
         default:
             .unknown
+        }
+    }
+
+    private func updateEntitlement(_ newEntitlement: EntitlementState) {
+        entitlement = newEntitlement
+        updateCoachEntitlementProof(for: newEntitlement)
+    }
+
+    private func updateCoachEntitlementProof(for newEntitlement: EntitlementState) {
+        let signedTransaction = newEntitlement.premiumEntitlement?.signedTransaction
+        let proofStore = entitlementProofStore
+        Task {
+            await proofStore.replace(with: signedTransaction)
         }
     }
 }

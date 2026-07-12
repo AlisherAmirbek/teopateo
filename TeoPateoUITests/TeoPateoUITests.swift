@@ -9,7 +9,7 @@ final class TeoPateoUITests: XCTestCase {
     }
 
     func testOnboardingCreatesPlanAndDismissesToToday() {
-        launchApp(seedCompleted: false)
+        launchApp(seedCompleted: false, freeSubscription: true)
 
         // Name (conversational first screen + medical boundary).
         XCTAssertTrue(app.staticTexts["What should I call you?"].waitForExistence(timeout: 5))
@@ -50,11 +50,16 @@ final class TeoPateoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Building your plan…"].waitForExistence(timeout: 5), "Expected the building screen")
         XCTAssertTrue(app.staticTexts["Here's your starter plan."].waitForExistence(timeout: 8), "Expected the review after building")
 
-        // Review → commitment pledge (press and hold) → Today.
+        // Review → commitment pledge (press and hold) → voluntary offer → Today.
         app.buttons["onboarding-next-button"].tap()
         let commit = app.buttons["onboarding-pledge-commit"]
         XCTAssertTrue(commit.waitForExistence(timeout: 5), "Expected the commitment pledge")
         commit.press(forDuration: 1.9)
+
+        XCTAssertTrue(app.staticTexts["Choose the support that fits your quit."].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["onboarding-purchase-yearly-button"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["onboarding-purchase-monthly-button"].waitForExistence(timeout: 3))
+        app.buttons["onboarding-continue-free-button"].tap()
 
         XCTAssertTrue(app.buttons["start-rescue-button"].waitForExistence(timeout: 6))
         XCTAssertFalse(app.buttons["continue-setup-button"].exists)
@@ -111,6 +116,7 @@ final class TeoPateoUITests: XCTestCase {
 
         app.tabBars.buttons["Coach"].tap()
         XCTAssertTrue(app.buttons["unlock-aiCoach-button"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["open-premium-paywall-button"].exists)
 
         app.tabBars.buttons["Insights"].tap()
         XCTAssertTrue(app.buttons["unlock-personalizedInsights-button"].waitForExistence(timeout: 5))
@@ -124,6 +130,9 @@ final class TeoPateoUITests: XCTestCase {
 
         app.buttons["open-full-rescue-paywall-button"].tap()
         XCTAssertTrue(app.staticTexts["Stay supported through cravings, slips, and restarts."].waitForExistence(timeout: 5))
+        let yearlyPurchase = app.buttons["premium-purchase-yearly-button"]
+        XCTAssertTrue(yearlyPurchase.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitUntil(timeout: 5) { yearlyPurchase.isEnabled })
         XCTAssertTrue(app.buttons["restore-purchases-button"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons["manage-subscription-link"].waitForExistence(timeout: 3))
     }

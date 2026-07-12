@@ -30,8 +30,8 @@ struct PremiumPaywallView: View {
                 includedSupport
                 planOptions
 
-                if let statusMessage {
-                    Text(statusMessage)
+                if let message = availabilityMessage {
+                    Text(message)
                         .font(.rounded(.caption, weight: .bold))
                         .foregroundColor(QuitTheme.cocoa)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -69,6 +69,10 @@ struct PremiumPaywallView: View {
             subscriptionStore.dismissPaywall()
             dismiss()
         }
+    }
+
+    private var availabilityMessage: String? {
+        statusMessage ?? subscriptionStore.lastErrorMessage
     }
 
     private var includedSupport: some View {
@@ -146,7 +150,7 @@ struct PremiumPaywallView: View {
 
                 Spacer(minLength: 8)
 
-                if isPlanInProgress(plan) {
+                if isPlanInProgress(plan) || subscriptionStore.isLoadingProducts {
                     ProgressView()
                         .tint(QuitTheme.cocoa)
                         .padding(.top, 8)
@@ -163,8 +167,8 @@ struct PremiumPaywallView: View {
             .cornerRadius(18)
         }
         .buttonStyle(PlainButtonStyle())
-        .disabled(product == nil || subscriptionStore.isProcessingPurchase)
-        .opacity(product == nil && !subscriptionStore.isLoadingProducts ? 0.58 : 1)
+        .disabled(subscriptionStore.isProcessingPurchase || subscriptionStore.isLoadingProducts)
+        .opacity(subscriptionStore.isLoadingProducts ? 0.58 : 1)
         .accessibilityIdentifier("premium-purchase-\(plan.rawValue)-button")
     }
 
@@ -221,6 +225,227 @@ struct PremiumPaywallView: View {
     }
 
     static let manageSubscriptionsURL = URL(string: "https://apps.apple.com/account/subscriptions")!
+}
+
+/// A voluntary offer immediately after a user has received their personalized
+/// quit plan. It always retains a clear free path so support is never held
+/// behind a purchase decision.
+struct OnboardingSubscriptionOfferView: View {
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
+
+    let finishOnboarding: () -> Void
+
+    @State private var statusMessage: String?
+
+    var body: some View {
+        ZStack {
+            QuitTheme.background.ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.lg) {
+                    ScreenHeader(
+                        eyebrow: "Your plan is ready",
+                        title: "Choose the support that fits your quit."
+                    )
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Start with 7 days free")
+                            .typeSection()
+                        Text("Premium adds guided craving rescue, adaptive recovery, the AI coach, and pattern insights to the plan you just made.")
+                            .typeBodySecondary()
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .quietCard()
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Choose your support")
+                            .typeSection()
+
+                        planOption(
+                            .yearly,
+                            badge: "Best value",
+                            savingsNote: "Save 50% compared with monthly."
+                        )
+                        planOption(.monthly, badge: nil, savingsNote: nil)
+                    }
+
+                    if let message = availabilityMessage {
+                        Text(message)
+                            .font(.rounded(.caption, weight: .bold))
+                            .foregroundColor(QuitTheme.cocoa)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(QuitTheme.peach.opacity(0.62))
+                            .cornerRadius(12)
+                    }
+
+                    Button("Restore purchases") {
+                        restorePurchases()
+                    }
+                    .font(.rounded(.caption, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .disabled(subscriptionStore.isProcessingPurchase)
+                    .accessibilityIdentifier("onboarding-restore-purchases-button")
+
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+                .padding(.bottom, 132)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                Button("Continue with free version") {
+                    finishOnboarding()
+                }
+                .buttonStyle(QuietButtonStyle())
+                .accessibilityIdentifier("onboarding-continue-free-button")
+
+                Text("Free includes your quit plan, daily check-ins, progress, quitline support, and a simple craving fallback.")
+                    .font(.rounded(.caption))
+                    .foregroundColor(QuitTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
+            .background(QuitTheme.background)
+        }
+        .onAppear {
+            guard !subscriptionStore.isPremium else {
+                finishOnboarding()
+                return
+            }
+
+            Task {
+                await subscriptionStore.loadProducts()
+                if subscriptionStore.isPremium {
+                    finishOnboarding()
+                }
+            }
+        }
+        .onChange(of: subscriptionStore.isPremium) { isPremium in
+            if isPremium {
+                finishOnboarding()
+            }
+        }
+    }
+
+    private var availabilityMessage: String? {
+        statusMessage ?? subscriptionStore.lastErrorMessage
+    }
+
+    private func planOption(
+        _ plan: SubscriptionPlan,
+        badge: String?,
+        savingsNote: String?
+    ) -> some View {
+        let product = subscriptionStore.product(for: plan)
+        let hasTrial = subscriptionStore.isEligibleForIntroductoryOffer(on: plan)
+        let title = plan == .yearly ? "Yearly" : "Monthly"
+        let price = product?.displayPrice ?? (plan == .yearly ? "$59.99" : "$9.99")
+        let period = plan == .yearly ? "year" : "month"
+        let detail = hasTrial
+            ? "7-day free trial, then \(price) per \(period). Cancel anytime."
+            : "\(price) per \(period). Cancel anytime."
+
+        return Button {
+            purchase(plan)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: plan == .yearly ? "calendar" : "calendar.badge.clock")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .frame(width: 38, height: 38)
+                    .background(QuitTheme.peach.opacity(0.68))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(.rounded(.headline, weight: .bold))
+                            .foregroundColor(QuitTheme.ink)
+                        if let badge {
+                            Text(badge)
+                                .font(.rounded(.caption, weight: .bold))
+                                .foregroundColor(QuitTheme.onSage)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(QuitTheme.sage)
+                                .cornerRadius(8)
+                        }
+                    }
+
+                    Text(detail)
+                        .typeBodySecondary()
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let savingsNote {
+                        Text(savingsNote)
+                            .font(.rounded(.caption, weight: .bold))
+                            .foregroundColor(QuitTheme.cocoa)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                if isPlanInProgress(plan) || subscriptionStore.isLoadingProducts {
+                    ProgressView()
+                        .tint(QuitTheme.cocoa)
+                        .padding(.top, 8)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(QuitTheme.faint)
+                        .padding(.top, 10)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(QuitTheme.paper)
+            .cornerRadius(18)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(subscriptionStore.isProcessingPurchase || subscriptionStore.isLoadingProducts)
+        .opacity(subscriptionStore.isLoadingProducts ? 0.58 : 1)
+        .accessibilityIdentifier("onboarding-purchase-\(plan.rawValue)-button")
+    }
+
+    private func isPlanInProgress(_ plan: SubscriptionPlan) -> Bool {
+        if case let .purchasing(purchasingPlan) = subscriptionStore.operation {
+            return purchasingPlan == plan
+        }
+        return false
+    }
+
+    private func purchase(_ plan: SubscriptionPlan) {
+        Task {
+            switch await subscriptionStore.purchase(plan) {
+            case .purchased:
+                finishOnboarding()
+            case .cancelled:
+                statusMessage = nil
+            case .pending:
+                statusMessage = "Your purchase is waiting for approval. Premium will unlock when Apple confirms it."
+            case let .failed(message):
+                statusMessage = message
+            }
+        }
+    }
+
+    private func restorePurchases() {
+        Task {
+            let restored = await subscriptionStore.restorePurchases()
+            if restored, subscriptionStore.isPremium {
+                finishOnboarding()
+            } else if restored {
+                statusMessage = "No active TeoPateo Premium subscription was found."
+            } else {
+                statusMessage = subscriptionStore.lastErrorMessage
+            }
+        }
+    }
 }
 
 struct SubscriptionAccountCard: View {
@@ -345,8 +570,6 @@ struct PremiumFeaturePreview: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .quietCard()
-
-            SubscriptionAccountCard()
         }
     }
 }

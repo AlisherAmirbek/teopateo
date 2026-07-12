@@ -21,6 +21,13 @@ from app_attest import (
     AppAttestVerifier,
     ChallengeStore,
 )
+from app_store import (
+    AppStoreSubscriptionVerifier,
+    AppStoreVerificationError,
+    CoachAccessError,
+    CoachEntitlementStore,
+    load_root_certificates,
+)
 
 
 HOST = os.getenv("HOST", "127.0.0.1")
@@ -59,6 +66,36 @@ APP_ATTEST_CHALLENGE_TTL_SECONDS = int(
 APP_ATTEST_MAX_OUTSTANDING_CHALLENGES = int(
     os.getenv("APP_ATTEST_MAX_OUTSTANDING_CHALLENGES", "10000")
 )
+COACH_SUBSCRIPTIONS_MODE = os.getenv(
+    "COACH_SUBSCRIPTIONS_MODE", "required"
+).strip().lower()
+COACH_ACCESS_TOKEN_TTL_SECONDS = int(
+    os.getenv("COACH_ACCESS_TOKEN_TTL_SECONDS", "300")
+)
+COACH_MONTHLY_REPLY_LIMIT = int(os.getenv("COACH_MONTHLY_REPLY_LIMIT", "300"))
+COACH_ACCESS_TOKEN_SECRET = os.getenv("COACH_ACCESS_TOKEN_SECRET", "")
+APP_STORE_BUNDLE_ID = os.getenv(
+    "APP_STORE_BUNDLE_ID", "com.teopateo.TeoPateo"
+).strip()
+APP_STORE_APPLE_ID = os.getenv("APP_STORE_APPLE_ID", "").strip()
+APP_STORE_PRODUCT_IDS = os.getenv(
+    "APP_STORE_PRODUCT_IDS",
+    "com.teopateo.TeoPateo.premium.monthly,com.teopateo.TeoPateo.premium.yearly",
+)
+APP_STORE_ALLOWED_ENVIRONMENTS = os.getenv(
+    "APP_STORE_ALLOWED_ENVIRONMENTS", "Sandbox,Production"
+)
+APP_STORE_ROOT_CERTIFICATE_PATHS = os.getenv(
+    "APP_STORE_ROOT_CERTIFICATE_PATHS",
+    "/opt/teopateo-coach/AppleRootCA-G3.cer",
+)
+APP_STORE_ENABLE_ONLINE_CHECKS = os.getenv(
+    "APP_STORE_ENABLE_ONLINE_CHECKS", "true"
+).strip().lower() not in ("0", "false", "no")
+APP_STORE_ENTITLEMENT_DATABASE_PATH = os.getenv(
+    "APP_STORE_ENTITLEMENT_DATABASE_PATH",
+    "/var/lib/teopateo-coach/subscriptions.sqlite3",
+)
 MAX_CONTEXT_CHARS = 6000
 MAX_MESSAGE_CHARS = 4000
 MAX_MESSAGES = 12
@@ -79,6 +116,8 @@ def system_prompt(context_summary):
 REQUEST_TIMES = {}
 REQUEST_TIMES_LOCK = threading.Lock()
 APP_ATTEST_VERIFIER = None
+APP_STORE_VERIFIER = None
+COACH_ENTITLEMENT_STORE = None
 
 
 class UpstreamServiceError(RuntimeError):
@@ -99,6 +138,8 @@ def validate_configuration():
         errors.append("OPENROUTER_URL must use https")
     if APP_ATTEST_MODE not in ("disabled", "monitor", "required"):
         errors.append("APP_ATTEST_MODE must be disabled, monitor, or required")
+    if COACH_SUBSCRIPTIONS_MODE not in ("disabled", "required"):
+        errors.append("COACH_SUBSCRIPTIONS_MODE must be disabled or required")
     if APP_ATTEST_MODE != "required" and not PROXY_TOKEN.strip():
         errors.append("TEOPATEO_COACH_PROXY_TOKEN is required")
     if RATE_LIMIT_WINDOW_SECONDS < 1:
@@ -123,10 +164,64 @@ def validate_configuration():
         if not _allowed_app_attest_categories():
             errors.append("APP_ATTEST_ALLOWED_CATEGORIES must contain integers")
 
+    if COACH_SUBSCRIPTIONS_MODE == "required":
+        if APP_ATTEST_MODE != "required":
+            errors.append("APP_ATTEST_MODE must be required when subscriptions are required")
+        if len(COACH_ACCESS_TOKEN_SECRET.encode("utf-8")) < 32:
+            errors.append("COACH_ACCESS_TOKEN_SECRET must be at least 32 bytes")
+        if COACH_ACCESS_TOKEN_TTL_SECONDS < 30:
+            errors.append("COACH_ACCESS_TOKEN_TTL_SECONDS must be at least 30")
+        if COACH_MONTHLY_REPLY_LIMIT < 1:
+            errors.append("COACH_MONTHLY_REPLY_LIMIT must be positive")
+        if not APP_STORE_BUNDLE_ID:
+            errors.append("APP_STORE_BUNDLE_ID is required")
+        if not _app_store_product_ids():
+            errors.append("APP_STORE_PRODUCT_IDS must contain product IDs")
+        environments = _app_store_allowed_environments()
+        if not environments:
+            errors.append("APP_STORE_ALLOWED_ENVIRONMENTS must contain valid environments")
+        elif "Production" in environments:
+            if not APP_STORE_APPLE_ID.isdigit() or int(APP_STORE_APPLE_ID) < 1:
+                errors.append("APP_STORE_APPLE_ID is required for Production")
+        root_certificate_paths = _app_store_root_certificate_paths()
+        if not root_certificate_paths:
+            errors.append("APP_STORE_ROOT_CERTIFICATE_PATHS is required")
+        elif any(not path.is_file() for path in root_certificate_paths):
+            errors.append("APP_STORE_ROOT_CERTIFICATE_PATHS must point to readable certificates")
+
     if errors:
         for error in errors:
             print(f"configuration error: {error}", file=sys.stderr, flush=True)
         raise SystemExit(1)
+
+
+def _app_store_product_ids():
+    return tuple(
+        product_id.strip()
+        for product_id in APP_STORE_PRODUCT_IDS.split(",")
+        if product_id.strip()
+    )
+
+
+def _app_store_allowed_environments():
+    environments = tuple(
+        environment.strip()
+        for environment in APP_STORE_ALLOWED_ENVIRONMENTS.split(",")
+        if environment.strip()
+    )
+    if not environments or any(
+        environment not in ("Sandbox", "Production") for environment in environments
+    ):
+        return ()
+    return environments
+
+
+def _app_store_root_certificate_paths():
+    return tuple(
+        Path(path.strip())
+        for path in APP_STORE_ROOT_CERTIFICATE_PATHS.split(",")
+        if path.strip()
+    )
 
 
 def json_response(handler, status, body):
@@ -242,6 +337,31 @@ def initialize_app_attest():
     APP_ATTEST_VERIFIER.initialize()
 
 
+def initialize_subscription_access():
+    global APP_STORE_VERIFIER, COACH_ENTITLEMENT_STORE
+    if COACH_SUBSCRIPTIONS_MODE == "disabled":
+        APP_STORE_VERIFIER = None
+        COACH_ENTITLEMENT_STORE = None
+        return
+
+    app_apple_id = int(APP_STORE_APPLE_ID) if APP_STORE_APPLE_ID else None
+    APP_STORE_VERIFIER = AppStoreSubscriptionVerifier(
+        root_certificates=load_root_certificates(_app_store_root_certificate_paths()),
+        bundle_id=APP_STORE_BUNDLE_ID,
+        allowed_product_ids=_app_store_product_ids(),
+        allowed_environments=_app_store_allowed_environments(),
+        app_apple_id=app_apple_id,
+        enable_online_checks=APP_STORE_ENABLE_ONLINE_CHECKS,
+    )
+    COACH_ENTITLEMENT_STORE = CoachEntitlementStore(
+        database_path=Path(APP_STORE_ENTITLEMENT_DATABASE_PATH),
+        access_token_secret=COACH_ACCESS_TOKEN_SECRET,
+        reply_limit=COACH_MONTHLY_REPLY_LIMIT,
+        access_token_ttl_seconds=COACH_ACCESS_TOKEN_TTL_SECONDS,
+    )
+    COACH_ENTITLEMENT_STORE.initialize()
+
+
 def _allowed_app_attest_categories():
     values = set()
     for item in APP_ATTEST_ALLOWED_CATEGORIES.split(","):
@@ -268,9 +388,9 @@ def request_has_app_attest_headers(handler):
     )
 
 
-def app_attest_authorized(handler, request_body):
+def app_attest_key_id(handler, request_body):
     if not app_attest_enabled():
-        return False
+        return None
 
     key_id = handler.headers.get("X-TeoPateo-App-Attest-Key-Id", "")
     challenge_id = handler.headers.get("X-TeoPateo-App-Attest-Challenge-Id", "")
@@ -296,16 +416,26 @@ def app_attest_authorized(handler, request_body):
         "POST",
         handler.path,
     )
-    return True
+    return key_id
+
+
+def app_attest_authorized(handler, request_body):
+    return bool(app_attest_key_id(handler, request_body))
+
+
+def verified_app_attest_key_id(handler, request_body):
+    if not request_has_app_attest_headers(handler):
+        return None
+    try:
+        return app_attest_key_id(handler, request_body)
+    except AppAttestError as error:
+        print(f"app attest rejection: {error}", file=sys.stderr, flush=True)
+        return None
 
 
 def coach_request_authorized(handler, request_body):
     if request_has_app_attest_headers(handler):
-        try:
-            return app_attest_authorized(handler, request_body)
-        except AppAttestError as error:
-            print(f"app attest rejection: {error}", file=sys.stderr, flush=True)
-            return False
+        return bool(verified_app_attest_key_id(handler, request_body))
     if APP_ATTEST_MODE == "required":
         return False
     return authorized(handler)
@@ -497,6 +627,12 @@ class CoachProxyHandler(BaseHTTPRequestHandler):
         if self.path == "/v1/app-attest/register":
             self._handle_app_attest_registration()
             return
+        if self.path == "/v1/coach/access":
+            self._handle_coach_access()
+            return
+        if self.path == "/v1/app-store/notifications":
+            self._handle_app_store_notification()
+            return
         if self.path != "/v1/coach/reply":
             json_response(self, 404, {"error": "Not found"})
             return
@@ -508,7 +644,23 @@ class CoachProxyHandler(BaseHTTPRequestHandler):
 
         try:
             request_body = self._read_request_body(MAX_REQUEST_BYTES)
-            if not coach_request_authorized(self, request_body):
+            if COACH_SUBSCRIPTIONS_MODE == "required":
+                app_attest_key_id = verified_app_attest_key_id(self, request_body)
+                if app_attest_key_id is None:
+                    json_response(self, 401, {"error": "Unauthorized"})
+                    return
+                access_token = self.headers.get("X-TeoPateo-Coach-Access", "")
+                if not access_token:
+                    json_response(self, 401, {"error": "Unauthorized"})
+                    return
+                try:
+                    COACH_ENTITLEMENT_STORE.consume_reply_allowance(
+                        access_token, app_attest_key_id
+                    )
+                except CoachAccessError:
+                    json_response(self, 403, {"error": "Subscription required"})
+                    return
+            elif not coach_request_authorized(self, request_body):
                 json_response(self, 401, {"error": "Unauthorized"})
                 return
             payload = json.loads(request_body.decode("utf-8"))
@@ -532,6 +684,73 @@ class CoachProxyHandler(BaseHTTPRequestHandler):
         except Exception as error:
             print(f"proxy error: {error}", file=sys.stderr, flush=True)
             json_response(self, 500, {"error": "Coach service unavailable"})
+
+    def _handle_coach_access(self):
+        if COACH_SUBSCRIPTIONS_MODE != "required":
+            json_response(self, 404, {"error": "Not found"})
+            return
+        if is_rate_limited(client_ip(self)):
+            json_response(self, 429, {"error": "Rate limit exceeded"})
+            return
+
+        try:
+            request_body = self._read_request_body(MAX_REQUEST_BYTES)
+            app_attest_key_id = verified_app_attest_key_id(self, request_body)
+            if app_attest_key_id is None:
+                json_response(self, 401, {"error": "Unauthorized"})
+                return
+            payload = json.loads(request_body.decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("Invalid access payload")
+            signed_transaction = str(payload.get("signedTransaction", "")).strip()
+            if not signed_transaction or len(signed_transaction) > MAX_REQUEST_BYTES:
+                raise ValueError("Invalid signed transaction")
+            transaction = APP_STORE_VERIFIER.verify_client_transaction(signed_transaction)
+            COACH_ENTITLEMENT_STORE.record_transaction(transaction)
+            access_token, expires_at, remaining_replies = (
+                COACH_ENTITLEMENT_STORE.issue_access_token(
+                    transaction.original_transaction_id, app_attest_key_id
+                )
+            )
+            json_response(self, 200, {
+                "accessToken": access_token,
+                "expiresAt": expires_at,
+                "remainingReplies": remaining_replies,
+            })
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, AppStoreVerificationError) as error:
+            print(f"coach access rejection: {error}", file=sys.stderr, flush=True)
+            json_response(self, 400, {"error": "Invalid subscription proof"})
+        except CoachAccessError:
+            json_response(self, 403, {"error": "Subscription required"})
+        except Exception as error:
+            print(f"coach access error: {error}", file=sys.stderr, flush=True)
+            json_response(self, 500, {"error": "Coach service unavailable"})
+
+    def _handle_app_store_notification(self):
+        if COACH_SUBSCRIPTIONS_MODE != "required":
+            json_response(self, 404, {"error": "Not found"})
+            return
+
+        try:
+            payload = json.loads(self._read_request_body(MAX_REQUEST_BYTES).decode("utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("Invalid notification payload")
+            signed_payload = str(payload.get("signedPayload", "")).strip()
+            if not signed_payload or len(signed_payload) > MAX_REQUEST_BYTES:
+                raise ValueError("Invalid signed payload")
+            notification_uuid, notification_type, transaction, renewal = (
+                APP_STORE_VERIFIER.verify_notification(signed_payload)
+            )
+            COACH_ENTITLEMENT_STORE.record_notification(
+                notification_uuid, notification_type, transaction, renewal
+            )
+            json_response(self, 200, {"accepted": True})
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, AppStoreVerificationError) as error:
+            print(f"app store notification rejection: {error}", file=sys.stderr, flush=True)
+            json_response(self, 400, {"error": "Invalid App Store notification"})
+        except Exception as error:
+            print(f"app store notification error: {error}", file=sys.stderr, flush=True)
+            json_response(self, 500, {"error": "Notification processing unavailable"})
 
     def _handle_app_attest_challenge(self):
         if not app_attest_enabled():
@@ -600,6 +819,7 @@ class CoachProxyHandler(BaseHTTPRequestHandler):
 def main():
     validate_configuration()
     initialize_app_attest()
+    initialize_subscription_access()
     server = ThreadingHTTPServer((HOST, PORT), CoachProxyHandler)
     print(f"TeoPateo coach proxy listening on {HOST}:{PORT}", flush=True)
     server.serve_forever()

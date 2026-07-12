@@ -46,7 +46,8 @@ final class SubscriptionStoreTests: XCTestCase {
             expirationDate: Date(timeIntervalSince1970: 2_000),
             isUsingIntroductoryOffer: true,
             renewalState: .inGracePeriod,
-            willAutoRenew: true
+            willAutoRenew: true,
+            signedTransaction: "apple-signed-transaction"
         )
         let state = EntitlementState.premium(entitlement)
 
@@ -55,6 +56,7 @@ final class SubscriptionStoreTests: XCTestCase {
         XCTAssertTrue(entitlement.isTrial)
         XCTAssertEqual(entitlement.renewalState, .inGracePeriod)
         XCTAssertEqual(entitlement.willAutoRenew, true)
+        XCTAssertEqual(entitlement.signedTransaction, "apple-signed-transaction")
     }
 
     @MainActor

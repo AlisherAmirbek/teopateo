@@ -40,6 +40,7 @@ struct ContentView: View {
         .fullScreenCover(isPresented: $store.isOnboardingPresented) {
             OnboardingView()
                 .environmentObject(store)
+                .environmentObject(subscriptionStore)
         }
         .fullScreenCover(isPresented: $store.isCravingModePresented) {
             CravingModeView()

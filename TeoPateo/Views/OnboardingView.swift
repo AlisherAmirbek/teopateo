@@ -5,6 +5,7 @@ struct OnboardingView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: TeoPateoStore
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
     @State private var step = 0
     @State private var transitionForward = true
@@ -39,6 +40,7 @@ struct OnboardingView: View {
 
     @State private var interlude: OnboardingInterlude?
     @State private var shownInterstitials: Set<Int> = []
+    @State private var isSubscriptionOfferPresented = false
 
     private let replacementActions = [
         "Drink water",
@@ -120,6 +122,12 @@ struct OnboardingView: View {
                     }
                 }
             }
+        }
+        .fullScreenCover(isPresented: $isSubscriptionOfferPresented) {
+            OnboardingSubscriptionOfferView(
+                finishOnboarding: finishOnboardingAfterOffer
+            )
+            .environmentObject(subscriptionStore)
         }
     }
 
@@ -715,7 +723,18 @@ struct OnboardingView: View {
     }
 
     private func completeFromPledge() {
-        store.completeOnboarding(currentPlanInput)
+        guard store.completeOnboarding(
+            currentPlanInput,
+            keepsOnboardingPresented: true
+        ) else {
+            return
+        }
+        isSubscriptionOfferPresented = true
+    }
+
+    private func finishOnboardingAfterOffer() {
+        isSubscriptionOfferPresented = false
+        store.dismissOnboardingForNow()
     }
 
     private func goTo(_ newStep: Int, forward: Bool) {

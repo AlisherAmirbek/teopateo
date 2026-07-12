@@ -320,6 +320,17 @@ final class StoreBehaviorTests: TeoPateoTestCase {
         XCTAssertEqual(store.triggerRules.map(\.trigger), ["Cravings"])
         XCTAssertTrue(store.replacementActivities.contains { $0.linkedTrigger == "Cravings" })
         XCTAssertEqual(store.currentQuitPlan.taperTargetCigarettesPerDay, 0)
+
+        let offerStore = TeoPateoStore(repository: try makeRepository())
+        XCTAssertTrue(offerStore.completeOnboarding(
+            makeOnboardingInput(primaryReason: "My family"),
+            keepsOnboardingPresented: true
+        ))
+        XCTAssertTrue(offerStore.isOnboardingCompleted)
+        XCTAssertTrue(offerStore.isOnboardingPresented)
+
+        offerStore.dismissOnboardingForNow()
+        XCTAssertFalse(offerStore.isOnboardingPresented)
     }
 
     func testCoachMessagesIgnoreBlankInputAndPersistReplies() async throws {

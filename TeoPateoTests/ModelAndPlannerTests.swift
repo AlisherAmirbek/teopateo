@@ -409,6 +409,18 @@ final class ModelAndPlannerTests: TeoPateoTestCase {
         XCTAssertFalse(body.contains("OPENROUTER_API_KEY"))
         XCTAssertFalse(body.contains("sk-or-v1"))
         XCTAssertFalse(body.contains("Authorization"))
+
+        let accessRequest = try client.makeCoachAccessURLRequest(
+            signedTransaction: "apple-signed-transaction"
+        )
+        let accessBody = try XCTUnwrap(
+            String(data: try XCTUnwrap(accessRequest.httpBody), encoding: .utf8)
+        )
+
+        XCTAssertEqual(accessRequest.url?.path, "/v1/coach/access")
+        XCTAssertEqual(accessRequest.httpMethod, "POST")
+        XCTAssertEqual(accessRequest.value(forHTTPHeaderField: "Authorization"), "Bearer proxy-token")
+        XCTAssertTrue(accessBody.contains("apple-signed-transaction"))
     }
 
     func testAppAttestClientDataBindsChallengeBodyAndRequestTarget() throws {

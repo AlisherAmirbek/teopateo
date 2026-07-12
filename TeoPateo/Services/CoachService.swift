@@ -40,8 +40,32 @@ protocol CoachResponding {
     func reply(to request: CoachRequest) -> AsyncThrowingStream<String, Error>
 }
 
+/// Supplies the current verified StoreKit transaction JWS without exposing it
+/// to views or persisting it outside StoreKit. The proxy verifies this proof
+/// before issuing a short-lived Coach access token.
+protocol CoachEntitlementProofProviding: Sendable {
+    func signedTransaction() async -> String?
+}
+
+actor CoachEntitlementProofStore: CoachEntitlementProofProviding {
+    private var currentSignedTransaction: String?
+
+    init(signedTransaction: String? = nil) {
+        currentSignedTransaction = signedTransaction
+    }
+
+    func replace(with signedTransaction: String?) {
+        currentSignedTransaction = signedTransaction
+    }
+
+    func signedTransaction() -> String? {
+        currentSignedTransaction
+    }
+}
+
 enum CoachClientError: LocalizedError, Equatable {
     case missingProxyConfiguration
+    case missingEntitlementProof
     #if DEBUG
     case missingAPIKey
     #endif
@@ -53,6 +77,8 @@ enum CoachClientError: LocalizedError, Equatable {
         switch self {
         case .missingProxyConfiguration:
             return "The coach is unavailable right now. Your message was saved."
+        case .missingEntitlementProof:
+            return "Your subscription needs to refresh before the coach can respond. Please try again in a moment."
         #if DEBUG
         case .missingAPIKey:
             return "The coach is unavailable right now. Your message was saved."
@@ -213,14 +239,36 @@ struct LiveCoachClient: CoachResponding {
 
     init(
         proxyConfiguration: CoachProxyConfiguration? = CoachProxyConfiguration.live(),
-        openRouterConfiguration: OpenRouterConfiguration? = OpenRouterConfiguration.live()
+        openRouterConfiguration: OpenRouterConfiguration? = OpenRouterConfiguration.live(),
+        entitlementProofProvider: CoachEntitlementProofProviding? = nil
     ) {
-        self.proxyClient = proxyConfiguration.map { CoachProxyClient(configuration: $0) }
+        self.proxyClient = proxyConfiguration.map { configuration in
+            if let entitlementProofProvider {
+                CoachProxyClient(
+                    configuration: configuration,
+                    entitlementProofProvider: entitlementProofProvider
+                )
+            } else {
+                CoachProxyClient(configuration: configuration)
+            }
+        }
         self.openRouterConfiguration = openRouterConfiguration
     }
     #else
-    init(proxyConfiguration: CoachProxyConfiguration? = CoachProxyConfiguration.live()) {
-        self.proxyClient = proxyConfiguration.map { CoachProxyClient(configuration: $0) }
+    init(
+        proxyConfiguration: CoachProxyConfiguration? = CoachProxyConfiguration.live(),
+        entitlementProofProvider: CoachEntitlementProofProviding? = nil
+    ) {
+        self.proxyClient = proxyConfiguration.map { configuration in
+            if let entitlementProofProvider {
+                CoachProxyClient(
+                    configuration: configuration,
+                    entitlementProofProvider: entitlementProofProvider
+                )
+            } else {
+                CoachProxyClient(configuration: configuration)
+            }
+        }
     }
     #endif
 
@@ -242,7 +290,10 @@ struct LiveCoachClient: CoachResponding {
 struct CoachProxyClient: CoachResponding {
     private let configuration: CoachProxyConfiguration
     private let bytesTask: (URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse)
+    private let dataTask: (URLRequest) async throws -> (Data, URLResponse)
     private let appAttestAuthorizer: AppAttestAuthorizing
+    private let entitlementProofProvider: CoachEntitlementProofProviding
+    private let accessTokenCache: CoachAccessTokenCache
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
@@ -253,10 +304,54 @@ struct CoachProxyClient: CoachResponding {
         },
         appAttestAuthorizer: AppAttestAuthorizing? = nil
     ) {
+        self.init(
+            configuration: configuration,
+            bytesTask: bytesTask,
+            dataTask: { request in
+                try await URLSession.shared.data(for: request)
+            },
+            appAttestAuthorizer: appAttestAuthorizer,
+            entitlementProofProvider: nil,
+            accessTokenCache: CoachAccessTokenCache()
+        )
+    }
+
+    init(
+        configuration: CoachProxyConfiguration,
+        entitlementProofProvider: CoachEntitlementProofProviding
+    ) {
+        self.init(
+            configuration: configuration,
+            bytesTask: { request in
+                try await URLSession.shared.bytes(for: request)
+            },
+            dataTask: { request in
+                try await URLSession.shared.data(for: request)
+            },
+            appAttestAuthorizer: nil,
+            entitlementProofProvider: entitlementProofProvider,
+            accessTokenCache: CoachAccessTokenCache()
+        )
+    }
+
+    init(
+        configuration: CoachProxyConfiguration,
+        bytesTask: @escaping (URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse),
+        dataTask: @escaping (URLRequest) async throws -> (Data, URLResponse) = { request in
+            try await URLSession.shared.data(for: request)
+        },
+        appAttestAuthorizer: AppAttestAuthorizing? = nil,
+        entitlementProofProvider: CoachEntitlementProofProviding? = nil,
+        accessTokenCache: CoachAccessTokenCache = CoachAccessTokenCache()
+    ) {
         self.configuration = configuration
         self.bytesTask = bytesTask
+        self.dataTask = dataTask
         self.appAttestAuthorizer = appAttestAuthorizer
             ?? LiveAppAttestAuthorizer(endpointURL: configuration.endpointURL)
+        self.entitlementProofProvider = entitlementProofProvider
+            ?? CoachEntitlementProofStore()
+        self.accessTokenCache = accessTokenCache
     }
 
     func reply(to request: CoachRequest) -> AsyncThrowingStream<String, Error> {
@@ -283,7 +378,11 @@ struct CoachProxyClient: CoachResponding {
         continuation: AsyncThrowingStream<String, Error>.Continuation,
         allowsAttestationRetry: Bool
     ) async throws {
-        let unsignedRequest = try makeURLRequest(for: request)
+        let coachAccessToken = try await coachAccessToken()
+        let unsignedRequest = try makeURLRequest(
+            for: request,
+            coachAccessToken: coachAccessToken
+        )
         let urlRequest = try await appAttestAuthorizer.authorize(unsignedRequest)
         let (bytes, response) = try await bytesTask(urlRequest)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -292,6 +391,7 @@ struct CoachProxyClient: CoachResponding {
         let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
         if httpResponse.statusCode == 401, allowsAttestationRetry {
             _ = try await Self.collectData(from: bytes)
+            await accessTokenCache.invalidate()
             await appAttestAuthorizer.invalidateKey()
             try await streamReply(
                 to: request,
@@ -364,6 +464,13 @@ struct CoachProxyClient: CoachResponding {
     }
 
     func makeURLRequest(for request: CoachRequest) throws -> URLRequest {
+        try makeURLRequest(for: request, coachAccessToken: nil)
+    }
+
+    func makeURLRequest(
+        for request: CoachRequest,
+        coachAccessToken: String?
+    ) throws -> URLRequest {
         var urlRequest = URLRequest(url: configuration.endpointURL)
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -374,6 +481,12 @@ struct CoachProxyClient: CoachResponding {
         if let accessToken = configuration.accessToken {
             urlRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
+        if let coachAccessToken {
+            urlRequest.setValue(
+                coachAccessToken,
+                forHTTPHeaderField: "X-TeoPateo-Coach-Access"
+            )
+        }
 
         urlRequest.httpBody = try encoder.encode(CoachProxyRequest(
             contextSummary: request.contextSummary,
@@ -383,6 +496,95 @@ struct CoachProxyClient: CoachResponding {
             }
         ))
         return urlRequest
+    }
+
+    func makeCoachAccessURLRequest(signedTransaction: String) throws -> URLRequest {
+        var urlRequest = URLRequest(url: try proxyURL(path: "/v1/coach/access"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("TeoPateo-iOS", forHTTPHeaderField: "X-TeoPateo-Client")
+        if let accessToken = configuration.accessToken {
+            urlRequest.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
+        urlRequest.httpBody = try encoder.encode(CoachAccessRequest(
+            signedTransaction: signedTransaction
+        ))
+        return urlRequest
+    }
+
+    private func coachAccessToken() async throws -> String {
+        guard let signedTransaction = await entitlementProofProvider.signedTransaction(),
+              !signedTransaction.isEmpty
+        else {
+            throw CoachClientError.missingEntitlementProof
+        }
+
+        if let cachedToken = await accessTokenCache.validToken(
+            for: signedTransaction,
+            now: Date()
+        ) {
+            return cachedToken
+        }
+
+        return try await requestCoachAccess(
+            signedTransaction: signedTransaction,
+            allowsAttestationRetry: true
+        )
+    }
+
+    private func requestCoachAccess(
+        signedTransaction: String,
+        allowsAttestationRetry: Bool
+    ) async throws -> String {
+        let unsignedRequest = try makeCoachAccessURLRequest(
+            signedTransaction: signedTransaction
+        )
+        let urlRequest = try await appAttestAuthorizer.authorize(unsignedRequest)
+        let (data, response) = try await dataTask(urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw CoachClientError.invalidHTTPResponse
+        }
+        if httpResponse.statusCode == 401, allowsAttestationRetry {
+            await appAttestAuthorizer.invalidateKey()
+            return try await requestCoachAccess(
+                signedTransaction: signedTransaction,
+                allowsAttestationRetry: false
+            )
+        }
+        guard 200..<300 ~= httpResponse.statusCode else {
+            throw CoachClientError.requestFailed(statusCode: httpResponse.statusCode)
+        }
+
+        let access = try decoder.decode(CoachAccessTokenResponse.self, from: data)
+        guard
+            !access.accessToken.isEmpty,
+            Date(timeIntervalSince1970: TimeInterval(access.expiresAt))
+                > Date().addingTimeInterval(10)
+        else {
+            throw CoachClientError.emptyResponse
+        }
+        await accessTokenCache.store(
+            accessToken: access.accessToken,
+            signedTransaction: signedTransaction,
+            expiresAt: access.expiresAt
+        )
+        return access.accessToken
+    }
+
+    private func proxyURL(path: String) throws -> URL {
+        guard var components = URLComponents(
+            url: configuration.endpointURL,
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw CoachClientError.invalidHTTPResponse
+        }
+        components.path = path
+        components.query = nil
+        components.fragment = nil
+        guard let url = components.url else {
+            throw CoachClientError.invalidHTTPResponse
+        }
+        return url
     }
 }
 
@@ -583,6 +785,46 @@ private struct CoachProxyMessage: Codable {
 
 private struct CoachProxyResponse: Decodable {
     let reply: String
+}
+
+private struct CoachAccessRequest: Encodable {
+    let signedTransaction: String
+}
+
+private struct CoachAccessTokenResponse: Decodable {
+    let accessToken: String
+    let expiresAt: Int
+}
+
+actor CoachAccessTokenCache {
+    private var cachedAccessToken: String?
+    private var signedTransaction: String?
+    private var expiresAt: Int?
+
+    func validToken(for signedTransaction: String, now: Date) -> String? {
+        guard
+            self.signedTransaction == signedTransaction,
+            let cachedAccessToken,
+            let expiresAt,
+            Date(timeIntervalSince1970: TimeInterval(expiresAt))
+                > now.addingTimeInterval(10)
+        else {
+            return nil
+        }
+        return cachedAccessToken
+    }
+
+    func store(accessToken: String, signedTransaction: String, expiresAt: Int) {
+        cachedAccessToken = accessToken
+        self.signedTransaction = signedTransaction
+        self.expiresAt = expiresAt
+    }
+
+    func invalidate() {
+        cachedAccessToken = nil
+        signedTransaction = nil
+        expiresAt = nil
+    }
 }
 
 #if DEBUG

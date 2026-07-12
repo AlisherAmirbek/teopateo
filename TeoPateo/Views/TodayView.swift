@@ -4,7 +4,9 @@ struct TodayView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @EnvironmentObject private var store: TeoPateoStore
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @State private var isNotificationsPresented = false
+    @State private var isFreeRescueFallbackPresented = false
     @State private var tutorialTarget: TutorialTarget?
 
     var body: some View {
@@ -39,6 +41,12 @@ struct TodayView: View {
         .sheet(isPresented: $isNotificationsPresented) {
             NotificationSettingsView()
                 .environmentObject(store)
+                .environmentObject(subscriptionStore)
+        }
+        .sheet(isPresented: $isFreeRescueFallbackPresented) {
+            FreeRescueFallbackView()
+                .environmentObject(store)
+                .environmentObject(subscriptionStore)
         }
         .overlayPreferenceValue(TutorialAnchorKey.self) { anchors in
             tutorialOverlay(anchors: anchors)
@@ -263,28 +271,43 @@ struct TodayView: View {
     @ViewBuilder
     private var pendingSuggestionCard: some View {
         if let suggestion = store.highestPriorityPendingPlanSuggestion {
-            VStack(alignment: .leading, spacing: Spacing.smd) {
-                Text("Plan suggestion")
-                    .typeSection()
-                Text(suggestion.title)
-                    .font(.rounded(.callout, weight: .bold))
-                    .foregroundColor(QuitTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(suggestion.evidenceSummary)
-                    .typeBodySecondary()
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: Spacing.smd) {
-                    Button("Accept") {
-                        store.acceptPlanSuggestion(suggestion.id)
+            if subscriptionStore.hasAccess(to: .adaptiveRecovery) {
+                VStack(alignment: .leading, spacing: Spacing.smd) {
+                    Text("Plan suggestion")
+                        .typeSection()
+                    Text(suggestion.title)
+                        .font(.rounded(.callout, weight: .bold))
+                        .foregroundColor(QuitTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(suggestion.evidenceSummary)
+                        .typeBodySecondary()
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: Spacing.smd) {
+                        Button("Accept") {
+                            store.acceptPlanSuggestion(suggestion.id)
+                        }
+                        .buttonStyle(QuietButtonStyle())
+                        Button("Review") {
+                            store.selectedTab = .plan
+                        }
+                        .buttonStyle(QuietButtonStyle())
                     }
-                    .buttonStyle(QuietButtonStyle())
-                    Button("Review") {
-                        store.selectedTab = .plan
+                }
+                .quietCard()
+            } else {
+                VStack(alignment: .leading, spacing: Spacing.smd) {
+                    Label("Adaptive plan support", systemImage: "lock.fill")
+                        .typeSection()
+                    Text("Premium turns your logged patterns into practical recovery adjustments while your basic quit plan stays yours.")
+                        .typeBodySecondary()
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("See Premium support") {
+                        subscriptionStore.presentPaywall(for: .adaptiveRecovery)
                     }
                     .buttonStyle(QuietButtonStyle())
                 }
+                .quietCard()
             }
-            .quietCard()
         }
     }
 
@@ -336,7 +359,11 @@ struct TodayView: View {
 
             Button {
                 Haptics.impact(.medium)
-                store.isCravingModePresented = true
+                if subscriptionStore.hasAccess(to: .fullRescue) {
+                    store.isCravingModePresented = true
+                } else {
+                    isFreeRescueFallbackPresented = true
+                }
             } label: {
                 Text("I want to smoke")
                     .font(.rounded(.title3, weight: .bold))
@@ -350,7 +377,7 @@ struct TodayView: View {
                     .clipShape(Capsule())
             }
             .accessibilityLabel("Start craving rescue")
-            .accessibilityHint("Opens the 10-minute craving mode.")
+            .accessibilityHint(rescueAccessibilityHint)
             .accessibilityIdentifier("start-rescue-button")
             .tutorialAnchor(.rescue)
             .padding(.horizontal, metrics.horizontalPadding)
@@ -360,6 +387,12 @@ struct TodayView: View {
             .frame(maxWidth: .infinity)
         }
         .background(QuitTheme.background)
+    }
+
+    private var rescueAccessibilityHint: String {
+        subscriptionStore.hasAccess(to: .fullRescue)
+            ? "Opens the 10-minute craving mode."
+            : "Opens free breathing, delay, and quitline support."
     }
 }
 

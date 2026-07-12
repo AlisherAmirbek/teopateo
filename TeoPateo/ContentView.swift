@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var store: TeoPateoStore
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
     var body: some View {
         TabView(selection: $store.selectedTab) {
@@ -44,8 +45,27 @@ struct ContentView: View {
             CravingModeView()
                 .environmentObject(store)
         }
+        .sheet(item: paywallFeatureBinding) { feature in
+            PremiumPaywallView(feature: feature)
+                .environmentObject(subscriptionStore)
+        }
         .onAppear {
             store.refreshNotificationAuthorization()
         }
+        .onChange(of: subscriptionStore.isPremium) { isPremium in
+            guard !isPremium, store.notificationSettings.riskyWindowEnabled else { return }
+            store.setNotificationEnabled(.riskyWindow, isEnabled: false)
+        }
+    }
+
+    private var paywallFeatureBinding: Binding<PremiumFeature?> {
+        Binding(
+            get: { subscriptionStore.paywallFeature },
+            set: { feature in
+                if feature == nil {
+                    subscriptionStore.dismissPaywall()
+                }
+            }
+        )
     }
 }

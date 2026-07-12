@@ -2,6 +2,7 @@ import SwiftUI
 
 struct InsightsView: View {
     @EnvironmentObject private var store: TeoPateoStore
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @State private var isHistoryPresented = false
 
     private var insights: CalculatedInsights {
@@ -9,6 +10,19 @@ struct InsightsView: View {
     }
 
     var body: some View {
+        if subscriptionStore.hasAccess(to: .personalizedInsights) {
+            premiumInsights
+        } else {
+            PremiumFeaturePreview(
+                feature: .personalizedInsights,
+                eyebrow: "Pattern insights",
+                title: "Your risk is predictable.",
+                freeSupportMessage: "Your basic progress stays on Today, and you can keep logging check-ins and cravings whenever you need to."
+            )
+        }
+    }
+
+    private var premiumInsights: some View {
         RootScreen {
             ScreenHeader(eyebrow: "Pattern insights", title: "Your risk is predictable.")
             StatusBanner(status: store.lastSaveStatus, persistenceError: store.persistenceError)

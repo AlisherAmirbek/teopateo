@@ -106,6 +106,28 @@ final class TeoPateoUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Craving saved as handled."].waitForExistence(timeout: 3))
     }
 
+    func testFreeSubscriptionKeepsCravingFallbackAvailableBeforePaywall() {
+        launchApp(freeSubscription: true)
+
+        app.tabBars.buttons["Coach"].tap()
+        XCTAssertTrue(app.buttons["unlock-aiCoach-button"].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["Insights"].tap()
+        XCTAssertTrue(app.buttons["unlock-personalizedInsights-button"].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["Today"].tap()
+        app.buttons["start-rescue-button"].tap()
+
+        XCTAssertTrue(app.staticTexts["Stay with this moment."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["free-rescue-pause-button"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.buttons["premium-purchase-yearly-button"].exists)
+
+        app.buttons["open-full-rescue-paywall-button"].tap()
+        XCTAssertTrue(app.staticTexts["Stay supported through cravings, slips, and restarts."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["restore-purchases-button"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["manage-subscription-link"].waitForExistence(timeout: 3))
+    }
+
     func testCheckInRecordsSlip() {
         launchApp()
 
@@ -293,11 +315,15 @@ final class TeoPateoUITests: XCTestCase {
         seedHistory: Bool = false,
         seedPlanWeek: Bool = false,
         showTutorial: Bool = false,
+        freeSubscription: Bool = false,
         notificationStatus: String = "authorized",
         selectedTab: String? = nil
     ) {
         app = XCUIApplication()
         app.launchArguments = ["-teopateo-ui-testing"]
+        if freeSubscription {
+            app.launchArguments.append("-teopateo-ui-free-subscription")
+        }
         if seedCompleted {
             app.launchArguments.append("-teopateo-ui-seed-completed")
         }

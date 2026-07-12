@@ -4,6 +4,7 @@ import SwiftUI
 struct CoachView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var store: TeoPateoStore
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @State private var input = ""
     @State private var chatPendingDeletion: CoachChat?
     @State private var pendingConsent: PendingCoachConsent?
@@ -29,6 +30,19 @@ struct CoachView: View {
     ]
 
     var body: some View {
+        if subscriptionStore.hasAccess(to: .aiCoach) {
+            premiumCoach
+        } else {
+            PremiumFeaturePreview(
+                feature: .aiCoach,
+                eyebrow: "AI coach",
+                title: "Get help before you smoke.",
+                freeSupportMessage: "Your quit plan, daily check-ins, basic progress, and quitline resources remain available without Premium."
+            )
+        }
+    }
+
+    private var premiumCoach: some View {
         RootScreen {
             header
             chatSwitcher

@@ -25,6 +25,7 @@
 		A1B2C3D4E5F60718293A0802 /* AppAttestService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0801 /* AppAttestService.swift */; };
 		D1F9A50F93A244B987000001 /* SubscriptionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F9A50F93A244B987000002 /* SubscriptionStore.swift */; };
 		D1F9A50F93A244B987000003 /* SubscriptionStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F9A50F93A244B987000004 /* SubscriptionStoreTests.swift */; };
+		D1F9A50F93A244B987000007 /* SubscriptionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F9A50F93A244B987000008 /* SubscriptionViews.swift */; };
 		A1B2C3D4E5F60718293A0702 /* Observability.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0701 /* Observability.swift */; };
 		A1B2C3D4E5F60718293A0502 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A0501 /* PrivacyInfo.xcprivacy */; };
 		A3BC802DB26B4D58B06C65EF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 89C40CE62B9B4943A6112508 /* Assets.xcassets */; };
@@ -85,6 +86,7 @@
 		D1F9A50F93A244B987000002 /* SubscriptionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionStore.swift; sourceTree = "<group>"; };
 		D1F9A50F93A244B987000004 /* SubscriptionStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionStoreTests.swift; sourceTree = "<group>"; };
 		D1F9A50F93A244B987000005 /* TeoPateoSubscriptions.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = TeoPateoSubscriptions.storekit; sourceTree = "<group>"; };
+		D1F9A50F93A244B987000008 /* SubscriptionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionViews.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0701 /* Observability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Observability.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A0501 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A6D36C3D9F4B4DA79022A621 /* basic_animation.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = basic_animation.mov; sourceTree = "<group>"; };
@@ -152,6 +154,7 @@
 				8FD5998364E7424DB06BA3C5 /* Components.swift */,
 				D4A7B8840C9D4A5B97F24A11 /* OnboardingView.swift */,
 				A1B2C3D4E5F60718293A0303 /* NotificationSettingsView.swift */,
+				D1F9A50F93A244B987000008 /* SubscriptionViews.swift */,
 				227C6F62A4D048C1A5AAC4AF /* TodayView.swift */,
 				6F498D8646264BD399B88954 /* CravingModeView.swift */,
 				A1341071134E44F28C5467B4 /* PlanView.swift */,
@@ -409,6 +412,7 @@
 				A1B2C3D4E5F60718293A0702 /* Observability.swift in Sources */,
 				8E77AD628A294124A8F14B9A /* TeoPateoStore.swift in Sources */,
 				A1B2C3D4E5F60718293A0304 /* NotificationSettingsView.swift in Sources */,
+				D1F9A50F93A244B987000007 /* SubscriptionViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

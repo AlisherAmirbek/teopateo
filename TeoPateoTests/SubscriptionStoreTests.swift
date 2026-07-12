@@ -22,6 +22,20 @@ final class SubscriptionStoreTests: XCTestCase {
         XCTAssertFalse(EntitlementState.loading.isPremium)
     }
 
+    @MainActor
+    func testFreeEntitlementLocksEveryPremiumFeature() {
+        let store = SubscriptionStore(
+            refreshOnLaunch: false,
+            initialEntitlement: .free
+        )
+
+        let locked = PremiumFeature.allCases.allSatisfy { feature in
+            !store.hasAccess(to: feature)
+        }
+
+        XCTAssertTrue(locked)
+    }
+
     func testPremiumEntitlementRetainsTrialAndRenewalInformation() {
         let entitlement = PremiumEntitlement(
             plan: .yearly,
@@ -41,6 +55,31 @@ final class SubscriptionStoreTests: XCTestCase {
         XCTAssertTrue(entitlement.isTrial)
         XCTAssertEqual(entitlement.renewalState, .inGracePeriod)
         XCTAssertEqual(entitlement.willAutoRenew, true)
+    }
+
+    @MainActor
+    func testPremiumEntitlementUnlocksEveryPremiumFeature() {
+        let entitlement = PremiumEntitlement(
+            plan: .monthly,
+            productID: SubscriptionPlan.monthlyProductID,
+            originalTransactionID: 200,
+            transactionID: 201,
+            purchaseDate: Date(timeIntervalSince1970: 1_000),
+            expirationDate: Date(timeIntervalSince1970: 2_000),
+            isUsingIntroductoryOffer: false,
+            renewalState: .active,
+            willAutoRenew: true
+        )
+        let store = SubscriptionStore(
+            refreshOnLaunch: false,
+            initialEntitlement: .premium(entitlement)
+        )
+
+        let unlocked = PremiumFeature.allCases.allSatisfy { feature in
+            store.hasAccess(to: feature)
+        }
+
+        XCTAssertTrue(unlocked)
     }
 
     func testIntroductoryOfferEligibilityStartsEmptyUntilProductsLoad() async {

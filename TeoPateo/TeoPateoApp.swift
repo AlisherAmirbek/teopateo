@@ -5,7 +5,7 @@ import UIKit
 @main
 struct TeoPateoApp: App {
     @StateObject private var store = Self.makeStore()
-    @StateObject private var subscriptionStore = SubscriptionStore()
+    @StateObject private var subscriptionStore = Self.makeSubscriptionStore()
 
     init() {
         Observability.start()
@@ -32,6 +32,37 @@ struct TeoPateoApp: App {
         #endif
 
         return TeoPateoStore()
+    }
+
+    private static func makeSubscriptionStore() -> SubscriptionStore {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-teopateo-ui-testing") {
+            if ProcessInfo.processInfo.arguments.contains("-teopateo-ui-free-subscription") {
+                return SubscriptionStore(
+                    refreshOnLaunch: false,
+                    initialEntitlement: .free
+                )
+            }
+
+            let now = Date()
+            return SubscriptionStore(
+                refreshOnLaunch: false,
+                initialEntitlement: .premium(PremiumEntitlement(
+                    plan: .yearly,
+                    productID: SubscriptionPlan.yearlyProductID,
+                    originalTransactionID: 1,
+                    transactionID: 1,
+                    purchaseDate: now,
+                    expirationDate: now.addingTimeInterval(60 * 60 * 24 * 365),
+                    isUsingIntroductoryOffer: false,
+                    renewalState: .active,
+                    willAutoRenew: true
+                ))
+            )
+        }
+        #endif
+
+        return SubscriptionStore()
     }
 
     #if DEBUG

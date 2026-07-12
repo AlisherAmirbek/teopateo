@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PlanView: View {
     @EnvironmentObject private var store: TeoPateoStore
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @ScaledMetric(relativeTo: .caption) private var rescueStepSize: CGFloat = 22
 
     @State private var newTrigger = ""
@@ -27,6 +28,7 @@ struct PlanView: View {
     @State private var editActivityEnabled = true
 
     @State private var selectedPlanSheet: PlanSheet?
+    @State private var isMotivationVaultPresented = false
 
     var body: some View {
         RootScreen {
@@ -36,11 +38,18 @@ struct PlanView: View {
             todayPlaybook
             compactHighRiskMoments
             compactCravingRescue
+            motivationVaultCard
             compactSuggestedAdjustment
             settingsToggle
+            SubscriptionAccountCard()
         }
         .sheet(item: $selectedPlanSheet, onDismiss: resetPlanSheetState) { sheet in
             planSheet(sheet)
+        }
+        .sheet(isPresented: $isMotivationVaultPresented) {
+            MotivationVaultView()
+                .environmentObject(store)
+                .environmentObject(subscriptionStore)
         }
     }
 
@@ -143,44 +152,107 @@ struct PlanView: View {
         .quietCard()
     }
 
+    private var motivationVaultCard: some View {
+        let isUnlocked = subscriptionStore.hasAccess(to: .motivationVault)
+
+        return Button {
+            if isUnlocked {
+                isMotivationVaultPresented = true
+            } else {
+                subscriptionStore.presentPaywall(for: .motivationVault)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isUnlocked ? "heart.fill" : "lock.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .frame(width: 36, height: 36)
+                    .background(QuitTheme.peach.opacity(0.55))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Motivation vault")
+                        .font(.rounded(.headline, weight: .bold))
+                        .foregroundColor(QuitTheme.ink)
+                    Text(isUnlocked
+                        ? "Keep the reasons you need close during a craving."
+                        : "Premium keeps your reasons ready when a craving hits.")
+                        .font(.rounded(.caption))
+                        .foregroundColor(QuitTheme.muted)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: isUnlocked ? "chevron.right" : "lock")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(QuitTheme.faint)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(QuitTheme.paper)
+            .cornerRadius(18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifier("motivation-vault-button")
+    }
+
     @ViewBuilder
     private var compactSuggestedAdjustment: some View {
         if let suggestion = store.highestPriorityPendingPlanSuggestion {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(QuitTheme.cocoa)
-                        .frame(width: 32, height: 32)
-                        .background(QuitTheme.peach.opacity(0.55))
-                        .clipShape(Circle())
+            if subscriptionStore.hasAccess(to: .adaptiveRecovery) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(QuitTheme.cocoa)
+                            .frame(width: 32, height: 32)
+                            .background(QuitTheme.peach.opacity(0.55))
+                            .clipShape(Circle())
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(suggestion.title)
-                            .font(.rounded(.subheadline, weight: .bold))
-                            .foregroundColor(QuitTheme.ink)
-                            .lineLimit(2)
-                        Text(suggestion.evidenceSummary)
-                            .font(.rounded(.caption))
-                            .foregroundColor(QuitTheme.muted)
-                            .lineLimit(2)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(suggestion.title)
+                                .font(.rounded(.subheadline, weight: .bold))
+                                .foregroundColor(QuitTheme.ink)
+                                .lineLimit(2)
+                            Text(suggestion.evidenceSummary)
+                                .font(.rounded(.caption))
+                                .foregroundColor(QuitTheme.muted)
+                                .lineLimit(2)
+                        }
+                    }
+
+                    HStack(spacing: 8) {
+                        Button("Accept") {
+                            store.acceptPlanSuggestion(suggestion.id)
+                        }
+                        .buttonStyle(QuietButtonStyle())
+
+                        Button("Dismiss") {
+                            store.dismissPlanSuggestion(suggestion.id)
+                        }
+                        .font(.rounded(.caption, weight: .bold))
+                        .foregroundColor(QuitTheme.muted)
                     }
                 }
-
-                HStack(spacing: 8) {
-                    Button("Accept") {
-                        store.acceptPlanSuggestion(suggestion.id)
+                .quietCard()
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Adaptive recovery", systemImage: "lock.fill")
+                        .font(.rounded(.headline, weight: .bold))
+                        .foregroundColor(QuitTheme.cocoa)
+                    Text("Premium can turn your logged patterns into a more useful plan for the next hard moment.")
+                        .font(.rounded(.caption))
+                        .foregroundColor(QuitTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("See Premium support") {
+                        subscriptionStore.presentPaywall(for: .adaptiveRecovery)
                     }
                     .buttonStyle(QuietButtonStyle())
-
-                    Button("Dismiss") {
-                        store.dismissPlanSuggestion(suggestion.id)
-                    }
-                    .font(.rounded(.caption, weight: .bold))
-                    .foregroundColor(QuitTheme.muted)
                 }
+                .quietCard()
             }
-            .quietCard()
         }
     }
 
@@ -714,6 +786,7 @@ struct PlanView: View {
         case .notifications:
             NotificationSettingsView()
                 .environmentObject(store)
+                .environmentObject(subscriptionStore)
         }
     }
 

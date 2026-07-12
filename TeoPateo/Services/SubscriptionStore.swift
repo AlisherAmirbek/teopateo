@@ -94,6 +94,51 @@ enum SubscriptionPurchaseResult: Equatable {
     case failed(String)
 }
 
+enum PremiumFeature: String, CaseIterable, Equatable, Identifiable {
+    case fullRescue
+    case adaptiveRecovery
+    case aiCoach
+    case personalizedInsights
+    case riskyWindowReminders
+    case motivationVault
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fullRescue:
+            return "Guided craving rescue"
+        case .adaptiveRecovery:
+            return "Adaptive slip recovery"
+        case .aiCoach:
+            return "AI quit coach"
+        case .personalizedInsights:
+            return "Personalized insights"
+        case .riskyWindowReminders:
+            return "Risky-window reminders"
+        case .motivationVault:
+            return "Motivation vault"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .fullRescue:
+            return "A calm 10-minute plan for the moment you want to smoke."
+        case .adaptiveRecovery:
+            return "Recovery support that adapts to what happened, without shame or resets."
+        case .aiCoach:
+            return "Practical, context-aware support for cravings, planning, and reflection."
+        case .personalizedInsights:
+            return "See the patterns in your cravings, slips, and progress over time."
+        case .riskyWindowReminders:
+            return "Get a heads-up before the moments your history shows are hardest."
+        case .motivationVault:
+            return "Keep the reasons that matter close when a craving hits."
+        }
+    }
+}
+
 /// The single source of truth for App Store subscription products and local
 /// entitlement state. Feature gates should read `entitlement.isPremium` rather
 /// than independently querying StoreKit.
@@ -104,10 +149,15 @@ final class SubscriptionStore: ObservableObject {
     @Published private(set) var introductoryOfferEligiblePlans: Set<SubscriptionPlan> = []
     @Published private(set) var operation: SubscriptionOperation = .idle
     @Published private(set) var lastErrorMessage: String?
+    @Published private(set) var paywallFeature: PremiumFeature?
 
     private var transactionUpdatesTask: Task<Void, Never>?
 
-    init(refreshOnLaunch: Bool = true) {
+    init(
+        refreshOnLaunch: Bool = true,
+        initialEntitlement: EntitlementState = .loading
+    ) {
+        entitlement = initialEntitlement
         transactionUpdatesTask = Task.detached { [weak self] in
             for await result in Transaction.updates {
                 guard let self else { return }
@@ -128,6 +178,32 @@ final class SubscriptionStore: ObservableObject {
 
     var isPremium: Bool {
         entitlement.isPremium
+    }
+
+    var isProcessingPurchase: Bool {
+        switch operation {
+        case .purchasing, .restoringPurchases:
+            true
+        case .idle, .loadingProducts:
+            false
+        }
+    }
+
+    var isLoadingProducts: Bool {
+        operation == .loadingProducts
+    }
+
+    func hasAccess(to feature: PremiumFeature) -> Bool {
+        isPremium
+    }
+
+    func presentPaywall(for feature: PremiumFeature) {
+        guard !hasAccess(to: feature) else { return }
+        paywallFeature = feature
+    }
+
+    func dismissPaywall() {
+        paywallFeature = nil
     }
 
     func product(for plan: SubscriptionPlan) -> Product? {

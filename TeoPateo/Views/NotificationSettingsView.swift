@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NotificationSettingsView: View {
     @EnvironmentObject private var store: TeoPateoStore
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -33,6 +34,10 @@ struct NotificationSettingsView: View {
         }
         .onAppear {
             store.refreshNotificationAuthorization()
+            disableRiskyWindowReminderIfNeeded()
+        }
+        .onChange(of: subscriptionStore.isPremium) { _ in
+            disableRiskyWindowReminderIfNeeded()
         }
     }
 
@@ -67,7 +72,16 @@ struct NotificationSettingsView: View {
         .quietCard()
     }
 
+    @ViewBuilder
     private func reminderCard(_ kind: NotificationKind) -> some View {
+        if kind == .riskyWindow && !subscriptionStore.hasAccess(to: .riskyWindowReminders) {
+            lockedRiskyWindowReminderCard
+        } else {
+            reminderSettingsCard(kind)
+        }
+    }
+
+    private func reminderSettingsCard(_ kind: NotificationKind) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Toggle(
                 isOn: Binding(
@@ -101,6 +115,35 @@ struct NotificationSettingsView: View {
             if kind == .riskyWindow {
                 riskyWindowPreview
             }
+        }
+        .quietCard()
+    }
+
+    private var lockedRiskyWindowReminderCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(QuitTheme.cocoa)
+                    .frame(width: 34, height: 34)
+                    .background(QuitTheme.peach.opacity(0.72))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Risk-window reminders")
+                        .font(.rounded(.headline, weight: .bold))
+                    Text("Premium learns from your craving history and warns you before the times that tend to be hardest.")
+                        .font(.rounded(.caption))
+                        .foregroundColor(QuitTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Button("See Premium support") {
+                subscriptionStore.presentPaywall(for: .riskyWindowReminders)
+            }
+            .buttonStyle(QuietButtonStyle())
+            .accessibilityIdentifier("unlock-risky-window-reminders-button")
         }
         .quietCard()
     }
@@ -215,6 +258,16 @@ struct NotificationSettingsView: View {
             hour: components.hour ?? 0,
             minute: components.minute ?? 0
         )
+    }
+
+    private func disableRiskyWindowReminderIfNeeded() {
+        guard
+            !subscriptionStore.hasAccess(to: .riskyWindowReminders),
+            store.notificationSettings.riskyWindowEnabled
+        else {
+            return
+        }
+        store.setNotificationEnabled(.riskyWindow, isEnabled: false)
     }
 }
 

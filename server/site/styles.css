@@ -152,7 +152,7 @@ a {
   max-width: 760px;
   margin: 0;
   font-family: Georgia, Times, serif;
-  font-size: clamp(4.2rem, 11vw, 8.7rem);
+  font-size: clamp(3.8rem, 8vw, 6.8rem);
   font-weight: 750;
   line-height: 0.82;
   letter-spacing: 0;
@@ -216,6 +216,7 @@ a {
 
 .timer-dial {
   position: absolute;
+  z-index: 3;
   top: 38px;
   right: 34px;
   display: grid;
@@ -244,6 +245,7 @@ a {
 
 .mascot-stage {
   position: absolute;
+  z-index: 1;
   right: 28px;
   bottom: 28px;
   left: 28px;
@@ -263,6 +265,7 @@ a {
 
 .coach-bubble {
   position: absolute;
+  z-index: 3;
   left: 32px;
   max-width: 235px;
   padding: 16px 17px;
@@ -505,7 +508,7 @@ a {
   }
 
   .hero h1 {
-    font-size: clamp(3.2rem, 22vw, 5.6rem);
+    font-size: clamp(3rem, 16vw, 4rem);
   }
 
   .hero-scene {
@@ -513,19 +516,21 @@ a {
   }
 
   .timer-dial {
-    width: 118px;
-    height: 118px;
+    top: 36px;
+    right: 18px;
+    width: 102px;
+    height: 102px;
   }
 
   .timer-dial span {
-    width: 86px;
-    height: 86px;
-    font-size: 1.55rem;
+    width: 74px;
+    height: 74px;
+    font-size: 1.35rem;
   }
 
   .coach-bubble {
     left: 18px;
-    max-width: 210px;
+    max-width: 190px;
     padding: 13px;
   }
 

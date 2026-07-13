@@ -252,12 +252,12 @@ struct OnboardingSubscriptionOfferView: View {
                         Text("Choose your support")
                             .typeSection()
 
+                        planOption(.monthly, badge: nil, savingsNote: nil)
                         planOption(
                             .yearly,
                             badge: "Best value",
                             savingsNote: "Save 50% compared with monthly."
                         )
-                        planOption(.monthly, badge: nil, savingsNote: nil)
                     }
 
                     if let message = availabilityMessage {

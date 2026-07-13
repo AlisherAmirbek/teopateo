@@ -5,6 +5,7 @@ import OSLog
 final class TeoPateoStore: ObservableObject {
     @Published var selectedTab: AppTab = .today
     @Published var isCravingModePresented = false
+    @Published var isFreeRescueFallbackPresented = false
     @Published var isOnboardingPresented = false
     @Published var quitMode = "Taper" {
         didSet {

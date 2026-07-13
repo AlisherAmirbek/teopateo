@@ -6,7 +6,6 @@ struct TodayView: View {
     @EnvironmentObject private var store: TeoPateoStore
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @State private var isNotificationsPresented = false
-    @State private var isFreeRescueFallbackPresented = false
     @State private var tutorialTarget: TutorialTarget?
 
     var body: some View {
@@ -40,11 +39,6 @@ struct TodayView: View {
         }
         .sheet(isPresented: $isNotificationsPresented) {
             NotificationSettingsView()
-                .environmentObject(store)
-                .environmentObject(subscriptionStore)
-        }
-        .sheet(isPresented: $isFreeRescueFallbackPresented) {
-            FreeRescueFallbackView()
                 .environmentObject(store)
                 .environmentObject(subscriptionStore)
         }
@@ -362,7 +356,7 @@ struct TodayView: View {
                 if subscriptionStore.hasAccess(to: .fullRescue) {
                     store.isCravingModePresented = true
                 } else {
-                    isFreeRescueFallbackPresented = true
+                    store.isFreeRescueFallbackPresented = true
                 }
             } label: {
                 Text("I want to smoke")

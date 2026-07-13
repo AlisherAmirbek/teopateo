@@ -46,6 +46,11 @@ struct ContentView: View {
             CravingModeView()
                 .environmentObject(store)
         }
+        .sheet(isPresented: $store.isFreeRescueFallbackPresented) {
+            FreeRescueFallbackView()
+                .environmentObject(store)
+                .environmentObject(subscriptionStore)
+        }
         .sheet(item: paywallFeatureBinding) { feature in
             PremiumPaywallView(feature: feature)
                 .environmentObject(subscriptionStore)

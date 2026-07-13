@@ -37,7 +37,15 @@ struct CoachView: View {
                 feature: .aiCoach,
                 eyebrow: "AI coach",
                 title: "Get help before you smoke.",
-                freeSupportMessage: "Your quit plan, daily check-ins, basic progress, and quitline resources remain available without Premium."
+                freeSupportMessage: "When the urge is here, use a quiet reset, a delay, and quitline support at no cost.",
+                freeActions: [
+                    FreeSupportAction(
+                        id: "craving-reset",
+                        title: "Open free craving reset"
+                    ) {
+                        store.isFreeRescueFallbackPresented = true
+                    }
+                ]
             )
         }
     }

@@ -117,9 +117,18 @@ final class TeoPateoUITests: XCTestCase {
         app.tabBars.buttons["Coach"].tap()
         XCTAssertTrue(app.buttons["unlock-aiCoach-button"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["open-premium-paywall-button"].exists)
+        app.buttons["free-aiCoach-craving-reset-button"].tap()
+        XCTAssertTrue(app.staticTexts["Stay with this moment."].waitForExistence(timeout: 5))
+        app.buttons["Close craving support"].tap()
 
         app.tabBars.buttons["Insights"].tap()
         XCTAssertTrue(app.buttons["unlock-personalizedInsights-button"].waitForExistence(timeout: 5))
+        app.buttons["free-personalizedInsights-check-in-button"].tap()
+        XCTAssertTrue(app.staticTexts["Record today without judging it."].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["Insights"].tap()
+        app.buttons["free-personalizedInsights-plan-button"].tap()
+        XCTAssertTrue(app.staticTexts["Today's playbook."].waitForExistence(timeout: 5))
 
         app.tabBars.buttons["Today"].tap()
         app.buttons["start-rescue-button"].tap()

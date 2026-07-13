@@ -17,7 +17,21 @@ struct InsightsView: View {
                 feature: .personalizedInsights,
                 eyebrow: "Pattern insights",
                 title: "Your risk is predictable.",
-                freeSupportMessage: "Your basic progress stays on Today, and you can keep logging check-ins and cravings whenever you need to."
+                freeSupportMessage: "Keep your plan current and log how today went whenever you need to.",
+                freeActions: [
+                    FreeSupportAction(
+                        id: "check-in",
+                        title: "Log a check-in"
+                    ) {
+                        store.selectedTab = .checkIn
+                    },
+                    FreeSupportAction(
+                        id: "plan",
+                        title: "Review your plan"
+                    ) {
+                        store.selectedTab = .plan
+                    }
+                ]
             )
         }
     }

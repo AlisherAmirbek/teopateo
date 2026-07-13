@@ -561,6 +561,7 @@ struct PremiumFeaturePreview: View {
     let eyebrow: String
     let title: String
     let freeSupportMessage: String
+    let freeActions: [FreeSupportAction]
 
     var body: some View {
         RootScreen {
@@ -582,15 +583,30 @@ struct PremiumFeaturePreview: View {
             .quietCard()
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Still available free")
+                Text("Available free now")
                     .typeSection()
                 Text(freeSupportMessage)
                     .typeBodySecondary()
                     .fixedSize(horizontal: false, vertical: true)
+                ForEach(freeActions) { action in
+                    Button(action.title) {
+                        action.handler()
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                    .accessibilityIdentifier(
+                        "free-\(feature.rawValue)-\(action.id)-button"
+                    )
+                }
             }
             .quietCard()
         }
     }
+}
+
+struct FreeSupportAction: Identifiable {
+    let id: String
+    let title: String
+    let handler: () -> Void
 }
 
 struct FreeRescueFallbackView: View {

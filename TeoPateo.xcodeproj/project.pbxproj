@@ -802,6 +802,10 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# This script is responsible for uploading debug symbols and source context for Sentry.
+if [ \"$CONFIGURATION\" != \"Release\" ]; then
+  exit 0
+fi
+
 if which sentry-cli >/dev/null; then
   export SENTRY_ORG=ip-amirbek
   export SENTRY_PROJECT=teopateo

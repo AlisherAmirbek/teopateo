@@ -248,15 +248,6 @@ struct OnboardingSubscriptionOfferView: View {
                         title: "Choose the support that fits your quit."
                     )
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Start with 7 days free")
-                            .typeSection()
-                        Text("Premium adds guided craving rescue, adaptive recovery, the AI coach, and pattern insights to the plan you just made.")
-                            .typeBodySecondary()
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .quietCard()
-
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Choose your support")
                             .typeSection()
@@ -353,8 +344,8 @@ struct OnboardingSubscriptionOfferView: View {
         let price = product?.displayPrice ?? (plan == .yearly ? "$59.99" : "$9.99")
         let period = plan == .yearly ? "year" : "month"
         let detail = hasTrial
-            ? "7-day free trial, then \(price) per \(period). Cancel anytime."
-            : "\(price) per \(period). Cancel anytime."
+            ? "Renews automatically after the trial. Cancel anytime."
+            : "Renews automatically. Cancel anytime."
 
         return Button {
             purchase(plan)
@@ -381,6 +372,27 @@ struct OnboardingSubscriptionOfferView: View {
                                 .background(QuitTheme.sage)
                                 .cornerRadius(8)
                         }
+                    }
+
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        if plan == .yearly {
+                            Text("$120")
+                                .font(.rounded(.subheadline, weight: .medium))
+                                .foregroundColor(QuitTheme.faint)
+                                .strikethrough()
+                        }
+                        Text(price)
+                            .font(.rounded(.title3, weight: .bold))
+                            .foregroundColor(QuitTheme.ink)
+                        Text("per \(period)")
+                            .font(.rounded(.caption))
+                            .foregroundColor(QuitTheme.muted)
+                    }
+
+                    if hasTrial {
+                        Text("7 days free")
+                            .font(.rounded(.caption, weight: .bold))
+                            .foregroundColor(QuitTheme.cocoa)
                     }
 
                     Text(detail)
